@@ -36,6 +36,7 @@ defmodule AshDispatch.MixProject do
     [
       # Core dependencies
       {:ash, "~> 3.0"},
+      {:ash_state_machine, "~> 0.2"},
       {:oban, "~> 2.0"},
 
       # Optional transport dependencies
@@ -44,7 +45,7 @@ defmodule AshDispatch.MixProject do
 
       # Development and testing
       {:ex_doc, "~> 0.34", only: [:dev, :test], runtime: false},
-      {:jason, "~> 1.2", only: [:dev, :test]},
+      {:jason, "~> 1.2"},
       {:smokestack, "~> 0.8", only: [:test]},
       {:faker, "~> 0.18", only: [:test]}
     ]
@@ -70,11 +71,11 @@ defmodule AshDispatch.MixProject do
       extras: [
         "README.md",
         "CHANGELOG.md",
-        "documentation/tutorials/getting-started.md",
-        "documentation/topics/what-is-ash-dispatch.md",
-        "documentation/topics/recipient-resolution.md",
-        "documentation/topics/user-preferences.md",
-        "documentation/topics/oban-configuration.md"
+        "lib/documentation/tutorials/getting-started.md",
+        "lib/documentation/topics/what-is-ash-dispatch.md",
+        "lib/documentation/topics/recipient-resolution.md",
+        "lib/documentation/topics/user-preferences.md",
+        "lib/documentation/topics/oban-configuration.md"
       ],
       groups_for_extras: [
         Tutorials: ~r/documentation\/tutorials\/.*/,

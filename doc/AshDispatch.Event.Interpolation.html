@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="ExDoc v0.39.1">
+    <meta name="project" content="AshDispatch v0.1.0">
+
+
+    <title>AshDispatch.Event.Interpolation — AshDispatch v0.1.0</title>
+
+    <link rel="stylesheet" href="dist/html-elixir-ZFNMEJKT.css" />
+
+    <script defer src="dist/sidebar_items-F03CB3D7.js"></script>
+    <script defer src="docs_config.js"></script>
+    <script defer src="dist/html-HBZYRXZS.js"></script>
+<style>
+  .sidebar-listNav-list > li > a.sidebar-projectName {
+    font-size: 1.2em;
+    font-weight: 700;
+    color: #2563eb;
+  }
+  .content-inner h1, .content-inner h2, .content-inner h3 {
+    border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 0.3em;
+  }
+</style>
+
+  </head>
+  <body>
+    <script>(()=>{var t="ex_doc:settings",e="dark";var o="dark",s="light";var E="sidebar_state",n="closed";var r="sidebar_width";var a="sidebar-open";var i=new URLSearchParams(window.location.search),S=i.get("theme")||JSON.parse(localStorage.getItem(t)||"{}").theme;(S===o||S!==s&&window.matchMedia("(prefers-color-scheme: dark)").matches)&&document.body.classList.add(e);var d=sessionStorage.getItem(E),A=d!==n&&!window.matchMedia(`screen and (max-width: ${768}px)`).matches;document.body.classList.toggle(a,A);var c=sessionStorage.getItem(r);c&&document.body.style.setProperty("--sidebarWidth",`${c}px`);var p=/(Macintosh|iPhone|iPad|iPod)/.test(window.navigator.userAgent);document.documentElement.classList.toggle("apple-os",p);})();
+</script>
+
+<div class="body-wrapper">
+
+<button id="sidebar-menu" class="sidebar-button sidebar-toggle" aria-label="toggle sidebar" aria-controls="sidebar">
+  <i class="ri-menu-line ri-lg" title="Collapse/expand sidebar"></i>
+</button>
+
+<nav id="sidebar" class="sidebar">
+
+  <div class="sidebar-header">
+    <div class="sidebar-projectInfo">
+
+      <div>
+        <a href="https://github.com/Vulcora/ash_dispatch" class="sidebar-projectName" translate="no">
+AshDispatch
+        </a>
+        <div class="sidebar-projectVersion" translate="no">
+          v0.1.0
+        </div>
+      </div>
+    </div>
+    <ul id="sidebar-list-nav" class="sidebar-list-nav" role="tablist" data-extras=""></ul>
+  </div>
+</nav>
+
+<output role="status" id="toast"></output>
+
+<main class="content page-module" id="main" data-type="modules">
+  <div id="content" class="content-inner">
+    <div class="top-search">
+      <div class="search-settings">
+        <form class="search-bar" action="search.html">
+          <label class="search-label">
+            <span class="sr-only">Search documentation of AshDispatch</span>
+            <div class="search-input-wrapper">
+              <input name="q" type="text" class="search-input" placeholder="Press / to search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+              <button type="button" tabindex="-1" class="search-close-button" aria-hidden="true">
+                <i class="ri-close-line ri-lg" title="Cancel search"></i>
+              </button>
+            </div>
+          </label>
+        </form>
+        <div class="autocomplete">
+        </div>
+        <div class="engine-selector" data-multiple="false">
+          <button type="button" class="engine-button" aria-label="Select search engine" aria-haspopup="true" aria-expanded="false">
+            <i class="ri-search-2-line" aria-hidden="true"></i>
+            <span class="engine-name">Default</span>
+            <i class="ri-arrow-down-s-line" aria-hidden="true"></i>
+          </button>
+          <div class="engine-dropdown" hidden role="menu">
+
+              <button type="button"
+                      class="engine-option"
+                      data-engine-url="search.html?q="
+                      role="menuitemradio"
+                      aria-checked="true">
+                <span class="name">Default</span>
+                <span class="help">In-browser search</span>
+              </button>
+
+          </div>
+        </div>
+        <button class="icon-settings display-settings">
+          <i class="ri-settings-3-line"></i>
+          <span class="sr-only">Settings</span>
+        </button>
+      </div>
+    </div>
+
+<div id="top-content">
+  <div class="heading-with-actions top-heading">
+    <h1>
+      <span translate="no">AshDispatch.Event.Interpolation</span> 
+      <small class="app-vsn" translate="no">(AshDispatch v0.1.0)</small>
+
+    </h1>
+
+      <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/event/interpolation.ex#L1" title="View Source" class="icon-action" rel="help">
+        <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        <span class="sr-only">View Source</span>
+      </a>
+
+  </div>
+
+
+    <section id="moduledoc">
+<p>Handles variable interpolation in DSL content strings.</p><p>Supports {{variable}} syntax for interpolating values from:</p><ol><li>Context data (ctx.data.variable)</li><li>Template assigns from prepare_template_assigns/2</li></ol><h2 id="module-examples" class="section-heading"><a href="#module-examples" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Examples</span></h2><pre><code class="makeup elixir" translate="no"><span class="c1"># In DSL:</span><span class="w">
+</span><span class="n">content</span><span class="w"> </span><span class="k" data-group-id="2047117748-1">do</span><span class="w">
+  </span><span class="n">subject</span><span class="w"> </span><span class="s">&quot;Order </span><span class="si" data-group-id="2047117748-2">#{</span><span class="p" data-group-id="2047117748-3">{</span><span class="n">order_number</span><span class="p" data-group-id="2047117748-3">}</span><span class="si" data-group-id="2047117748-2">}</span><span class="s"> created&quot;</span><span class="w">
+  </span><span class="n">notification_message</span><span class="w"> </span><span class="s">&quot;Your order for {{total_items}} items is ready&quot;</span><span class="w">
+</span><span class="k" data-group-id="2047117748-1">end</span><span class="w">
+
+</span><span class="c1"># In event module:</span><span class="w">
+</span><span class="kd">def</span><span class="w"> </span><span class="nf">prepare_template_assigns</span><span class="p" data-group-id="2047117748-4">(</span><span class="n">context</span><span class="p">,</span><span class="w"> </span><span class="n">channel</span><span class="p" data-group-id="2047117748-4">)</span><span class="w"> </span><span class="k" data-group-id="2047117748-5">do</span><span class="w">
+  </span><span class="p" data-group-id="2047117748-6">%{</span><span class="w">
+    </span><span class="ss">order_number</span><span class="p">:</span><span class="w"> </span><span class="n">format_order_id</span><span class="p" data-group-id="2047117748-7">(</span><span class="n">context</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">order</span><span class="p" data-group-id="2047117748-7">)</span><span class="p">,</span><span class="w">
+    </span><span class="ss">total_items</span><span class="p">:</span><span class="w"> </span><span class="n">length</span><span class="p" data-group-id="2047117748-8">(</span><span class="n">context</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">order</span><span class="o">.</span><span class="n">items</span><span class="p" data-group-id="2047117748-8">)</span><span class="w">
+  </span><span class="p" data-group-id="2047117748-6">}</span><span class="w">
+</span><span class="k" data-group-id="2047117748-5">end</span></code></pre><h2 id="module-interpolation-rules" class="section-heading"><a href="#module-interpolation-rules" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Interpolation Rules</span></h2><ol><li>Variables are looked up in template assigns first</li><li>Fallback to context.data with same key</li><li>Missing variables render as empty string (no errors)</li><li>Nested access not supported (use prepare_template_assigns)</li></ol>
+    </section>
+
+</div>
+
+  <section id="summary" class="details-list">
+    <h1 class="section-heading">
+      <a class="hover-link" href="#summary">
+        <i class="ri-link-m" aria-hidden="true"></i>
+      </a>
+      <span class="text">Summary</span>
+    </h1>
+<div class="summary-functions summary">
+  <h2>
+    <a href="#functions">Functions</a>
+  </h2>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#interpolate/4" data-no-tooltip="" translate="no">interpolate(string, context, channel, event_module)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Interpolates {{variable}} placeholders in a string.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#validate/1" data-no-tooltip="" translate="no">validate(string)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Validates interpolation string for valid variable names.</p></div>
+
+    </div>
+
+</div>
+
+  </section>
+
+
+  <section id="functions" class="details-list">
+    <h1 class="section-heading">
+      <a class="hover-link" href="#functions">
+        <i class="ri-link-m" aria-hidden="true"></i>
+      </a>
+      <span class="text">Functions</span>
+    </h1>
+
+    <div class="functions-list">
+<section class="detail" id="interpolate/4">
+
+  <div class="detail-header">
+    <a href="#interpolate/4" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">interpolate(string, context, channel, event_module)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/event/interpolation.ex#L48" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> interpolate(
+  <a href="https://hexdocs.pm/elixir/String.html#t:t/0">String.t</a>() | nil,
+  <a href="AshDispatch.Context.html#t:t/0">AshDispatch.Context.t</a>(),
+  <a href="AshDispatch.Channel.html#t:t/0">AshDispatch.Channel.t</a>(),
+  <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>()
+) ::
+  <a href="https://hexdocs.pm/elixir/String.html#t:t/0">String.t</a>()</pre>
+
+      </div>
+
+<p>Interpolates {{variable}} placeholders in a string.</p><h2 id="interpolate/4-examples" class="section-heading"><a href="#interpolate/4-examples" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Examples</span></h2><pre><code class="makeup elixir" translate="no"><span class="gp unselectable">iex&gt; </span><span class="n">context</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p" data-group-id="0242572707-1">%</span><span class="nc" data-group-id="0242572707-1">Context</span><span class="p" data-group-id="0242572707-1">{</span><span class="ss">data</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="0242572707-2">%{</span><span class="ss">user</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="0242572707-3">%{</span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;John&quot;</span><span class="p" data-group-id="0242572707-3">}</span><span class="p" data-group-id="0242572707-2">}</span><span class="p" data-group-id="0242572707-1">}</span><span class="w">
+</span><span class="gp unselectable">iex&gt; </span><span class="nc">Interpolation</span><span class="o">.</span><span class="n">interpolate</span><span class="p" data-group-id="0242572707-4">(</span><span class="s">&quot;Hello {{user_name}}&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">context</span><span class="p">,</span><span class="w"> </span><span class="n">channel</span><span class="p">,</span><span class="w"> </span><span class="n">event_module</span><span class="p" data-group-id="0242572707-4">)</span><span class="w">
+</span><span class="s">&quot;Hello John&quot;</span><span class="w">
+
+</span><span class="gp unselectable">iex&gt; </span><span class="nc">Interpolation</span><span class="o">.</span><span class="n">interpolate</span><span class="p" data-group-id="0242572707-5">(</span><span class="s">&quot;No variables here&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">context</span><span class="p">,</span><span class="w"> </span><span class="n">channel</span><span class="p">,</span><span class="w"> </span><span class="n">event_module</span><span class="p" data-group-id="0242572707-5">)</span><span class="w">
+</span><span class="s">&quot;No variables here&quot;</span></code></pre>
+  </section>
+</section>
+<section class="detail" id="validate/1">
+
+  <div class="detail-header">
+    <a href="#validate/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">validate(string)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/event/interpolation.ex#L96" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> validate(<a href="https://hexdocs.pm/elixir/String.html#t:t/0">String.t</a>()) :: {:ok, [<a href="https://hexdocs.pm/elixir/String.html#t:t/0">String.t</a>()]} | {:error, <a href="https://hexdocs.pm/elixir/String.html#t:t/0">String.t</a>()}</pre>
+
+      </div>
+
+<p>Validates interpolation string for valid variable names.</p><p>Returns {:ok, variables} or {:error, reason}.</p><h2 id="validate/1-examples" class="section-heading"><a href="#validate/1-examples" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Examples</span></h2><pre><code class="makeup elixir" translate="no"><span class="gp unselectable">iex&gt; </span><span class="nc">Interpolation</span><span class="o">.</span><span class="n">validate</span><span class="p" data-group-id="8904922442-1">(</span><span class="s">&quot;Order </span><span class="si" data-group-id="8904922442-2">#{</span><span class="p" data-group-id="8904922442-3">{</span><span class="n">order_number</span><span class="p" data-group-id="8904922442-3">}</span><span class="si" data-group-id="8904922442-2">}</span><span class="s">&quot;</span><span class="p" data-group-id="8904922442-1">)</span><span class="w">
+</span><span class="p" data-group-id="8904922442-4">{</span><span class="ss">:ok</span><span class="p">,</span><span class="w"> </span><span class="p" data-group-id="8904922442-5">[</span><span class="s">&quot;order_number&quot;</span><span class="p" data-group-id="8904922442-5">]</span><span class="p" data-group-id="8904922442-4">}</span><span class="w">
+
+</span><span class="gp unselectable">iex&gt; </span><span class="nc">Interpolation</span><span class="o">.</span><span class="n">validate</span><span class="p" data-group-id="8904922442-6">(</span><span class="s">&quot;Invalid {{123invalid}}&quot;</span><span class="p" data-group-id="8904922442-6">)</span><span class="w">
+</span><span class="p" data-group-id="8904922442-7">{</span><span class="ss">:error</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;Invalid variable name: 123invalid&quot;</span><span class="p" data-group-id="8904922442-7">}</span></code></pre>
+  </section>
+</section>
+
+    </div>
+  </section>
+
+    <footer class="footer">
+      <p>
+
+          <span class="line">
+            <a href="https://hex.pm/packages/ash_dispatch/0.1.0" class="footer-hex-package">Hex Package</a>
+
+            <a href="https://preview.hex.pm/preview/ash_dispatch/0.1.0">Hex Preview</a>
+
+          </span>
+
+        <span class="line">
+          <button class="a-main footer-button display-quick-switch" title="Search HexDocs packages">
+            Search HexDocs
+          </button>
+
+        </span>
+      </p>
+
+      <p class="built-using">
+        Built using
+        <a href="https://github.com/elixir-lang/ex_doc" title="ExDoc" target="_blank" rel="help noopener" translate="no">ExDoc</a> (v0.39.1) for the
+
+          <a href="https://elixir-lang.org" title="Elixir" target="_blank" translate="no">Elixir programming language</a>
+
+      </p>
+
+    </footer>
+  </div>
+</main>
+</div>
+<script>
+  // Add copy buttons to code blocks
+  document.querySelectorAll('pre code').forEach(function(block) {
+    if (!block.parentElement.querySelector('.copy-button')) {
+      const button = document.createElement('button');
+      button.className = 'copy-button';
+      button.textContent = 'Copy';
+      button.onclick = function() {
+        navigator.clipboard.writeText(block.textContent);
+        button.textContent = 'Copied!';
+        setTimeout(() => button.textContent = 'Copy', 2000);
+      };
+      block.parentElement.style.position = 'relative';
+      block.parentElement.appendChild(button);
+    }
+  });
+</script>
+
+  </body>
+</html>

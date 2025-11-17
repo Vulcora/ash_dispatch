@@ -1,0 +1,2131 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="ExDoc v0.39.1">
+    <meta name="project" content="AshDispatch v0.1.0">
+
+
+    <title>AshDispatch.Domain — AshDispatch v0.1.0</title>
+
+    <link rel="stylesheet" href="dist/html-elixir-ZFNMEJKT.css" />
+
+    <script defer src="dist/sidebar_items-F03CB3D7.js"></script>
+    <script defer src="docs_config.js"></script>
+    <script defer src="dist/html-HBZYRXZS.js"></script>
+<style>
+  .sidebar-listNav-list > li > a.sidebar-projectName {
+    font-size: 1.2em;
+    font-weight: 700;
+    color: #2563eb;
+  }
+  .content-inner h1, .content-inner h2, .content-inner h3 {
+    border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 0.3em;
+  }
+</style>
+
+  </head>
+  <body>
+    <script>(()=>{var t="ex_doc:settings",e="dark";var o="dark",s="light";var E="sidebar_state",n="closed";var r="sidebar_width";var a="sidebar-open";var i=new URLSearchParams(window.location.search),S=i.get("theme")||JSON.parse(localStorage.getItem(t)||"{}").theme;(S===o||S!==s&&window.matchMedia("(prefers-color-scheme: dark)").matches)&&document.body.classList.add(e);var d=sessionStorage.getItem(E),A=d!==n&&!window.matchMedia(`screen and (max-width: ${768}px)`).matches;document.body.classList.toggle(a,A);var c=sessionStorage.getItem(r);c&&document.body.style.setProperty("--sidebarWidth",`${c}px`);var p=/(Macintosh|iPhone|iPad|iPod)/.test(window.navigator.userAgent);document.documentElement.classList.toggle("apple-os",p);})();
+</script>
+
+<div class="body-wrapper">
+
+<button id="sidebar-menu" class="sidebar-button sidebar-toggle" aria-label="toggle sidebar" aria-controls="sidebar">
+  <i class="ri-menu-line ri-lg" title="Collapse/expand sidebar"></i>
+</button>
+
+<nav id="sidebar" class="sidebar">
+
+  <div class="sidebar-header">
+    <div class="sidebar-projectInfo">
+
+      <div>
+        <a href="https://github.com/Vulcora/ash_dispatch" class="sidebar-projectName" translate="no">
+AshDispatch
+        </a>
+        <div class="sidebar-projectVersion" translate="no">
+          v0.1.0
+        </div>
+      </div>
+    </div>
+    <ul id="sidebar-list-nav" class="sidebar-list-nav" role="tablist" data-extras=""></ul>
+  </div>
+</nav>
+
+<output role="status" id="toast"></output>
+
+<main class="content page-module" id="main" data-type="modules">
+  <div id="content" class="content-inner">
+    <div class="top-search">
+      <div class="search-settings">
+        <form class="search-bar" action="search.html">
+          <label class="search-label">
+            <span class="sr-only">Search documentation of AshDispatch</span>
+            <div class="search-input-wrapper">
+              <input name="q" type="text" class="search-input" placeholder="Press / to search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+              <button type="button" tabindex="-1" class="search-close-button" aria-hidden="true">
+                <i class="ri-close-line ri-lg" title="Cancel search"></i>
+              </button>
+            </div>
+          </label>
+        </form>
+        <div class="autocomplete">
+        </div>
+        <div class="engine-selector" data-multiple="false">
+          <button type="button" class="engine-button" aria-label="Select search engine" aria-haspopup="true" aria-expanded="false">
+            <i class="ri-search-2-line" aria-hidden="true"></i>
+            <span class="engine-name">Default</span>
+            <i class="ri-arrow-down-s-line" aria-hidden="true"></i>
+          </button>
+          <div class="engine-dropdown" hidden role="menu">
+
+              <button type="button"
+                      class="engine-option"
+                      data-engine-url="search.html?q="
+                      role="menuitemradio"
+                      aria-checked="true">
+                <span class="name">Default</span>
+                <span class="help">In-browser search</span>
+              </button>
+
+          </div>
+        </div>
+        <button class="icon-settings display-settings">
+          <i class="ri-settings-3-line"></i>
+          <span class="sr-only">Settings</span>
+        </button>
+      </div>
+    </div>
+
+<div id="top-content">
+  <div class="heading-with-actions top-heading">
+    <h1>
+      <span translate="no">AshDispatch.Domain</span> 
+      <small class="app-vsn" translate="no">(AshDispatch v0.1.0)</small>
+
+    </h1>
+
+      <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" title="View Source" class="icon-action" rel="help">
+        <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        <span class="sr-only">View Source</span>
+      </a>
+
+  </div>
+
+
+    <section id="moduledoc">
+<p>AshDispatch Domain for managing delivery receipts and notification resources.</p><p>This domain contains all resources used by AshDispatch for event tracking
+and delivery management.</p><h2 id="module-resources" class="section-heading"><a href="#module-resources" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Resources</span></h2><ul><li><a href="AshDispatch.Resources.DeliveryReceipt.html"><code class="inline">AshDispatch.Resources.DeliveryReceipt</code></a> - Tracks delivery lifecycle</li></ul><h2 id="module-usage" class="section-heading"><a href="#module-usage" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Usage</span></h2><p>Add to your application's domains if you want to query delivery receipts:</p><pre><code class="makeup elixir" translate="no"><span class="kd">defmodule</span><span class="w"> </span><span class="nc">MyApp.Application</span><span class="w"> </span><span class="k" data-group-id="4822294058-1">do</span><span class="w">
+  </span><span class="kn">use</span><span class="w"> </span><span class="nc">Application</span><span class="w">
+
+  </span><span class="kd">def</span><span class="w"> </span><span class="nf">start</span><span class="p" data-group-id="4822294058-2">(</span><span class="c">_type</span><span class="p">,</span><span class="w"> </span><span class="c">_args</span><span class="p" data-group-id="4822294058-2">)</span><span class="w"> </span><span class="k" data-group-id="4822294058-3">do</span><span class="w">
+    </span><span class="n">children</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p" data-group-id="4822294058-4">[</span><span class="w">
+      </span><span class="c1"># ...</span><span class="w">
+    </span><span class="p" data-group-id="4822294058-4">]</span><span class="w">
+
+    </span><span class="n">opts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p" data-group-id="4822294058-5">[</span><span class="ss">strategy</span><span class="p">:</span><span class="w"> </span><span class="ss">:one_for_one</span><span class="p">,</span><span class="w"> </span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="nc">MyApp.Supervisor</span><span class="p" data-group-id="4822294058-5">]</span><span class="w">
+    </span><span class="nc">Supervisor</span><span class="o">.</span><span class="n">start_link</span><span class="p" data-group-id="4822294058-6">(</span><span class="n">children</span><span class="p">,</span><span class="w"> </span><span class="n">opts</span><span class="p" data-group-id="4822294058-6">)</span><span class="w">
+  </span><span class="k" data-group-id="4822294058-3">end</span><span class="w">
+</span><span class="k" data-group-id="4822294058-1">end</span></code></pre>
+    </section>
+
+</div>
+
+  <section id="summary" class="details-list">
+    <h1 class="section-heading">
+      <a class="hover-link" href="#summary">
+        <i class="ri-link-m" aria-hidden="true"></i>
+      </a>
+      <span class="text">Summary</span>
+    </h1>
+<div class="summary-functions summary">
+  <h2>
+    <a href="#functions">Functions</a>
+  </h2>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#aggregate/3" data-no-tooltip="" translate="no">aggregate(query, aggregate_or_aggregates, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.aggregate/3` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#aggregate!/3" data-no-tooltip="" translate="no">aggregate!(query, aggregate_or_aggregates, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.aggregate!/3` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#avg/3" data-no-tooltip="" translate="no">avg(query, field, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.avg/3` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#avg!/3" data-no-tooltip="" translate="no">avg!(query, field, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.avg!/3` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#bulk_create/4" data-no-tooltip="" translate="no">bulk_create(inputs, resource, action, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.bulk_create/4` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#bulk_create!/4" data-no-tooltip="" translate="no">bulk_create!(inputs, resource, action, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.bulk_create!/4` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#bulk_destroy/4" data-no-tooltip="" translate="no">bulk_destroy(stream_or_query, action, input, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.bulk_destroy/4` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#bulk_destroy!/4" data-no-tooltip="" translate="no">bulk_destroy!(stream_or_query, action, input, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.bulk_destroy!/4` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#bulk_update/4" data-no-tooltip="" translate="no">bulk_update(stream_or_query, action, input, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.bulk_update/4` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#bulk_update!/4" data-no-tooltip="" translate="no">bulk_update!(stream_or_query, action, input, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.bulk_update!/4` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#calculate/3" data-no-tooltip="" translate="no">calculate(resource, calculation, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.calculate/3` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#calculate!/3" data-no-tooltip="" translate="no">calculate!(resource, calculation, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.calculate!/3` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#can/3" data-no-tooltip="" translate="no">can(action_or_query_or_changeset, actor, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.can/3` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#can?/3" data-no-tooltip="" translate="no">can?(query_or_changeset_or_action, actor, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.can?/3` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#count/2" data-no-tooltip="" translate="no">count(query, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.count/2` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#count!/2" data-no-tooltip="" translate="no">count!(query, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.count!/2` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#create/2" data-no-tooltip="" translate="no">create(changeset, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.create/2` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#create!/2" data-no-tooltip="" translate="no">create!(changeset, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.create!/2` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#default_short_name/0" data-no-tooltip="" translate="no">default_short_name()</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#destroy/2" data-no-tooltip="" translate="no">destroy(record, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.destroy/2` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#destroy!/2" data-no-tooltip="" translate="no">destroy!(record, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.destroy!/2` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#exists/2" data-no-tooltip="" translate="no">exists(query, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.exists/2` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#exists?/2" data-no-tooltip="" translate="no">exists?(query, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.exists?/2` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#first/3" data-no-tooltip="" translate="no">first(query, field, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.first/3` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#first!/3" data-no-tooltip="" translate="no">first!(query, field, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.first!/3` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#get/3" data-no-tooltip="" translate="no">get(resource, id_or_filter, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.get/3` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#get!/3" data-no-tooltip="" translate="no">get!(resource, id_or_filter, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.get!/3` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#list/3" data-no-tooltip="" translate="no">list(query, field, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.list/3` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#list!/3" data-no-tooltip="" translate="no">list!(query, field, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.list!/3` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#load/3" data-no-tooltip="" translate="no">load(data, query, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.load/3` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#load!/3" data-no-tooltip="" translate="no">load!(data, query, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.load!/3` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#max/3" data-no-tooltip="" translate="no">max(query, field, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.max/3` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#max!/3" data-no-tooltip="" translate="no">max!(query, field, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.max!/3` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#min/3" data-no-tooltip="" translate="no">min(query, field, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.min/3` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#min!/3" data-no-tooltip="" translate="no">min!(query, field, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.min!/3` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#page/2" data-no-tooltip="" translate="no">page(page, request)</a>
+
+          <span class="deprecated" title="Use `Ash.page/2` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#page!/2" data-no-tooltip="" translate="no">page!(page, request)</a>
+
+          <span class="deprecated" title="Use `Ash.page!/2` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#read/2" data-no-tooltip="" translate="no">read(query, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.read/2` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#read!/2" data-no-tooltip="" translate="no">read!(query, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.read!/2` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#read_one/2" data-no-tooltip="" translate="no">read_one(query, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.read_one/2` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#read_one!/2" data-no-tooltip="" translate="no">read_one!(query, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.read_one!/2` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#reload/2" data-no-tooltip="" translate="no">reload(record, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.reload/2` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#reload!/2" data-no-tooltip="" translate="no">reload!(record, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.reload!/2` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#run_action/2" data-no-tooltip="" translate="no">run_action(input, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.run_action/2` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#run_action!/2" data-no-tooltip="" translate="no">run_action!(input, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.run_action/2` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#stream!/2" data-no-tooltip="" translate="no">stream!(query, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.stream!/2` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#sum/3" data-no-tooltip="" translate="no">sum(query, field, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.sum/3` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#sum!/3" data-no-tooltip="" translate="no">sum!(query, field, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.sum!/3` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#update/2" data-no-tooltip="" translate="no">update(changeset, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.update/2` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#update!/2" data-no-tooltip="" translate="no">update!(changeset, opts \\ [])</a>
+
+          <span class="deprecated" title="Use `Ash.update!/2` instead">deprecated</span>
+
+      </div>
+
+    </div>
+
+</div>
+
+  </section>
+
+
+  <section id="functions" class="details-list">
+    <h1 class="section-heading">
+      <a class="hover-link" href="#functions">
+        <i class="ri-link-m" aria-hidden="true"></i>
+      </a>
+      <span class="text">Functions</span>
+    </h1>
+
+    <div class="functions-list">
+<section class="detail" id="aggregate/3">
+
+    <span id="aggregate/2"></span>
+
+  <div class="detail-header">
+    <a href="#aggregate/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">aggregate(query, aggregate_or_aggregates, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.aggregate/3` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="aggregate!/3">
+
+    <span id="aggregate!/2"></span>
+
+  <div class="detail-header">
+    <a href="#aggregate!/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">aggregate!(query, aggregate_or_aggregates, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.aggregate!/3` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="avg/3">
+
+    <span id="avg/2"></span>
+
+  <div class="detail-header">
+    <a href="#avg/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">avg(query, field, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.avg/3` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="avg!/3">
+
+    <span id="avg!/2"></span>
+
+  <div class="detail-header">
+    <a href="#avg!/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">avg!(query, field, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.avg!/3` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="bulk_create/4">
+
+    <span id="bulk_create/3"></span>
+
+  <div class="detail-header">
+    <a href="#bulk_create/4" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">bulk_create(inputs, resource, action, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.bulk_create/4` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="bulk_create!/4">
+
+    <span id="bulk_create!/3"></span>
+
+  <div class="detail-header">
+    <a href="#bulk_create!/4" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">bulk_create!(inputs, resource, action, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.bulk_create!/4` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="bulk_destroy/4">
+
+    <span id="bulk_destroy/3"></span>
+
+  <div class="detail-header">
+    <a href="#bulk_destroy/4" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">bulk_destroy(stream_or_query, action, input, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.bulk_destroy/4` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="bulk_destroy!/4">
+
+    <span id="bulk_destroy!/3"></span>
+
+  <div class="detail-header">
+    <a href="#bulk_destroy!/4" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">bulk_destroy!(stream_or_query, action, input, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.bulk_destroy!/4` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="bulk_update/4">
+
+    <span id="bulk_update/3"></span>
+
+  <div class="detail-header">
+    <a href="#bulk_update/4" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">bulk_update(stream_or_query, action, input, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.bulk_update/4` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="bulk_update!/4">
+
+    <span id="bulk_update!/3"></span>
+
+  <div class="detail-header">
+    <a href="#bulk_update!/4" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">bulk_update!(stream_or_query, action, input, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.bulk_update!/4` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="calculate/3">
+
+    <span id="calculate/2"></span>
+
+  <div class="detail-header">
+    <a href="#calculate/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">calculate(resource, calculation, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.calculate/3` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="calculate!/3">
+
+    <span id="calculate!/2"></span>
+
+  <div class="detail-header">
+    <a href="#calculate!/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">calculate!(resource, calculation, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.calculate!/3` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="can/3">
+
+    <span id="can/2"></span>
+
+  <div class="detail-header">
+    <a href="#can/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">can(action_or_query_or_changeset, actor, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.can/3` instead.
+    </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> can(
+  action_or_query_or_changeset ::
+    <a href="https://hexdocs.pm/ash/3.9.0/Ash.Query.html#t:t/0">Ash.Query.t</a>()
+    | <a href="https://hexdocs.pm/ash/3.9.0/Ash.Changeset.html#t:t/0">Ash.Changeset.t</a>()
+    | {<a href="https://hexdocs.pm/ash/3.9.0/Ash.Resource.html#t:t/0">Ash.Resource.t</a>(), <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">atom</a>() | <a href="https://hexdocs.pm/ash/3.9.0/Ash.Resource.Actions.html#t:action/0">Ash.Resource.Actions.action</a>()},
+  actor :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
+  opts :: <a href="https://hexdocs.pm/elixir/Keyword.html#t:t/0">Keyword.t</a>()
+) :: {:ok, <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">boolean</a>() | :maybe} | {:error, <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>()}</pre>
+
+      </div>
+
+
+  </section>
+</section>
+<section class="detail" id="can?/3">
+
+    <span id="can?/2"></span>
+
+  <div class="detail-header">
+    <a href="#can?/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">can?(query_or_changeset_or_action, actor, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.can?/3` instead.
+    </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> can?(
+  query_or_changeset_or_action ::
+    <a href="https://hexdocs.pm/ash/3.9.0/Ash.Query.html#t:t/0">Ash.Query.t</a>()
+    | <a href="https://hexdocs.pm/ash/3.9.0/Ash.Changeset.html#t:t/0">Ash.Changeset.t</a>()
+    | {<a href="https://hexdocs.pm/ash/3.9.0/Ash.Resource.html#t:t/0">Ash.Resource.t</a>(), <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">atom</a>() | <a href="https://hexdocs.pm/ash/3.9.0/Ash.Resource.Actions.html#t:action/0">Ash.Resource.Actions.action</a>()},
+  actor :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
+  opts :: <a href="https://hexdocs.pm/elixir/Keyword.html#t:t/0">Keyword.t</a>()
+) :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">boolean</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">no_return</a>()</pre>
+
+      </div>
+
+
+  </section>
+</section>
+<section class="detail" id="count/2">
+
+    <span id="count/1"></span>
+
+  <div class="detail-header">
+    <a href="#count/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">count(query, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.count/2` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="count!/2">
+
+    <span id="count!/1"></span>
+
+  <div class="detail-header">
+    <a href="#count!/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">count!(query, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.count!/2` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="create/2">
+
+    <span id="create/1"></span>
+
+  <div class="detail-header">
+    <a href="#create/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">create(changeset, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.create/2` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="create!/2">
+
+    <span id="create!/1"></span>
+
+  <div class="detail-header">
+    <a href="#create!/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">create!(changeset, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.create!/2` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="default_short_name/0">
+
+  <div class="detail-header">
+    <a href="#default_short_name/0" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">default_short_name()</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="destroy/2">
+
+    <span id="destroy/1"></span>
+
+  <div class="detail-header">
+    <a href="#destroy/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">destroy(record, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.destroy/2` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="destroy!/2">
+
+    <span id="destroy!/1"></span>
+
+  <div class="detail-header">
+    <a href="#destroy!/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">destroy!(record, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.destroy!/2` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="exists/2">
+
+    <span id="exists/1"></span>
+
+  <div class="detail-header">
+    <a href="#exists/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">exists(query, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.exists/2` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="exists?/2">
+
+    <span id="exists?/1"></span>
+
+  <div class="detail-header">
+    <a href="#exists?/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">exists?(query, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.exists?/2` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="first/3">
+
+    <span id="first/2"></span>
+
+  <div class="detail-header">
+    <a href="#first/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">first(query, field, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.first/3` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="first!/3">
+
+    <span id="first!/2"></span>
+
+  <div class="detail-header">
+    <a href="#first!/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">first!(query, field, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.first!/3` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="get/3">
+
+    <span id="get/2"></span>
+
+  <div class="detail-header">
+    <a href="#get/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">get(resource, id_or_filter, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.get/3` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="get!/3">
+
+    <span id="get!/2"></span>
+
+  <div class="detail-header">
+    <a href="#get!/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">get!(resource, id_or_filter, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.get!/3` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="list/3">
+
+    <span id="list/2"></span>
+
+  <div class="detail-header">
+    <a href="#list/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">list(query, field, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.list/3` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="list!/3">
+
+    <span id="list!/2"></span>
+
+  <div class="detail-header">
+    <a href="#list!/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">list!(query, field, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.list!/3` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="load/3">
+
+    <span id="load/2"></span>
+
+  <div class="detail-header">
+    <a href="#load/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">load(data, query, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.load/3` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="load!/3">
+
+    <span id="load!/2"></span>
+
+  <div class="detail-header">
+    <a href="#load!/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">load!(data, query, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.load!/3` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="max/3">
+
+    <span id="max/2"></span>
+
+  <div class="detail-header">
+    <a href="#max/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">max(query, field, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.max/3` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="max!/3">
+
+    <span id="max!/2"></span>
+
+  <div class="detail-header">
+    <a href="#max!/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">max!(query, field, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.max!/3` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="min/3">
+
+    <span id="min/2"></span>
+
+  <div class="detail-header">
+    <a href="#min/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">min(query, field, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.min/3` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="min!/3">
+
+    <span id="min!/2"></span>
+
+  <div class="detail-header">
+    <a href="#min!/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">min!(query, field, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.min!/3` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="page/2">
+
+  <div class="detail-header">
+    <a href="#page/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">page(page, request)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.page/2` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="page!/2">
+
+  <div class="detail-header">
+    <a href="#page!/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">page!(page, request)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.page!/2` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="read/2">
+
+    <span id="read/1"></span>
+
+  <div class="detail-header">
+    <a href="#read/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">read(query, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.read/2` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="read!/2">
+
+    <span id="read!/1"></span>
+
+  <div class="detail-header">
+    <a href="#read!/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">read!(query, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.read!/2` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="read_one/2">
+
+    <span id="read_one/1"></span>
+
+  <div class="detail-header">
+    <a href="#read_one/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">read_one(query, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.read_one/2` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="read_one!/2">
+
+    <span id="read_one!/1"></span>
+
+  <div class="detail-header">
+    <a href="#read_one!/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">read_one!(query, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.read_one!/2` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="reload/2">
+
+    <span id="reload/1"></span>
+
+  <div class="detail-header">
+    <a href="#reload/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">reload(record, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.reload/2` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="reload!/2">
+
+    <span id="reload!/1"></span>
+
+  <div class="detail-header">
+    <a href="#reload!/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">reload!(record, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.reload!/2` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="run_action/2">
+
+    <span id="run_action/1"></span>
+
+  <div class="detail-header">
+    <a href="#run_action/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">run_action(input, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.run_action/2` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="run_action!/2">
+
+    <span id="run_action!/1"></span>
+
+  <div class="detail-header">
+    <a href="#run_action!/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">run_action!(input, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.run_action/2` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="stream!/2">
+
+    <span id="stream!/1"></span>
+
+  <div class="detail-header">
+    <a href="#stream!/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">stream!(query, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.stream!/2` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="sum/3">
+
+    <span id="sum/2"></span>
+
+  <div class="detail-header">
+    <a href="#sum/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">sum(query, field, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.sum/3` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="sum!/3">
+
+    <span id="sum!/2"></span>
+
+  <div class="detail-header">
+    <a href="#sum!/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">sum!(query, field, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.sum!/3` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="update/2">
+
+    <span id="update/1"></span>
+
+  <div class="detail-header">
+    <a href="#update/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">update(changeset, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.update/2` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="update!/2">
+
+    <span id="update!/1"></span>
+
+  <div class="detail-header">
+    <a href="#update!/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">update!(changeset, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/domain.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This function is deprecated. Use `Ash.update!/2` instead.
+    </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+
+    </div>
+  </section>
+
+    <footer class="footer">
+      <p>
+
+          <span class="line">
+            <a href="https://hex.pm/packages/ash_dispatch/0.1.0" class="footer-hex-package">Hex Package</a>
+
+            <a href="https://preview.hex.pm/preview/ash_dispatch/0.1.0">Hex Preview</a>
+
+          </span>
+
+        <span class="line">
+          <button class="a-main footer-button display-quick-switch" title="Search HexDocs packages">
+            Search HexDocs
+          </button>
+
+        </span>
+      </p>
+
+      <p class="built-using">
+        Built using
+        <a href="https://github.com/elixir-lang/ex_doc" title="ExDoc" target="_blank" rel="help noopener" translate="no">ExDoc</a> (v0.39.1) for the
+
+          <a href="https://elixir-lang.org" title="Elixir" target="_blank" translate="no">Elixir programming language</a>
+
+      </p>
+
+    </footer>
+  </div>
+</main>
+</div>
+<script>
+  // Add copy buttons to code blocks
+  document.querySelectorAll('pre code').forEach(function(block) {
+    if (!block.parentElement.querySelector('.copy-button')) {
+      const button = document.createElement('button');
+      button.className = 'copy-button';
+      button.textContent = 'Copy';
+      button.onclick = function() {
+        navigator.clipboard.writeText(block.textContent);
+        button.textContent = 'Copied!';
+        setTimeout(() => button.textContent = 'Copy', 2000);
+      };
+      block.parentElement.style.position = 'relative';
+      block.parentElement.appendChild(button);
+    }
+  });
+</script>
+
+  </body>
+</html>

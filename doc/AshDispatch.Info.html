@@ -1,0 +1,1377 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="ExDoc v0.39.1">
+    <meta name="project" content="AshDispatch v0.1.0">
+
+
+    <title>AshDispatch.Info — AshDispatch v0.1.0</title>
+
+    <link rel="stylesheet" href="dist/html-elixir-ZFNMEJKT.css" />
+
+    <script defer src="dist/sidebar_items-F03CB3D7.js"></script>
+    <script defer src="docs_config.js"></script>
+    <script defer src="dist/html-HBZYRXZS.js"></script>
+<style>
+  .sidebar-listNav-list > li > a.sidebar-projectName {
+    font-size: 1.2em;
+    font-weight: 700;
+    color: #2563eb;
+  }
+  .content-inner h1, .content-inner h2, .content-inner h3 {
+    border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 0.3em;
+  }
+</style>
+
+  </head>
+  <body>
+    <script>(()=>{var t="ex_doc:settings",e="dark";var o="dark",s="light";var E="sidebar_state",n="closed";var r="sidebar_width";var a="sidebar-open";var i=new URLSearchParams(window.location.search),S=i.get("theme")||JSON.parse(localStorage.getItem(t)||"{}").theme;(S===o||S!==s&&window.matchMedia("(prefers-color-scheme: dark)").matches)&&document.body.classList.add(e);var d=sessionStorage.getItem(E),A=d!==n&&!window.matchMedia(`screen and (max-width: ${768}px)`).matches;document.body.classList.toggle(a,A);var c=sessionStorage.getItem(r);c&&document.body.style.setProperty("--sidebarWidth",`${c}px`);var p=/(Macintosh|iPhone|iPad|iPod)/.test(window.navigator.userAgent);document.documentElement.classList.toggle("apple-os",p);})();
+</script>
+
+<div class="body-wrapper">
+
+<button id="sidebar-menu" class="sidebar-button sidebar-toggle" aria-label="toggle sidebar" aria-controls="sidebar">
+  <i class="ri-menu-line ri-lg" title="Collapse/expand sidebar"></i>
+</button>
+
+<nav id="sidebar" class="sidebar">
+
+  <div class="sidebar-header">
+    <div class="sidebar-projectInfo">
+
+      <div>
+        <a href="https://github.com/Vulcora/ash_dispatch" class="sidebar-projectName" translate="no">
+AshDispatch
+        </a>
+        <div class="sidebar-projectVersion" translate="no">
+          v0.1.0
+        </div>
+      </div>
+    </div>
+    <ul id="sidebar-list-nav" class="sidebar-list-nav" role="tablist" data-extras=""></ul>
+  </div>
+</nav>
+
+<output role="status" id="toast"></output>
+
+<main class="content page-module" id="main" data-type="modules">
+  <div id="content" class="content-inner">
+    <div class="top-search">
+      <div class="search-settings">
+        <form class="search-bar" action="search.html">
+          <label class="search-label">
+            <span class="sr-only">Search documentation of AshDispatch</span>
+            <div class="search-input-wrapper">
+              <input name="q" type="text" class="search-input" placeholder="Press / to search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+              <button type="button" tabindex="-1" class="search-close-button" aria-hidden="true">
+                <i class="ri-close-line ri-lg" title="Cancel search"></i>
+              </button>
+            </div>
+          </label>
+        </form>
+        <div class="autocomplete">
+        </div>
+        <div class="engine-selector" data-multiple="false">
+          <button type="button" class="engine-button" aria-label="Select search engine" aria-haspopup="true" aria-expanded="false">
+            <i class="ri-search-2-line" aria-hidden="true"></i>
+            <span class="engine-name">Default</span>
+            <i class="ri-arrow-down-s-line" aria-hidden="true"></i>
+          </button>
+          <div class="engine-dropdown" hidden role="menu">
+
+              <button type="button"
+                      class="engine-option"
+                      data-engine-url="search.html?q="
+                      role="menuitemradio"
+                      aria-checked="true">
+                <span class="name">Default</span>
+                <span class="help">In-browser search</span>
+              </button>
+
+          </div>
+        </div>
+        <button class="icon-settings display-settings">
+          <i class="ri-settings-3-line"></i>
+          <span class="sr-only">Settings</span>
+        </button>
+      </div>
+    </div>
+
+<div id="top-content">
+  <div class="heading-with-actions top-heading">
+    <h1>
+      <span translate="no">AshDispatch.Info</span> 
+      <small class="app-vsn" translate="no">(AshDispatch v0.1.0)</small>
+
+    </h1>
+
+      <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L1" title="View Source" class="icon-action" rel="help">
+        <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        <span class="sr-only">View Source</span>
+      </a>
+
+  </div>
+
+
+    <section id="moduledoc">
+<p>Introspection helpers for AshDispatch events.</p><p>This module provides functions to introspect event DSL configuration
+at runtime. Generated automatically by <a href="https://hexdocs.pm/spark/2.3.14/Spark.InfoGenerator.html"><code class="inline">Spark.InfoGenerator</code></a>.</p><h2 id="module-usage" class="section-heading"><a href="#module-usage" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Usage</span></h2><pre><code class="makeup elixir" translate="no"><span class="c1"># Get event ID</span><span class="w">
+</span><span class="nc">AshDispatch.Info</span><span class="o">.</span><span class="n">dispatch_id</span><span class="p" data-group-id="4136480487-1">(</span><span class="nc">MyApp.Events.Orders.Created</span><span class="p" data-group-id="4136480487-1">)</span><span class="w">
+</span><span class="c1"># =&gt; &quot;orders.created&quot;</span><span class="w">
+
+</span><span class="c1"># Get channels</span><span class="w">
+</span><span class="nc">AshDispatch.Info</span><span class="o">.</span><span class="n">dispatch_channels</span><span class="p" data-group-id="4136480487-2">(</span><span class="nc">MyApp.Events.Orders.Created</span><span class="p" data-group-id="4136480487-2">)</span><span class="w">
+</span><span class="c1"># =&gt; [%Channel{transport: :email, audience: :user}, ...]</span><span class="w">
+
+</span><span class="c1"># Get domain</span><span class="w">
+</span><span class="nc">AshDispatch.Info</span><span class="o">.</span><span class="n">dispatch_domain</span><span class="p" data-group-id="4136480487-3">(</span><span class="nc">MyApp.Events.Orders.Created</span><span class="p" data-group-id="4136480487-3">)</span><span class="w">
+</span><span class="c1"># =&gt; :orders</span></code></pre><h2 id="module-generated-functions" class="section-heading"><a href="#module-generated-functions" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Generated Functions</span></h2><p>All DSL options and sections generate corresponding accessor functions:</p><h3 id="module-dispatch-section" class="section-heading"><a href="#module-dispatch-section" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Dispatch Section</span></h3><ul><li><a href="#dispatch_id/1"><code class="inline">dispatch_id/1</code></a> - Event identifier</li><li><a href="#dispatch_domain/1"><code class="inline">dispatch_domain/1</code></a> - Event domain</li><li><a href="#dispatch_category/1"><code class="inline">dispatch_category/1</code></a> - Email preference category</li><li><a href="#dispatch_user_configurable?/1"><code class="inline">dispatch_user_configurable?/1</code></a> - Whether user can opt-out</li></ul><h3 id="module-channels-section" class="section-heading"><a href="#module-channels-section" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Channels Section</span></h3><ul><li><a href="#dispatch_channels/1"><code class="inline">dispatch_channels/1</code></a> - List of channel entities</li></ul><h3 id="module-content-section" class="section-heading"><a href="#module-content-section" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Content Section</span></h3><ul><li><a href="#dispatch_content_subject/1"><code class="inline">dispatch_content_subject/1</code></a> - Email subject (if in DSL)</li><li><a href="#dispatch_content_from_name/1"><code class="inline">dispatch_content_from_name/1</code></a> - From name</li><li><a href="#dispatch_content_from_email/1"><code class="inline">dispatch_content_from_email/1</code></a> - From email</li><li><a href="#dispatch_content_notification_title/1"><code class="inline">dispatch_content_notification_title/1</code></a> - Notification title</li><li><a href="#dispatch_content_notification_message/1"><code class="inline">dispatch_content_notification_message/1</code></a> - Notification message</li><li><a href="#dispatch_content_action_label/1"><code class="inline">dispatch_content_action_label/1</code></a> - Action button label</li><li><a href="#dispatch_content_action_url/1"><code class="inline">dispatch_content_action_url/1</code></a> - Action URL</li></ul><h3 id="module-metadata-section" class="section-heading"><a href="#module-metadata-section" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Metadata Section</span></h3><ul><li><a href="#dispatch_metadata_action_required?/1"><code class="inline">dispatch_metadata_action_required?/1</code></a> - Whether action required</li><li><a href="#dispatch_metadata_notification_type/1"><code class="inline">dispatch_metadata_notification_type/1</code></a> - Notification type</li></ul><h3 id="module-counters-section" class="section-heading"><a href="#module-counters-section" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Counters Section</span></h3><ul><li><a href="#dispatch_counters/1"><code class="inline">dispatch_counters/1</code></a> - List of counter broadcast configurations</li></ul>
+    </section>
+
+</div>
+
+  <section id="summary" class="details-list">
+    <h1 class="section-heading">
+      <a class="hover-link" href="#summary">
+        <i class="ri-link-m" aria-hidden="true"></i>
+      </a>
+      <span class="text">Summary</span>
+    </h1>
+<div class="summary-functions summary">
+  <h2>
+    <a href="#functions">Functions</a>
+  </h2>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_category/1" data-no-tooltip="" translate="no">dispatch_category(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Email preference category for user opt-out.
+Maps to UserEmailPreferences field.
+If nil, email is not user-configurable.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_category!/1" data-no-tooltip="" translate="no">dispatch_category!(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Email preference category for user opt-out.
+Maps to UserEmailPreferences field.
+If nil, email is not user-configurable.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_channels/1" data-no-tooltip="" translate="no">dispatch_channels(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>dispatch.channels DSL entities</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_content_action_label/1" data-no-tooltip="" translate="no">dispatch_content_action_label(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Action button label for in-app notifications</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_content_action_label!/1" data-no-tooltip="" translate="no">dispatch_content_action_label!(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Action button label for in-app notifications</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_content_action_url/1" data-no-tooltip="" translate="no">dispatch_content_action_url(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Action URL for in-app notifications.
+Supports {{variable}} interpolation.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_content_action_url!/1" data-no-tooltip="" translate="no">dispatch_content_action_url!(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Action URL for in-app notifications.
+Supports {{variable}} interpolation.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_content_from_email/1" data-no-tooltip="" translate="no">dispatch_content_from_email(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Email 'from' address (e.g., 'noreply@myapp.com')</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_content_from_email!/1" data-no-tooltip="" translate="no">dispatch_content_from_email!(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Email 'from' address (e.g., 'noreply@myapp.com')</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_content_from_name/1" data-no-tooltip="" translate="no">dispatch_content_from_name(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Email 'from' name (e.g., 'MyApp')</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_content_from_name!/1" data-no-tooltip="" translate="no">dispatch_content_from_name!(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Email 'from' name (e.g., 'MyApp')</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_content_notification_message/1" data-no-tooltip="" translate="no">dispatch_content_notification_message(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>In-app notification message.
+Supports {{variable}} interpolation.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_content_notification_message!/1" data-no-tooltip="" translate="no">dispatch_content_notification_message!(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>In-app notification message.
+Supports {{variable}} interpolation.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_content_notification_title/1" data-no-tooltip="" translate="no">dispatch_content_notification_title(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>In-app notification title.
+Supports {{variable}} interpolation.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_content_notification_title!/1" data-no-tooltip="" translate="no">dispatch_content_notification_title!(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>In-app notification title.
+Supports {{variable}} interpolation.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_content_options/1" data-no-tooltip="" translate="no">dispatch_content_options(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>dispatch.content DSL options</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_content_subject/1" data-no-tooltip="" translate="no">dispatch_content_subject(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Email subject line.
+Supports {{variable}} interpolation from prepare_template_assigns/2.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_content_subject!/1" data-no-tooltip="" translate="no">dispatch_content_subject!(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Email subject line.
+Supports {{variable}} interpolation from prepare_template_assigns/2.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_counters/1" data-no-tooltip="" translate="no">dispatch_counters(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>dispatch.counters DSL entities</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_domain/1" data-no-tooltip="" translate="no">dispatch_domain(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Domain this event belongs to (e.g., :orders, :tickets).
+Used for organization and filtering.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_domain!/1" data-no-tooltip="" translate="no">dispatch_domain!(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Domain this event belongs to (e.g., :orders, :tickets).
+Used for organization and filtering.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_id/1" data-no-tooltip="" translate="no">dispatch_id(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Unique event identifier (e.g., &quot;orders.created&quot;).
+If not provided, defaults to &quot;{module_name_last_segment}&quot;.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_id!/1" data-no-tooltip="" translate="no">dispatch_id!(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Unique event identifier (e.g., &quot;orders.created&quot;).
+If not provided, defaults to &quot;{module_name_last_segment}&quot;.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_metadata_action_required?/1" data-no-tooltip="" translate="no">dispatch_metadata_action_required?(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Whether this event requires user action</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_metadata_notification_type/1" data-no-tooltip="" translate="no">dispatch_metadata_notification_type(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Notification type for styling in UI</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_metadata_notification_type!/1" data-no-tooltip="" translate="no">dispatch_metadata_notification_type!(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Notification type for styling in UI</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_metadata_options/1" data-no-tooltip="" translate="no">dispatch_metadata_options(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>dispatch.metadata DSL options</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_options/1" data-no-tooltip="" translate="no">dispatch_options(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>dispatch DSL options</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_user_configurable?/1" data-no-tooltip="" translate="no">dispatch_user_configurable?(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Whether users can opt-out of this event via email preferences.
+Set to false for critical system emails (auth, password reset).</p></div>
+
+    </div>
+
+</div>
+
+  </section>
+
+
+  <section id="functions" class="details-list">
+    <h1 class="section-heading">
+      <a class="hover-link" href="#functions">
+        <i class="ri-link-m" aria-hidden="true"></i>
+      </a>
+      <span class="text">Functions</span>
+    </h1>
+
+    <div class="functions-list">
+<section class="detail" id="dispatch_category/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_category/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_category(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_category(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  {:ok, <a href="https://hexdocs.pm/elixir/String.html#t:t/0">String.t</a>()} | :error</pre>
+
+      </div>
+
+<p>Email preference category for user opt-out.
+Maps to UserEmailPreferences field.
+If nil, email is not user-configurable.</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_category!/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_category!/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_category!(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_category!(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  <a href="https://hexdocs.pm/elixir/String.html#t:t/0">String.t</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">no_return</a>()</pre>
+
+      </div>
+
+<p>Email preference category for user opt-out.
+Maps to UserEmailPreferences field.
+If nil, email is not user-configurable.</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_channels/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_channels/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_channels(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_channels(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) :: [<a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">struct</a>()]</pre>
+
+      </div>
+
+<p>dispatch.channels DSL entities</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_content_action_label/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_content_action_label/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_content_action_label(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_content_action_label(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  {:ok, <a href="https://hexdocs.pm/elixir/String.html#t:t/0">String.t</a>()} | :error</pre>
+
+      </div>
+
+<p>Action button label for in-app notifications</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_content_action_label!/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_content_action_label!/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_content_action_label!(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_content_action_label!(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  <a href="https://hexdocs.pm/elixir/String.html#t:t/0">String.t</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">no_return</a>()</pre>
+
+      </div>
+
+<p>Action button label for in-app notifications</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_content_action_url/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_content_action_url/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_content_action_url(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_content_action_url(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  {:ok, <a href="https://hexdocs.pm/elixir/String.html#t:t/0">String.t</a>()} | :error</pre>
+
+      </div>
+
+<p>Action URL for in-app notifications.
+Supports {{variable}} interpolation.</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_content_action_url!/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_content_action_url!/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_content_action_url!(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_content_action_url!(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  <a href="https://hexdocs.pm/elixir/String.html#t:t/0">String.t</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">no_return</a>()</pre>
+
+      </div>
+
+<p>Action URL for in-app notifications.
+Supports {{variable}} interpolation.</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_content_from_email/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_content_from_email/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_content_from_email(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_content_from_email(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  {:ok, <a href="https://hexdocs.pm/elixir/String.html#t:t/0">String.t</a>()} | :error</pre>
+
+      </div>
+
+<p>Email 'from' address (e.g., 'noreply@myapp.com')</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_content_from_email!/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_content_from_email!/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_content_from_email!(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_content_from_email!(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  <a href="https://hexdocs.pm/elixir/String.html#t:t/0">String.t</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">no_return</a>()</pre>
+
+      </div>
+
+<p>Email 'from' address (e.g., 'noreply@myapp.com')</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_content_from_name/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_content_from_name/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_content_from_name(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_content_from_name(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  {:ok, <a href="https://hexdocs.pm/elixir/String.html#t:t/0">String.t</a>()} | :error</pre>
+
+      </div>
+
+<p>Email 'from' name (e.g., 'MyApp')</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_content_from_name!/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_content_from_name!/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_content_from_name!(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_content_from_name!(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  <a href="https://hexdocs.pm/elixir/String.html#t:t/0">String.t</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">no_return</a>()</pre>
+
+      </div>
+
+<p>Email 'from' name (e.g., 'MyApp')</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_content_notification_message/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_content_notification_message/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_content_notification_message(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_content_notification_message(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  {:ok, <a href="https://hexdocs.pm/elixir/String.html#t:t/0">String.t</a>()} | :error</pre>
+
+      </div>
+
+<p>In-app notification message.
+Supports {{variable}} interpolation.</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_content_notification_message!/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_content_notification_message!/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_content_notification_message!(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_content_notification_message!(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  <a href="https://hexdocs.pm/elixir/String.html#t:t/0">String.t</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">no_return</a>()</pre>
+
+      </div>
+
+<p>In-app notification message.
+Supports {{variable}} interpolation.</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_content_notification_title/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_content_notification_title/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_content_notification_title(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_content_notification_title(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  {:ok, <a href="https://hexdocs.pm/elixir/String.html#t:t/0">String.t</a>()} | :error</pre>
+
+      </div>
+
+<p>In-app notification title.
+Supports {{variable}} interpolation.</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_content_notification_title!/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_content_notification_title!/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_content_notification_title!(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_content_notification_title!(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  <a href="https://hexdocs.pm/elixir/String.html#t:t/0">String.t</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">no_return</a>()</pre>
+
+      </div>
+
+<p>In-app notification title.
+Supports {{variable}} interpolation.</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_content_options/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_content_options/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_content_options(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_content_options(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) :: %{
+  required(<a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">atom</a>()) =&gt; <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>()
+}</pre>
+
+      </div>
+
+<p>dispatch.content DSL options</p><p>Returns a map containing the and any configured or default values.</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_content_subject/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_content_subject/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_content_subject(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_content_subject(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  {:ok, <a href="https://hexdocs.pm/elixir/String.html#t:t/0">String.t</a>()} | :error</pre>
+
+      </div>
+
+<p>Email subject line.
+Supports {{variable}} interpolation from prepare_template_assigns/2.</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_content_subject!/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_content_subject!/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_content_subject!(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_content_subject!(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  <a href="https://hexdocs.pm/elixir/String.html#t:t/0">String.t</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">no_return</a>()</pre>
+
+      </div>
+
+<p>Email subject line.
+Supports {{variable}} interpolation from prepare_template_assigns/2.</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_counters/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_counters/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_counters(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_counters(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) :: [<a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">struct</a>()]</pre>
+
+      </div>
+
+<p>dispatch.counters DSL entities</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_domain/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_domain/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_domain(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_domain(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) :: {:ok, <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">atom</a>()} | :error</pre>
+
+      </div>
+
+<p>Domain this event belongs to (e.g., :orders, :tickets).
+Used for organization and filtering.</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_domain!/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_domain!/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_domain!(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_domain!(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) :: <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">atom</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">no_return</a>()</pre>
+
+      </div>
+
+<p>Domain this event belongs to (e.g., :orders, :tickets).
+Used for organization and filtering.</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_id/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_id/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_id(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_id(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) :: {:ok, <a href="https://hexdocs.pm/elixir/String.html#t:t/0">String.t</a>()} | :error</pre>
+
+      </div>
+
+<p>Unique event identifier (e.g., &quot;orders.created&quot;).
+If not provided, defaults to &quot;{module_name_last_segment}&quot;.</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_id!/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_id!/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_id!(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_id!(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) :: <a href="https://hexdocs.pm/elixir/String.html#t:t/0">String.t</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">no_return</a>()</pre>
+
+      </div>
+
+<p>Unique event identifier (e.g., &quot;orders.created&quot;).
+If not provided, defaults to &quot;{module_name_last_segment}&quot;.</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_metadata_action_required?/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_metadata_action_required?/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_metadata_action_required?(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_metadata_action_required?(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">boolean</a>()</pre>
+
+      </div>
+
+<p>Whether this event requires user action</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_metadata_notification_type/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_metadata_notification_type/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_metadata_notification_type(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_metadata_notification_type(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  {:ok, :error | :warning | :success | :info} | :error</pre>
+
+      </div>
+
+<p>Notification type for styling in UI</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_metadata_notification_type!/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_metadata_notification_type!/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_metadata_notification_type!(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_metadata_notification_type!(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  (:error | :warning | :success | :info) | <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">no_return</a>()</pre>
+
+      </div>
+
+<p>Notification type for styling in UI</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_metadata_options/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_metadata_options/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_metadata_options(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_metadata_options(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) :: %{
+  required(<a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">atom</a>()) =&gt; <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>()
+}</pre>
+
+      </div>
+
+<p>dispatch.metadata DSL options</p><p>Returns a map containing the and any configured or default values.</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_options/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_options/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_options(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_options(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) :: %{
+  required(<a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">atom</a>()) =&gt; <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>()
+}</pre>
+
+      </div>
+
+<p>dispatch DSL options</p><p>Returns a map containing the and any configured or default values.</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_user_configurable?/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_user_configurable?/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_user_configurable?(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_user_configurable?(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">boolean</a>()</pre>
+
+      </div>
+
+<p>Whether users can opt-out of this event via email preferences.
+Set to false for critical system emails (auth, password reset).</p>
+  </section>
+</section>
+
+    </div>
+  </section>
+
+    <footer class="footer">
+      <p>
+
+          <span class="line">
+            <a href="https://hex.pm/packages/ash_dispatch/0.1.0" class="footer-hex-package">Hex Package</a>
+
+            <a href="https://preview.hex.pm/preview/ash_dispatch/0.1.0">Hex Preview</a>
+
+          </span>
+
+        <span class="line">
+          <button class="a-main footer-button display-quick-switch" title="Search HexDocs packages">
+            Search HexDocs
+          </button>
+
+        </span>
+      </p>
+
+      <p class="built-using">
+        Built using
+        <a href="https://github.com/elixir-lang/ex_doc" title="ExDoc" target="_blank" rel="help noopener" translate="no">ExDoc</a> (v0.39.1) for the
+
+          <a href="https://elixir-lang.org" title="Elixir" target="_blank" translate="no">Elixir programming language</a>
+
+      </p>
+
+    </footer>
+  </div>
+</main>
+</div>
+<script>
+  // Add copy buttons to code blocks
+  document.querySelectorAll('pre code').forEach(function(block) {
+    if (!block.parentElement.querySelector('.copy-button')) {
+      const button = document.createElement('button');
+      button.className = 'copy-button';
+      button.textContent = 'Copy';
+      button.onclick = function() {
+        navigator.clipboard.writeText(block.textContent);
+        button.textContent = 'Copied!';
+        setTimeout(() => button.textContent = 'Copy', 2000);
+      };
+      block.parentElement.style.position = 'relative';
+      block.parentElement.appendChild(button);
+    }
+  });
+</script>
+
+  </body>
+</html>

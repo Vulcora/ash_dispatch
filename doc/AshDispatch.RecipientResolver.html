@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="ExDoc v0.39.1">
+    <meta name="project" content="AshDispatch v0.1.0">
+
+
+    <title>AshDispatch.RecipientResolver — AshDispatch v0.1.0</title>
+
+    <link rel="stylesheet" href="dist/html-elixir-ZFNMEJKT.css" />
+
+    <script defer src="dist/sidebar_items-F03CB3D7.js"></script>
+    <script defer src="docs_config.js"></script>
+    <script defer src="dist/html-HBZYRXZS.js"></script>
+<style>
+  .sidebar-listNav-list > li > a.sidebar-projectName {
+    font-size: 1.2em;
+    font-weight: 700;
+    color: #2563eb;
+  }
+  .content-inner h1, .content-inner h2, .content-inner h3 {
+    border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 0.3em;
+  }
+</style>
+
+  </head>
+  <body>
+    <script>(()=>{var t="ex_doc:settings",e="dark";var o="dark",s="light";var E="sidebar_state",n="closed";var r="sidebar_width";var a="sidebar-open";var i=new URLSearchParams(window.location.search),S=i.get("theme")||JSON.parse(localStorage.getItem(t)||"{}").theme;(S===o||S!==s&&window.matchMedia("(prefers-color-scheme: dark)").matches)&&document.body.classList.add(e);var d=sessionStorage.getItem(E),A=d!==n&&!window.matchMedia(`screen and (max-width: ${768}px)`).matches;document.body.classList.toggle(a,A);var c=sessionStorage.getItem(r);c&&document.body.style.setProperty("--sidebarWidth",`${c}px`);var p=/(Macintosh|iPhone|iPad|iPod)/.test(window.navigator.userAgent);document.documentElement.classList.toggle("apple-os",p);})();
+</script>
+
+<div class="body-wrapper">
+
+<button id="sidebar-menu" class="sidebar-button sidebar-toggle" aria-label="toggle sidebar" aria-controls="sidebar">
+  <i class="ri-menu-line ri-lg" title="Collapse/expand sidebar"></i>
+</button>
+
+<nav id="sidebar" class="sidebar">
+
+  <div class="sidebar-header">
+    <div class="sidebar-projectInfo">
+
+      <div>
+        <a href="https://github.com/Vulcora/ash_dispatch" class="sidebar-projectName" translate="no">
+AshDispatch
+        </a>
+        <div class="sidebar-projectVersion" translate="no">
+          v0.1.0
+        </div>
+      </div>
+    </div>
+    <ul id="sidebar-list-nav" class="sidebar-list-nav" role="tablist" data-extras=""></ul>
+  </div>
+</nav>
+
+<output role="status" id="toast"></output>
+
+<main class="content page-behaviour" id="main" data-type="modules">
+  <div id="content" class="content-inner">
+    <div class="top-search">
+      <div class="search-settings">
+        <form class="search-bar" action="search.html">
+          <label class="search-label">
+            <span class="sr-only">Search documentation of AshDispatch</span>
+            <div class="search-input-wrapper">
+              <input name="q" type="text" class="search-input" placeholder="Press / to search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+              <button type="button" tabindex="-1" class="search-close-button" aria-hidden="true">
+                <i class="ri-close-line ri-lg" title="Cancel search"></i>
+              </button>
+            </div>
+          </label>
+        </form>
+        <div class="autocomplete">
+        </div>
+        <div class="engine-selector" data-multiple="false">
+          <button type="button" class="engine-button" aria-label="Select search engine" aria-haspopup="true" aria-expanded="false">
+            <i class="ri-search-2-line" aria-hidden="true"></i>
+            <span class="engine-name">Default</span>
+            <i class="ri-arrow-down-s-line" aria-hidden="true"></i>
+          </button>
+          <div class="engine-dropdown" hidden role="menu">
+
+              <button type="button"
+                      class="engine-option"
+                      data-engine-url="search.html?q="
+                      role="menuitemradio"
+                      aria-checked="true">
+                <span class="name">Default</span>
+                <span class="help">In-browser search</span>
+              </button>
+
+          </div>
+        </div>
+        <button class="icon-settings display-settings">
+          <i class="ri-settings-3-line"></i>
+          <span class="sr-only">Settings</span>
+        </button>
+      </div>
+    </div>
+
+<div id="top-content">
+  <div class="heading-with-actions top-heading">
+    <h1>
+      <span translate="no">AshDispatch.RecipientResolver</span> <small>behaviour</small>
+      <small class="app-vsn" translate="no">(AshDispatch v0.1.0)</small>
+
+    </h1>
+
+      <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/recipient_resolver.ex#L1" title="View Source" class="icon-action" rel="help">
+        <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        <span class="sr-only">View Source</span>
+      </a>
+
+  </div>
+
+
+    <section id="moduledoc">
+<p>Behaviour for resolving recipients from audience types.</p><p>AshDispatch doesn't know about your User resource, so you provide
+a resolver module that implements this behaviour.</p><h2 id="module-configuration" class="section-heading"><a href="#module-configuration" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Configuration</span></h2><p>Configure your resolver module:</p><pre><code class="makeup elixir" translate="no"><span class="c1"># config/config.exs</span><span class="w">
+</span><span class="n">config</span><span class="w"> </span><span class="ss">:ash_dispatch</span><span class="p">,</span><span class="w">
+  </span><span class="ss">recipient_resolver</span><span class="p">:</span><span class="w"> </span><span class="nc">MyApp.Recipients.Resolver</span></code></pre><h2 id="module-implementation" class="section-heading"><a href="#module-implementation" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Implementation</span></h2><pre><code class="makeup elixir" translate="no"><span class="kd">defmodule</span><span class="w"> </span><span class="nc">MyApp.Recipients.Resolver</span><span class="w"> </span><span class="k" data-group-id="4230508944-1">do</span><span class="w">
+  </span><span class="na">@behaviour</span><span class="w"> </span><span class="nc">AshDispatch.RecipientResolver</span><span class="w">
+
+  </span><span class="kn">alias</span><span class="w"> </span><span class="nc">MyApp.Accounts.User</span><span class="w">
+
+  </span><span class="na">@impl</span><span class="w"> </span><span class="no">true</span><span class="w">
+  </span><span class="kd">def</span><span class="w"> </span><span class="nf">resolve_admins</span><span class="p" data-group-id="4230508944-2">(</span><span class="c">_context</span><span class="p" data-group-id="4230508944-2">)</span><span class="w"> </span><span class="k" data-group-id="4230508944-3">do</span><span class="w">
+    </span><span class="c1"># Query your admin users</span><span class="w">
+    </span><span class="nc">User</span><span class="w">
+    </span><span class="o">|&gt;</span><span class="w"> </span><span class="nc">Ash.Query</span><span class="o">.</span><span class="n">filter</span><span class="p" data-group-id="4230508944-4">(</span><span class="n">admin</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="no">true</span><span class="p" data-group-id="4230508944-4">)</span><span class="w">
+    </span><span class="o">|&gt;</span><span class="w"> </span><span class="nc">Ash</span><span class="o">.</span><span class="n">read!</span><span class="p" data-group-id="4230508944-5">(</span><span class="p" data-group-id="4230508944-5">)</span><span class="w">
+  </span><span class="k" data-group-id="4230508944-3">end</span><span class="w">
+
+  </span><span class="na">@impl</span><span class="w"> </span><span class="no">true</span><span class="w">
+  </span><span class="kd">def</span><span class="w"> </span><span class="nf">resolve_team</span><span class="p" data-group-id="4230508944-6">(</span><span class="n">team_name</span><span class="p">,</span><span class="w"> </span><span class="c">_context</span><span class="p" data-group-id="4230508944-6">)</span><span class="w"> </span><span class="k" data-group-id="4230508944-7">do</span><span class="w">
+    </span><span class="c1"># Query team members</span><span class="w">
+    </span><span class="k">case</span><span class="w"> </span><span class="n">team_name</span><span class="w"> </span><span class="k" data-group-id="4230508944-8">do</span><span class="w">
+      </span><span class="ss">:support</span><span class="w"> </span><span class="o">-&gt;</span><span class="w">
+        </span><span class="nc">User</span><span class="w">
+        </span><span class="o">|&gt;</span><span class="w"> </span><span class="nc">Ash.Query</span><span class="o">.</span><span class="n">filter</span><span class="p" data-group-id="4230508944-9">(</span><span class="n">role</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="ss">:support</span><span class="p" data-group-id="4230508944-9">)</span><span class="w">
+        </span><span class="o">|&gt;</span><span class="w"> </span><span class="nc">Ash</span><span class="o">.</span><span class="n">read!</span><span class="p" data-group-id="4230508944-10">(</span><span class="p" data-group-id="4230508944-10">)</span><span class="w">
+
+      </span><span class="ss">:engineering</span><span class="w"> </span><span class="o">-&gt;</span><span class="w">
+        </span><span class="nc">User</span><span class="w">
+        </span><span class="o">|&gt;</span><span class="w"> </span><span class="nc">Ash.Query</span><span class="o">.</span><span class="n">filter</span><span class="p" data-group-id="4230508944-11">(</span><span class="n">department</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s">&quot;Engineering&quot;</span><span class="p" data-group-id="4230508944-11">)</span><span class="w">
+        </span><span class="o">|&gt;</span><span class="w"> </span><span class="nc">Ash</span><span class="o">.</span><span class="n">read!</span><span class="p" data-group-id="4230508944-12">(</span><span class="p" data-group-id="4230508944-12">)</span><span class="w">
+
+      </span><span class="bp">_</span><span class="w"> </span><span class="o">-&gt;</span><span class="w">
+        </span><span class="p" data-group-id="4230508944-13">[</span><span class="p" data-group-id="4230508944-13">]</span><span class="w">
+    </span><span class="k" data-group-id="4230508944-8">end</span><span class="w">
+  </span><span class="k" data-group-id="4230508944-7">end</span><span class="w">
+
+  </span><span class="na">@impl</span><span class="w"> </span><span class="no">true</span><span class="w">
+  </span><span class="kd">def</span><span class="w"> </span><span class="nf">resolve_system</span><span class="p" data-group-id="4230508944-14">(</span><span class="c">_context</span><span class="p" data-group-id="4230508944-14">)</span><span class="w"> </span><span class="k" data-group-id="4230508944-15">do</span><span class="w">
+    </span><span class="c1"># Return system notification recipients (e.g., ops team)</span><span class="w">
+    </span><span class="p" data-group-id="4230508944-16">[</span><span class="w">
+      </span><span class="p" data-group-id="4230508944-17">%{</span><span class="ss">email</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;ops@myapp.com&quot;</span><span class="p">,</span><span class="w"> </span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Operations Team&quot;</span><span class="p" data-group-id="4230508944-17">}</span><span class="w">
+    </span><span class="p" data-group-id="4230508944-16">]</span><span class="w">
+  </span><span class="k" data-group-id="4230508944-15">end</span><span class="w">
+</span><span class="k" data-group-id="4230508944-1">end</span></code></pre><h2 id="module-built-in-resolvers" class="section-heading"><a href="#module-built-in-resolvers" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Built-in Resolvers</span></h2><p>If you don't configure a resolver, AshDispatch uses a default that:</p><ul><li>Returns empty list for admins/teams/system (with warning logs)</li><li>This ensures your app doesn't break, but you'll see warnings</li></ul><h2 id="module-context" class="section-heading"><a href="#module-context" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Context</span></h2><p>The <code class="inline">context</code> parameter is an <code class="inline">%AshDispatch.Context{}</code> struct containing:</p><ul><li><code class="inline">event_id</code> - Event identifier</li><li><code class="inline">data</code> - Event data (resource record, etc.)</li><li><code class="inline">user</code> - Current user (if available)</li><li><code class="inline">metadata</code> - Additional context</li></ul><p>Use this to implement dynamic recipient resolution:</p><pre><code class="makeup elixir" translate="no"><span class="kd">def</span><span class="w"> </span><span class="nf">resolve_admins</span><span class="p" data-group-id="2581606215-1">(</span><span class="n">context</span><span class="p" data-group-id="2581606215-1">)</span><span class="w"> </span><span class="k" data-group-id="2581606215-2">do</span><span class="w">
+  </span><span class="c1"># Only notify admins in the same organization</span><span class="w">
+  </span><span class="k">if</span><span class="w"> </span><span class="n">org_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">context</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">order</span><span class="o">.</span><span class="n">organization_id</span><span class="w"> </span><span class="k" data-group-id="2581606215-3">do</span><span class="w">
+    </span><span class="nc">User</span><span class="w">
+    </span><span class="o">|&gt;</span><span class="w"> </span><span class="nc">Ash.Query</span><span class="o">.</span><span class="n">filter</span><span class="p" data-group-id="2581606215-4">(</span><span class="n">admin</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="no">true</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="n">organization_id</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="o">^</span><span class="n">org_id</span><span class="p" data-group-id="2581606215-4">)</span><span class="w">
+    </span><span class="o">|&gt;</span><span class="w"> </span><span class="nc">Ash</span><span class="o">.</span><span class="n">read!</span><span class="p" data-group-id="2581606215-5">(</span><span class="p" data-group-id="2581606215-5">)</span><span class="w">
+  </span><span class="k" data-group-id="2581606215-3">else</span><span class="w">
+    </span><span class="p" data-group-id="2581606215-6">[</span><span class="p" data-group-id="2581606215-6">]</span><span class="w">
+  </span><span class="k" data-group-id="2581606215-3">end</span><span class="w">
+</span><span class="k" data-group-id="2581606215-2">end</span></code></pre>
+    </section>
+
+</div>
+
+  <section id="summary" class="details-list">
+    <h1 class="section-heading">
+      <a class="hover-link" href="#summary">
+        <i class="ri-link-m" aria-hidden="true"></i>
+      </a>
+      <span class="text">Summary</span>
+    </h1>
+<div class="summary-callbacks summary">
+  <h2>
+    <a href="#callbacks">Callbacks</a>
+  </h2>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#c:resolve_admins/1" data-no-tooltip="" translate="no">resolve_admins(context)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Resolve admin recipients.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#c:resolve_system/1" data-no-tooltip="" translate="no">resolve_system(context)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Resolve system recipients.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#c:resolve_team/2" data-no-tooltip="" translate="no">resolve_team(team_name, context)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Resolve team recipients by team name.</p></div>
+
+    </div>
+
+</div>
+<div class="summary-functions summary">
+  <h2>
+    <a href="#functions">Functions</a>
+  </h2>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#resolve/3" data-no-tooltip="" translate="no">resolve(audience, context, opts \\ [])</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Resolve recipients for the given audience type.</p></div>
+
+    </div>
+
+</div>
+
+  </section>
+
+
+  <section id="callbacks" class="details-list">
+    <h1 class="section-heading">
+      <a class="hover-link" href="#callbacks">
+        <i class="ri-link-m" aria-hidden="true"></i>
+      </a>
+      <span class="text">Callbacks</span>
+    </h1>
+
+    <div class="callbacks-list">
+<section class="detail" id="c:resolve_admins/1">
+
+  <div class="detail-header">
+    <a href="#c:resolve_admins/1" class="detail-link" data-no-tooltip="" aria-label="Link to this callback">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">resolve_admins(context)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/recipient_resolver.ex#L112" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@callback</span> resolve_admins(context :: <a href="AshDispatch.Context.html#t:t/0">AshDispatch.Context.t</a>()) :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">list</a>()</pre>
+
+      </div>
+
+<p>Resolve admin recipients.</p><p>Should return a list of user records or maps with <code class="inline">:email</code> field.</p><h2 id="c:resolve_admins/1-examples" class="section-heading"><a href="#c:resolve_admins/1-examples" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Examples</span></h2><pre><code class="makeup elixir" translate="no"><span class="kd">def</span><span class="w"> </span><span class="nf">resolve_admins</span><span class="p" data-group-id="1090373546-1">(</span><span class="c">_context</span><span class="p" data-group-id="1090373546-1">)</span><span class="w"> </span><span class="k" data-group-id="1090373546-2">do</span><span class="w">
+  </span><span class="nc">User</span><span class="w">
+  </span><span class="o">|&gt;</span><span class="w"> </span><span class="nc">Ash.Query</span><span class="o">.</span><span class="n">filter</span><span class="p" data-group-id="1090373546-3">(</span><span class="n">admin</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="no">true</span><span class="p" data-group-id="1090373546-3">)</span><span class="w">
+  </span><span class="o">|&gt;</span><span class="w"> </span><span class="nc">Ash</span><span class="o">.</span><span class="n">read!</span><span class="p" data-group-id="1090373546-4">(</span><span class="p" data-group-id="1090373546-4">)</span><span class="w">
+</span><span class="k" data-group-id="1090373546-2">end</span><span class="w">
+
+</span><span class="kd">def</span><span class="w"> </span><span class="nf">resolve_admins</span><span class="p" data-group-id="1090373546-5">(</span><span class="n">context</span><span class="p" data-group-id="1090373546-5">)</span><span class="w"> </span><span class="k" data-group-id="1090373546-6">do</span><span class="w">
+  </span><span class="c1"># Org-specific admins</span><span class="w">
+  </span><span class="nc">User</span><span class="w">
+  </span><span class="o">|&gt;</span><span class="w"> </span><span class="nc">Ash.Query</span><span class="o">.</span><span class="n">filter</span><span class="p" data-group-id="1090373546-7">(</span><span class="w">
+    </span><span class="n">admin</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="no">true</span><span class="w"> </span><span class="ow">and</span><span class="w">
+    </span><span class="n">organization_id</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="o">^</span><span class="n">context</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">order</span><span class="o">.</span><span class="n">organization_id</span><span class="w">
+  </span><span class="p" data-group-id="1090373546-7">)</span><span class="w">
+  </span><span class="o">|&gt;</span><span class="w"> </span><span class="nc">Ash</span><span class="o">.</span><span class="n">read!</span><span class="p" data-group-id="1090373546-8">(</span><span class="p" data-group-id="1090373546-8">)</span><span class="w">
+</span><span class="k" data-group-id="1090373546-6">end</span></code></pre>
+  </section>
+</section>
+<section class="detail" id="c:resolve_system/1">
+
+  <div class="detail-header">
+    <a href="#c:resolve_system/1" class="detail-link" data-no-tooltip="" aria-label="Link to this callback">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">resolve_system(context)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/recipient_resolver.ex#L160" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@callback</span> resolve_system(context :: <a href="AshDispatch.Context.html#t:t/0">AshDispatch.Context.t</a>()) :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">list</a>()</pre>
+
+      </div>
+
+<p>Resolve system recipients.</p><p>Used for internal notifications (monitoring, ops, etc.).</p><p>Should return a list of user records or maps with <code class="inline">:email</code> field.</p><h2 id="c:resolve_system/1-examples" class="section-heading"><a href="#c:resolve_system/1-examples" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Examples</span></h2><pre><code class="makeup elixir" translate="no"><span class="kd">def</span><span class="w"> </span><span class="nf">resolve_system</span><span class="p" data-group-id="4200608616-1">(</span><span class="c">_context</span><span class="p" data-group-id="4200608616-1">)</span><span class="w"> </span><span class="k" data-group-id="4200608616-2">do</span><span class="w">
+  </span><span class="p" data-group-id="4200608616-3">[</span><span class="w">
+    </span><span class="p" data-group-id="4200608616-4">%{</span><span class="ss">email</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;ops@myapp.com&quot;</span><span class="p">,</span><span class="w"> </span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Operations&quot;</span><span class="p" data-group-id="4200608616-4">}</span><span class="p">,</span><span class="w">
+    </span><span class="p" data-group-id="4200608616-5">%{</span><span class="ss">email</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;monitoring@myapp.com&quot;</span><span class="p">,</span><span class="w"> </span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Monitoring&quot;</span><span class="p" data-group-id="4200608616-5">}</span><span class="w">
+  </span><span class="p" data-group-id="4200608616-3">]</span><span class="w">
+</span><span class="k" data-group-id="4200608616-2">end</span><span class="w">
+
+</span><span class="kd">def</span><span class="w"> </span><span class="nf">resolve_system</span><span class="p" data-group-id="4200608616-6">(</span><span class="c">_context</span><span class="p" data-group-id="4200608616-6">)</span><span class="w"> </span><span class="k" data-group-id="4200608616-7">do</span><span class="w">
+  </span><span class="nc">User</span><span class="w">
+  </span><span class="o">|&gt;</span><span class="w"> </span><span class="nc">Ash.Query</span><span class="o">.</span><span class="n">filter</span><span class="p" data-group-id="4200608616-8">(</span><span class="n">role</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="ss">:ops</span><span class="p" data-group-id="4200608616-8">)</span><span class="w">
+  </span><span class="o">|&gt;</span><span class="w"> </span><span class="nc">Ash</span><span class="o">.</span><span class="n">read!</span><span class="p" data-group-id="4200608616-9">(</span><span class="p" data-group-id="4200608616-9">)</span><span class="w">
+</span><span class="k" data-group-id="4200608616-7">end</span></code></pre>
+  </section>
+</section>
+<section class="detail" id="c:resolve_team/2">
+
+  <div class="detail-header">
+    <a href="#c:resolve_team/2" class="detail-link" data-no-tooltip="" aria-label="Link to this callback">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">resolve_team(team_name, context)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/recipient_resolver.ex#L136" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@callback</span> resolve_team(team_name :: <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">atom</a>(), context :: <a href="AshDispatch.Context.html#t:t/0">AshDispatch.Context.t</a>()) :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">list</a>()</pre>
+
+      </div>
+
+<p>Resolve team recipients by team name.</p><p>Team name is an atom (e.g., <code class="inline">:support</code>, <code class="inline">:engineering</code>, <code class="inline">:sales</code>).</p><p>Should return a list of user records or maps with <code class="inline">:email</code> field.</p><h2 id="c:resolve_team/2-examples" class="section-heading"><a href="#c:resolve_team/2-examples" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Examples</span></h2><pre><code class="makeup elixir" translate="no"><span class="kd">def</span><span class="w"> </span><span class="nf">resolve_team</span><span class="p" data-group-id="0654425765-1">(</span><span class="ss">:support</span><span class="p">,</span><span class="w"> </span><span class="c">_context</span><span class="p" data-group-id="0654425765-1">)</span><span class="w"> </span><span class="k" data-group-id="0654425765-2">do</span><span class="w">
+  </span><span class="nc">User</span><span class="w">
+  </span><span class="o">|&gt;</span><span class="w"> </span><span class="nc">Ash.Query</span><span class="o">.</span><span class="n">filter</span><span class="p" data-group-id="0654425765-3">(</span><span class="n">role</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="ss">:support</span><span class="p" data-group-id="0654425765-3">)</span><span class="w">
+  </span><span class="o">|&gt;</span><span class="w"> </span><span class="nc">Ash</span><span class="o">.</span><span class="n">read!</span><span class="p" data-group-id="0654425765-4">(</span><span class="p" data-group-id="0654425765-4">)</span><span class="w">
+</span><span class="k" data-group-id="0654425765-2">end</span><span class="w">
+
+</span><span class="kd">def</span><span class="w"> </span><span class="nf">resolve_team</span><span class="p" data-group-id="0654425765-5">(</span><span class="n">team_name</span><span class="p">,</span><span class="w"> </span><span class="c">_context</span><span class="p" data-group-id="0654425765-5">)</span><span class="w"> </span><span class="k" data-group-id="0654425765-6">do</span><span class="w">
+  </span><span class="nc">Team</span><span class="w">
+  </span><span class="o">|&gt;</span><span class="w"> </span><span class="nc">Ash</span><span class="o">.</span><span class="n">get!</span><span class="p" data-group-id="0654425765-7">(</span><span class="n">team_name</span><span class="p" data-group-id="0654425765-7">)</span><span class="w">
+  </span><span class="o">|&gt;</span><span class="w"> </span><span class="nc">Ash</span><span class="o">.</span><span class="n">load!</span><span class="p" data-group-id="0654425765-8">(</span><span class="ss">:members</span><span class="p" data-group-id="0654425765-8">)</span><span class="w">
+  </span><span class="o">|&gt;</span><span class="w"> </span><span class="nc">Map</span><span class="o">.</span><span class="n">get</span><span class="p" data-group-id="0654425765-9">(</span><span class="ss">:members</span><span class="p" data-group-id="0654425765-9">)</span><span class="w">
+</span><span class="k" data-group-id="0654425765-6">end</span></code></pre>
+  </section>
+</section>
+
+    </div>
+  </section>
+
+  <section id="functions" class="details-list">
+    <h1 class="section-heading">
+      <a class="hover-link" href="#functions">
+        <i class="ri-link-m" aria-hidden="true"></i>
+      </a>
+      <span class="text">Functions</span>
+    </h1>
+
+    <div class="functions-list">
+<section class="detail" id="resolve/3">
+
+    <span id="resolve/2"></span>
+
+  <div class="detail-header">
+    <a href="#resolve/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">resolve(audience, context, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/recipient_resolver.ex#L194" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> resolve(<a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">atom</a>(), <a href="AshDispatch.Context.html#t:t/0">AshDispatch.Context.t</a>(), <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">keyword</a>()) :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">list</a>()</pre>
+
+      </div>
+
+<p>Resolve recipients for the given audience type.</p><p>This is the main entry point used by transports. It delegates to
+the configured resolver module, or uses the default resolver if none
+is configured.</p><h2 id="resolve/3-parameters" class="section-heading"><a href="#resolve/3-parameters" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Parameters</span></h2><ul><li><code class="inline">audience</code> - Audience type (<code class="inline">:user</code>, <code class="inline">:admin</code>, <code class="inline">:team</code>, <code class="inline">:system</code>)</li><li><code class="inline">context</code> - Event context</li><li><code class="inline">opts</code> - Additional options (e.g., <code class="inline">team: :support</code>)</li></ul><h2 id="resolve/3-returns" class="section-heading"><a href="#resolve/3-returns" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Returns</span></h2><p>List of recipients (user records or maps with <code class="inline">:email</code> field)</p><h2 id="resolve/3-examples" class="section-heading"><a href="#resolve/3-examples" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Examples</span></h2><pre><code class="makeup elixir" translate="no"><span class="c1"># User audience (from context)</span><span class="w">
+</span><span class="nc">RecipientResolver</span><span class="o">.</span><span class="n">resolve</span><span class="p" data-group-id="0981909170-1">(</span><span class="ss">:user</span><span class="p">,</span><span class="w"> </span><span class="n">context</span><span class="p">,</span><span class="w"> </span><span class="p" data-group-id="0981909170-2">[</span><span class="p" data-group-id="0981909170-2">]</span><span class="p" data-group-id="0981909170-1">)</span><span class="w">
+</span><span class="c1"># =&gt; [%User{email: &quot;user@example.com&quot;}]</span><span class="w">
+
+</span><span class="c1"># Admin audience (via configured resolver)</span><span class="w">
+</span><span class="nc">RecipientResolver</span><span class="o">.</span><span class="n">resolve</span><span class="p" data-group-id="0981909170-3">(</span><span class="ss">:admin</span><span class="p">,</span><span class="w"> </span><span class="n">context</span><span class="p">,</span><span class="w"> </span><span class="p" data-group-id="0981909170-4">[</span><span class="p" data-group-id="0981909170-4">]</span><span class="p" data-group-id="0981909170-3">)</span><span class="w">
+</span><span class="c1"># =&gt; [%User{email: &quot;admin1@example.com&quot;}, %User{email: &quot;admin2@example.com&quot;}]</span><span class="w">
+
+</span><span class="c1"># Team audience</span><span class="w">
+</span><span class="nc">RecipientResolver</span><span class="o">.</span><span class="n">resolve</span><span class="p" data-group-id="0981909170-5">(</span><span class="ss">:team</span><span class="p">,</span><span class="w"> </span><span class="n">context</span><span class="p">,</span><span class="w"> </span><span class="ss">team</span><span class="p">:</span><span class="w"> </span><span class="ss">:support</span><span class="p" data-group-id="0981909170-5">)</span><span class="w">
+</span><span class="c1"># =&gt; [%User{email: &quot;support1@example.com&quot;}, ...]</span></code></pre>
+  </section>
+</section>
+
+    </div>
+  </section>
+
+    <footer class="footer">
+      <p>
+
+          <span class="line">
+            <a href="https://hex.pm/packages/ash_dispatch/0.1.0" class="footer-hex-package">Hex Package</a>
+
+            <a href="https://preview.hex.pm/preview/ash_dispatch/0.1.0">Hex Preview</a>
+
+          </span>
+
+        <span class="line">
+          <button class="a-main footer-button display-quick-switch" title="Search HexDocs packages">
+            Search HexDocs
+          </button>
+
+        </span>
+      </p>
+
+      <p class="built-using">
+        Built using
+        <a href="https://github.com/elixir-lang/ex_doc" title="ExDoc" target="_blank" rel="help noopener" translate="no">ExDoc</a> (v0.39.1) for the
+
+          <a href="https://elixir-lang.org" title="Elixir" target="_blank" translate="no">Elixir programming language</a>
+
+      </p>
+
+    </footer>
+  </div>
+</main>
+</div>
+<script>
+  // Add copy buttons to code blocks
+  document.querySelectorAll('pre code').forEach(function(block) {
+    if (!block.parentElement.querySelector('.copy-button')) {
+      const button = document.createElement('button');
+      button.className = 'copy-button';
+      button.textContent = 'Copy';
+      button.onclick = function() {
+        navigator.clipboard.writeText(block.textContent);
+        button.textContent = 'Copied!';
+        setTimeout(() => button.textContent = 'Copy', 2000);
+      };
+      block.parentElement.style.position = 'relative';
+      block.parentElement.appendChild(button);
+    }
+  });
+</script>
+
+  </body>
+</html>
