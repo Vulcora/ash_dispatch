@@ -302,9 +302,9 @@ defmodule AshDispatch.Event do
 
       @impl true
       def recipients(context, channel) do
-        # Default: delegate to RecipientResolver (will be implemented)
-        # For now, return empty list
-        []
+        # Smart default: automatically resolve recipients based on audience
+        # Uses Ash introspection - no hardcoded patterns needed
+        AshDispatch.Event.Helpers.resolve_recipients_for_audience(context, channel)
       end
 
       @impl true

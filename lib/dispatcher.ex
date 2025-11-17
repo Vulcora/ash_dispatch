@@ -386,17 +386,47 @@ defmodule AshDispatch.Dispatcher do
     end
   end
 
-  # Helper to extract user from data map
+  # Helper to extract user from data map using Ash introspection
+  # No hardcoded patterns - derives from Ash resource relationships
   defp extract_user_from_data(data) do
-    cond do
-      Map.has_key?(data, :user) -> data.user
-      Map.has_key?(data, :customer) -> data.customer
-      Map.has_key?(data, :order) && is_map(data.order) -> Map.get(data.order, :user)
-      Map.has_key?(data, :ticket) && is_map(data.ticket) -> Map.get(data.ticket, :user)
-      Map.has_key?(data, :reseller_request) && is_map(data.reseller_request) ->
-        Map.get(data.reseller_request, :user)
-      true -> nil
+    user_module = Application.get_env(:ash_dispatch, :user_module)
+
+    if is_nil(user_module) do
+      Logger.warning("No :user_module configured in :ash_dispatch config")
+      nil
+    else
+      # Strategy 1: Check if any value in data IS the user module
+      Enum.find_value(data, fn {_key, value} ->
+        if is_struct(value) && value.__struct__ == user_module do
+          value
+        end
+      end) ||
+        # Strategy 2: Use Ash introspection to find user via relationships
+        find_user_via_ash_relationships(data, user_module)
     end
+  end
+
+  # Find user by introspecting Ash resource relationships
+  # Works for ANY resource that has a relationship to User module
+  defp find_user_via_ash_relationships(data, user_module) do
+    Enum.find_value(data, fn {_key, resource} ->
+      # Only process Ash resources
+      if is_struct(resource) && Ash.Resource.resource?(resource.__struct__) do
+        # Get all relationships defined on this resource
+        relationships = Ash.Resource.Info.relationships(resource.__struct__)
+
+        # Find any relationship pointing to the configured User module
+        user_relationship =
+          Enum.find(relationships, fn rel ->
+            rel.destination == user_module
+          end)
+
+        # Extract user from that relationship if found
+        if user_relationship do
+          Map.get(resource, user_relationship.name)
+        end
+      end
+    end)
   end
 
   # Counter broadcasting integration
