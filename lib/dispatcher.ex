@@ -74,6 +74,9 @@ defmodule AshDispatch.Dispatcher do
       Status: #{updated_receipt.status}
       """)
 
+      # Broadcast counters if configured
+      broadcast_counters(context, channel, event_config)
+
       {:ok, updated_receipt}
     else
       {:error, reason} = error ->
@@ -308,5 +311,36 @@ defmodule AshDispatch.Dispatcher do
         |> Ash.Changeset.for_update(:skip, %{error_message: "Unknown transport: #{unknown}"})
         |> Ash.update()
     end
+  end
+
+  # Counter broadcasting integration
+  defp broadcast_counters(context, channel, event_config) do
+    counter_broadcaster = Application.get_env(:ash_dispatch, :counter_broadcaster)
+
+    if counter_broadcaster && function_exported?(counter_broadcaster, :broadcast, 3) do
+      # Get counters from event module
+      module = event_config[:module]
+
+      if module && function_exported?(module, :counters, 2) do
+        counters = module.counters(context, channel)
+
+        # Broadcast each counter via configured broadcaster
+        Enum.each(counters, fn counter_name ->
+          try do
+            counter_broadcaster.broadcast(counter_name, context, channel)
+          rescue
+            error ->
+              Logger.warning("""
+              Failed to broadcast counter
+              Counter: #{counter_name}
+              Event: #{context.event_id}
+              Error: #{inspect(error)}
+              """)
+          end
+        end)
+      end
+    end
+
+    :ok
   end
 end
