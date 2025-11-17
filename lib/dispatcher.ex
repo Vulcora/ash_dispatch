@@ -411,7 +411,7 @@ defmodule AshDispatch.Dispatcher do
   defp find_user_via_ash_relationships(data, user_module) do
     Enum.find_value(data, fn {_key, resource} ->
       # Only process Ash resources
-      if is_struct(resource) && Ash.Resource.resource?(resource.__struct__) do
+      if is_struct(resource) && Ash.Resource.Info.resource?(resource.__struct__) do
         # Get all relationships defined on this resource
         relationships = Ash.Resource.Info.relationships(resource.__struct__)
 

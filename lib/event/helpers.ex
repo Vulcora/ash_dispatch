@@ -69,7 +69,7 @@ defmodule AshDispatch.Event.Helpers do
       []
     else
       user_module
-      |> Ash.Query.filter(^admin_filter)
+      |> Ash.Query.filter_input(admin_filter)
       |> Ash.Query.select([:id, :email, :display_name, :name])
       |> Ash.read(authorize?: false)
       |> case do
@@ -112,7 +112,7 @@ defmodule AshDispatch.Event.Helpers do
   defp find_user_via_ash_relationships(data, user_module) do
     Enum.find_value(data, fn {_key, resource} ->
       # Only process Ash resources
-      if is_struct(resource) && Ash.Resource.resource?(resource.__struct__) do
+      if is_struct(resource) && Ash.Resource.Info.resource?(resource.__struct__) do
         # Get all relationships defined on this resource
         relationships = Ash.Resource.Info.relationships(resource.__struct__)
 
