@@ -31,6 +31,79 @@ defmodule AshDispatch.Dispatcher do
   require Logger
 
   @doc """
+  Dispatches an event by ID with data.
+
+  This is the high-level dispatch function that applications use.
+  It looks up the event module, creates channels, and dispatches to all of them.
+
+  ## Parameters
+
+  - `event_id` - The event identifier (e.g., "requests.new_reseller_request")
+  - `data` - Map of data for the event (e.g., %{reseller_request: request})
+
+  ## Returns
+
+  - `{:ok, results}` - List of delivery receipt results
+  - `{:error, reason}` - If event not found or dispatch fails
+
+  ## Examples
+
+      # Dispatch a reseller request event
+      AshDispatch.Dispatcher.dispatch(
+        "requests.new_reseller_request",
+        %{reseller_request: request}
+      )
+
+      # Dispatch an order created event
+      AshDispatch.Dispatcher.dispatch(
+        "orders.created",
+        %{order: order, user: user}
+      )
+  """
+  def dispatch(event_id, data) when is_binary(event_id) and is_map(data) do
+    # Get event module from app config
+    event_modules = Application.get_env(:ash_dispatch, :event_modules, [])
+
+    case Enum.find(event_modules, fn {id, _module} -> id == event_id end) do
+      {^event_id, event_module} ->
+        # Create context
+        context = %Context{
+          event_id: event_id,
+          data: data,
+          user: extract_user_from_data(data)
+        }
+
+        # Get channels from event module
+        channels = event_module.channels(context)
+
+        # Build event config
+        event_config = %{
+          module: event_module
+        }
+
+        # Dispatch to all channels
+        results =
+          Enum.map(channels, fn channel ->
+            dispatch(context, channel, event_config)
+          end)
+
+        # Return success if any dispatch succeeded
+        if Enum.any?(results, fn
+             {:ok, _} -> true
+             _ -> false
+           end) do
+          {:ok, results}
+        else
+          {:error, :all_dispatches_failed}
+        end
+
+      nil ->
+        Logger.error("Event module not found for event_id: #{event_id}")
+        {:error, :event_not_found}
+    end
+  end
+
+  @doc """
   Dispatches an event to a specific channel.
 
   Creates a DeliveryReceipt and routes to the appropriate transport handler.
@@ -310,6 +383,19 @@ defmodule AshDispatch.Dispatcher do
         receipt
         |> Ash.Changeset.for_update(:skip, %{error_message: "Unknown transport: #{unknown}"})
         |> Ash.update()
+    end
+  end
+
+  # Helper to extract user from data map
+  defp extract_user_from_data(data) do
+    cond do
+      Map.has_key?(data, :user) -> data.user
+      Map.has_key?(data, :customer) -> data.customer
+      Map.has_key?(data, :order) && is_map(data.order) -> Map.get(data.order, :user)
+      Map.has_key?(data, :ticket) && is_map(data.ticket) -> Map.get(data.ticket, :user)
+      Map.has_key?(data, :reseller_request) && is_map(data.reseller_request) ->
+        Map.get(data.reseller_request, :user)
+      true -> nil
     end
   end
 
