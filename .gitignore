@@ -1,0 +1,29 @@
+# Elixir
+/_build
+/cover
+/deps
+/.fetch
+erl_crash.dump
+*.ez
+*.beam
+/config/*.secret.exs
+.elixir_ls/
+
+# Documentation
+# Note: We commit doc/ for local viewing, but you can uncomment this if you prefer
+# /doc
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.log
