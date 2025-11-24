@@ -12,7 +12,7 @@
 
     <link rel="stylesheet" href="dist/html-elixir-ZFNMEJKT.css" />
 
-    <script defer src="dist/sidebar_items-F03CB3D7.js"></script>
+    <script defer src="dist/sidebar_items-08887088.js"></script>
     <script defer src="docs_config.js"></script>
     <script defer src="dist/html-HBZYRXZS.js"></script>
 <style>
@@ -118,19 +118,19 @@ AshDispatch
 
 
     <section id="moduledoc">
-<p>Represents a delivery channel for an event.</p><p>A channel specifies:</p><ul><li><strong>Transport</strong> - How to deliver (email, in_app, discord, etc.)</li><li><strong>Audience</strong> - Who receives (:user, :admin, custom)</li><li><strong>Time</strong> - When to deliver (immediate, delayed, scheduled)</li><li><strong>Policy</strong> - Delivery policy (:always, :skip_if_read)</li><li><strong>Variant</strong> - Template variant (e.g., :admin for admin-specific templates)</li></ul><h2 id="module-examples" class="section-heading"><a href="#module-examples" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Examples</span></h2><pre><code class="makeup elixir" translate="no"><span class="p" data-group-id="6982030388-1">%</span><span class="nc" data-group-id="6982030388-1">Channel</span><span class="p" data-group-id="6982030388-1">{</span><span class="w">
+<p>Represents a delivery channel for an event.</p><p>A channel specifies:</p><ul><li><strong>Transport</strong> - How to deliver (email, in_app, discord, etc.)</li><li><strong>Audience</strong> - Who receives (:user, :admin, custom)</li><li><strong>Time</strong> - When to deliver (immediate, delayed, scheduled)</li><li><strong>Policy</strong> - Delivery policy (:always, :skip_if_read)</li><li><strong>Variant</strong> - Template variant (e.g., :admin for admin-specific templates)</li></ul><h2 id="module-examples" class="section-heading"><a href="#module-examples" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Examples</span></h2><pre><code class="makeup elixir" translate="no"><span class="p" data-group-id="0692383780-1">%</span><span class="nc" data-group-id="0692383780-1">Channel</span><span class="p" data-group-id="0692383780-1">{</span><span class="w">
   </span><span class="ss">transport</span><span class="p">:</span><span class="w"> </span><span class="ss">:email</span><span class="p">,</span><span class="w">
   </span><span class="ss">audience</span><span class="p">:</span><span class="w"> </span><span class="ss">:user</span><span class="p">,</span><span class="w">
-  </span><span class="ss">time</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="6982030388-2">{</span><span class="ss">:in</span><span class="p">,</span><span class="w"> </span><span class="mi">300</span><span class="p" data-group-id="6982030388-2">}</span><span class="p">,</span><span class="w">  </span><span class="c1"># Delay 5 minutes</span><span class="w">
+  </span><span class="ss">time</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="0692383780-2">{</span><span class="ss">:in</span><span class="p">,</span><span class="w"> </span><span class="mi">300</span><span class="p" data-group-id="0692383780-2">}</span><span class="p">,</span><span class="w">  </span><span class="c1"># Delay 5 minutes</span><span class="w">
   </span><span class="ss">policy</span><span class="p">:</span><span class="w"> </span><span class="ss">:skip_if_read</span><span class="w">
-</span><span class="p" data-group-id="6982030388-1">}</span><span class="w">
+</span><span class="p" data-group-id="0692383780-1">}</span><span class="w">
 
-</span><span class="p" data-group-id="6982030388-3">%</span><span class="nc" data-group-id="6982030388-3">Channel</span><span class="p" data-group-id="6982030388-3">{</span><span class="w">
+</span><span class="p" data-group-id="0692383780-3">%</span><span class="nc" data-group-id="0692383780-3">Channel</span><span class="p" data-group-id="0692383780-3">{</span><span class="w">
   </span><span class="ss">transport</span><span class="p">:</span><span class="w"> </span><span class="ss">:discord</span><span class="p">,</span><span class="w">
   </span><span class="ss">audience</span><span class="p">:</span><span class="w"> </span><span class="ss">:admin</span><span class="p">,</span><span class="w">
   </span><span class="ss">time</span><span class="p">:</span><span class="w"> </span><span class="ss">:immediate</span><span class="p">,</span><span class="w">
-  </span><span class="ss">opts</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="6982030388-4">%{</span><span class="ss">webhook_url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://...&quot;</span><span class="p" data-group-id="6982030388-4">}</span><span class="w">
-</span><span class="p" data-group-id="6982030388-3">}</span></code></pre>
+  </span><span class="ss">opts</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="0692383780-4">%{</span><span class="ss">webhook_url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://...&quot;</span><span class="p" data-group-id="0692383780-4">}</span><span class="w">
+</span><span class="p" data-group-id="0692383780-3">}</span></code></pre>
     </section>
 
 </div>
@@ -345,6 +345,8 @@ Used in DSL and event modules for cleaner syntax.</p></div>
 
           <pre translate="no"><span class="attribute">@type</span> t() :: %AshDispatch.Channel{
   audience: <a href="#t:audience/0">audience</a>(),
+  content: <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>(),
+  metadata: <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>(),
   opts: <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>(),
   policy: <a href="#t:policy/0">policy</a>(),
   time: <a href="#t:time/0">time</a>(),
@@ -466,7 +468,7 @@ Used in DSL and event modules for cleaner syntax.</p></div>
       <h1 class="signature" translate="no">calculate_delay(arg1)</h1>
 
 
-        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/channel.ex#L140" class="icon-action" rel="help" aria-label="View Source">
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/channel.ex#L144" class="icon-action" rel="help" aria-label="View Source">
           <i class="ri-code-s-slash-line" aria-hidden="true"></i>
         </a>
 
@@ -475,10 +477,10 @@ Used in DSL and event modules for cleaner syntax.</p></div>
 
   <section class="docstring">
 
-<p>Calculates delay in seconds from time specification.</p><h2 id="calculate_delay/1-examples" class="section-heading"><a href="#calculate_delay/1-examples" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Examples</span></h2><pre><code class="makeup elixir" translate="no"><span class="gp unselectable">iex&gt; </span><span class="nc">Channel</span><span class="o">.</span><span class="n">calculate_delay</span><span class="p" data-group-id="4237084785-1">(</span><span class="p" data-group-id="4237084785-2">%</span><span class="nc" data-group-id="4237084785-2">Channel</span><span class="p" data-group-id="4237084785-2">{</span><span class="ss">time</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="4237084785-3">{</span><span class="ss">:in</span><span class="p">,</span><span class="w"> </span><span class="mi">300</span><span class="p" data-group-id="4237084785-3">}</span><span class="p" data-group-id="4237084785-2">}</span><span class="p" data-group-id="4237084785-1">)</span><span class="w">
+<p>Calculates delay in seconds from time specification.</p><h2 id="calculate_delay/1-examples" class="section-heading"><a href="#calculate_delay/1-examples" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Examples</span></h2><pre><code class="makeup elixir" translate="no"><span class="gp unselectable">iex&gt; </span><span class="nc">Channel</span><span class="o">.</span><span class="n">calculate_delay</span><span class="p" data-group-id="8895636828-1">(</span><span class="p" data-group-id="8895636828-2">%</span><span class="nc" data-group-id="8895636828-2">Channel</span><span class="p" data-group-id="8895636828-2">{</span><span class="ss">time</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="8895636828-3">{</span><span class="ss">:in</span><span class="p">,</span><span class="w"> </span><span class="mi">300</span><span class="p" data-group-id="8895636828-3">}</span><span class="p" data-group-id="8895636828-2">}</span><span class="p" data-group-id="8895636828-1">)</span><span class="w">
 </span><span class="mi">300</span><span class="w">
 
-</span><span class="gp unselectable">iex&gt; </span><span class="nc">Channel</span><span class="o">.</span><span class="n">calculate_delay</span><span class="p" data-group-id="4237084785-4">(</span><span class="p" data-group-id="4237084785-5">%</span><span class="nc" data-group-id="4237084785-5">Channel</span><span class="p" data-group-id="4237084785-5">{</span><span class="ss">time</span><span class="p">:</span><span class="w"> </span><span class="ss">:immediate</span><span class="p" data-group-id="4237084785-5">}</span><span class="p" data-group-id="4237084785-4">)</span><span class="w">
+</span><span class="gp unselectable">iex&gt; </span><span class="nc">Channel</span><span class="o">.</span><span class="n">calculate_delay</span><span class="p" data-group-id="8895636828-4">(</span><span class="p" data-group-id="8895636828-5">%</span><span class="nc" data-group-id="8895636828-5">Channel</span><span class="p" data-group-id="8895636828-5">{</span><span class="ss">time</span><span class="p">:</span><span class="w"> </span><span class="ss">:immediate</span><span class="p" data-group-id="8895636828-5">}</span><span class="p" data-group-id="8895636828-4">)</span><span class="w">
 </span><span class="mi">0</span></code></pre>
   </section>
 </section>
@@ -494,7 +496,7 @@ Used in DSL and event modules for cleaner syntax.</p></div>
       <h1 class="signature" translate="no">channel(transport, audience, opts \\ [])</h1>
 
 
-        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/channel.ex#L104" class="icon-action" rel="help" aria-label="View Source">
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/channel.ex#L108" class="icon-action" rel="help" aria-label="View Source">
           <i class="ri-code-s-slash-line" aria-hidden="true"></i>
         </a>
 
@@ -504,12 +506,12 @@ Used in DSL and event modules for cleaner syntax.</p></div>
   <section class="docstring">
 
 <p>Helper function to create a channel struct.
-Used in DSL and event modules for cleaner syntax.</p><h2 id="channel/3-examples" class="section-heading"><a href="#channel/3-examples" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Examples</span></h2><pre><code class="makeup elixir" translate="no"><span class="kd">def</span><span class="w"> </span><span class="nf">channels</span><span class="p" data-group-id="0704946595-1">(</span><span class="c">_ctx</span><span class="p" data-group-id="0704946595-1">)</span><span class="w"> </span><span class="k" data-group-id="0704946595-2">do</span><span class="w">
-  </span><span class="p" data-group-id="0704946595-3">[</span><span class="w">
-    </span><span class="n">channel</span><span class="p" data-group-id="0704946595-4">(</span><span class="ss">:in_app</span><span class="p">,</span><span class="w"> </span><span class="ss">:user</span><span class="p" data-group-id="0704946595-4">)</span><span class="p">,</span><span class="w">
-    </span><span class="n">channel</span><span class="p" data-group-id="0704946595-5">(</span><span class="ss">:email</span><span class="p">,</span><span class="w"> </span><span class="ss">:user</span><span class="p">,</span><span class="w"> </span><span class="ss">time</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="o">.</span><span class="n">minutes</span><span class="p" data-group-id="0704946595-6">(</span><span class="p" data-group-id="0704946595-6">)</span><span class="p">,</span><span class="w"> </span><span class="ss">skip_if_read</span><span class="p">:</span><span class="w"> </span><span class="no">true</span><span class="p" data-group-id="0704946595-5">)</span><span class="w">
-  </span><span class="p" data-group-id="0704946595-3">]</span><span class="w">
-</span><span class="k" data-group-id="0704946595-2">end</span></code></pre>
+Used in DSL and event modules for cleaner syntax.</p><h2 id="channel/3-examples" class="section-heading"><a href="#channel/3-examples" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Examples</span></h2><pre><code class="makeup elixir" translate="no"><span class="kd">def</span><span class="w"> </span><span class="nf">channels</span><span class="p" data-group-id="4350768224-1">(</span><span class="c">_ctx</span><span class="p" data-group-id="4350768224-1">)</span><span class="w"> </span><span class="k" data-group-id="4350768224-2">do</span><span class="w">
+  </span><span class="p" data-group-id="4350768224-3">[</span><span class="w">
+    </span><span class="n">channel</span><span class="p" data-group-id="4350768224-4">(</span><span class="ss">:in_app</span><span class="p">,</span><span class="w"> </span><span class="ss">:user</span><span class="p" data-group-id="4350768224-4">)</span><span class="p">,</span><span class="w">
+    </span><span class="n">channel</span><span class="p" data-group-id="4350768224-5">(</span><span class="ss">:email</span><span class="p">,</span><span class="w"> </span><span class="ss">:user</span><span class="p">,</span><span class="w"> </span><span class="ss">time</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="o">.</span><span class="n">minutes</span><span class="p" data-group-id="4350768224-6">(</span><span class="p" data-group-id="4350768224-6">)</span><span class="p">,</span><span class="w"> </span><span class="ss">skip_if_read</span><span class="p">:</span><span class="w"> </span><span class="no">true</span><span class="p" data-group-id="4350768224-5">)</span><span class="w">
+  </span><span class="p" data-group-id="4350768224-3">]</span><span class="w">
+</span><span class="k" data-group-id="4350768224-2">end</span></code></pre>
   </section>
 </section>
 <section class="detail" id="matches?/2">
@@ -522,7 +524,7 @@ Used in DSL and event modules for cleaner syntax.</p><h2 id="channel/3-examples"
       <h1 class="signature" translate="no">matches?(channel, filters)</h1>
 
 
-        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/channel.ex#L170" class="icon-action" rel="help" aria-label="View Source">
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/channel.ex#L174" class="icon-action" rel="help" aria-label="View Source">
           <i class="ri-code-s-slash-line" aria-hidden="true"></i>
         </a>
 
@@ -531,14 +533,14 @@ Used in DSL and event modules for cleaner syntax.</p><h2 id="channel/3-examples"
 
   <section class="docstring">
 
-<p>Checks if a channel matches given transport and/or audience filters.</p><h2 id="matches?/2-examples" class="section-heading"><a href="#matches?/2-examples" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Examples</span></h2><pre><code class="makeup elixir" translate="no"><span class="gp unselectable">iex&gt; </span><span class="n">channel</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p" data-group-id="3477946885-1">%</span><span class="nc" data-group-id="3477946885-1">Channel</span><span class="p" data-group-id="3477946885-1">{</span><span class="ss">transport</span><span class="p">:</span><span class="w"> </span><span class="ss">:in_app</span><span class="p">,</span><span class="w"> </span><span class="ss">audience</span><span class="p">:</span><span class="w"> </span><span class="ss">:user</span><span class="p" data-group-id="3477946885-1">}</span><span class="w">
-</span><span class="gp unselectable">iex&gt; </span><span class="nc">Channel</span><span class="o">.</span><span class="n">matches?</span><span class="p" data-group-id="3477946885-2">(</span><span class="n">channel</span><span class="p">,</span><span class="w"> </span><span class="ss">transport</span><span class="p">:</span><span class="w"> </span><span class="ss">:in_app</span><span class="p" data-group-id="3477946885-2">)</span><span class="w">
+<p>Checks if a channel matches given transport and/or audience filters.</p><h2 id="matches?/2-examples" class="section-heading"><a href="#matches?/2-examples" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Examples</span></h2><pre><code class="makeup elixir" translate="no"><span class="gp unselectable">iex&gt; </span><span class="n">channel</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p" data-group-id="3484253450-1">%</span><span class="nc" data-group-id="3484253450-1">Channel</span><span class="p" data-group-id="3484253450-1">{</span><span class="ss">transport</span><span class="p">:</span><span class="w"> </span><span class="ss">:in_app</span><span class="p">,</span><span class="w"> </span><span class="ss">audience</span><span class="p">:</span><span class="w"> </span><span class="ss">:user</span><span class="p" data-group-id="3484253450-1">}</span><span class="w">
+</span><span class="gp unselectable">iex&gt; </span><span class="nc">Channel</span><span class="o">.</span><span class="n">matches?</span><span class="p" data-group-id="3484253450-2">(</span><span class="n">channel</span><span class="p">,</span><span class="w"> </span><span class="ss">transport</span><span class="p">:</span><span class="w"> </span><span class="ss">:in_app</span><span class="p" data-group-id="3484253450-2">)</span><span class="w">
 </span><span class="no">true</span><span class="w">
 
-</span><span class="gp unselectable">iex&gt; </span><span class="nc">Channel</span><span class="o">.</span><span class="n">matches?</span><span class="p" data-group-id="3477946885-3">(</span><span class="n">channel</span><span class="p">,</span><span class="w"> </span><span class="ss">transport</span><span class="p">:</span><span class="w"> </span><span class="ss">:email</span><span class="p" data-group-id="3477946885-3">)</span><span class="w">
+</span><span class="gp unselectable">iex&gt; </span><span class="nc">Channel</span><span class="o">.</span><span class="n">matches?</span><span class="p" data-group-id="3484253450-3">(</span><span class="n">channel</span><span class="p">,</span><span class="w"> </span><span class="ss">transport</span><span class="p">:</span><span class="w"> </span><span class="ss">:email</span><span class="p" data-group-id="3484253450-3">)</span><span class="w">
 </span><span class="no">false</span><span class="w">
 
-</span><span class="gp unselectable">iex&gt; </span><span class="nc">Channel</span><span class="o">.</span><span class="n">matches?</span><span class="p" data-group-id="3477946885-4">(</span><span class="n">channel</span><span class="p">,</span><span class="w"> </span><span class="ss">transport</span><span class="p">:</span><span class="w"> </span><span class="ss">:in_app</span><span class="p">,</span><span class="w"> </span><span class="ss">audience</span><span class="p">:</span><span class="w"> </span><span class="ss">:user</span><span class="p" data-group-id="3477946885-4">)</span><span class="w">
+</span><span class="gp unselectable">iex&gt; </span><span class="nc">Channel</span><span class="o">.</span><span class="n">matches?</span><span class="p" data-group-id="3484253450-4">(</span><span class="n">channel</span><span class="p">,</span><span class="w"> </span><span class="ss">transport</span><span class="p">:</span><span class="w"> </span><span class="ss">:in_app</span><span class="p">,</span><span class="w"> </span><span class="ss">audience</span><span class="p">:</span><span class="w"> </span><span class="ss">:user</span><span class="p" data-group-id="3484253450-4">)</span><span class="w">
 </span><span class="no">true</span></code></pre>
   </section>
 </section>
@@ -554,7 +556,7 @@ Used in DSL and event modules for cleaner syntax.</p><h2 id="channel/3-examples"
       <h1 class="signature" translate="no">new(transport, audience, opts \\ [])</h1>
 
 
-        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/channel.ex#L76" class="icon-action" rel="help" aria-label="View Source">
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/channel.ex#L80" class="icon-action" rel="help" aria-label="View Source">
           <i class="ri-code-s-slash-line" aria-hidden="true"></i>
         </a>
 
@@ -563,16 +565,16 @@ Used in DSL and event modules for cleaner syntax.</p><h2 id="channel/3-examples"
 
   <section class="docstring">
 
-<p>Creates a new channel.</p><h2 id="new/3-examples" class="section-heading"><a href="#new/3-examples" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Examples</span></h2><pre><code class="makeup elixir" translate="no"><span class="gp unselectable">iex&gt; </span><span class="nc">Channel</span><span class="o">.</span><span class="n">new</span><span class="p" data-group-id="7240374100-1">(</span><span class="ss">:email</span><span class="p">,</span><span class="w"> </span><span class="ss">:user</span><span class="p" data-group-id="7240374100-1">)</span><span class="w">
-</span><span class="p" data-group-id="7240374100-2">%</span><span class="nc" data-group-id="7240374100-2">Channel</span><span class="p" data-group-id="7240374100-2">{</span><span class="ss">transport</span><span class="p">:</span><span class="w"> </span><span class="ss">:email</span><span class="p">,</span><span class="w"> </span><span class="ss">audience</span><span class="p">:</span><span class="w"> </span><span class="ss">:user</span><span class="p">,</span><span class="w"> </span><span class="ss">time</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="7240374100-3">{</span><span class="ss">:in</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p" data-group-id="7240374100-3">}</span><span class="p" data-group-id="7240374100-2">}</span><span class="w">
+<p>Creates a new channel.</p><h2 id="new/3-examples" class="section-heading"><a href="#new/3-examples" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Examples</span></h2><pre><code class="makeup elixir" translate="no"><span class="gp unselectable">iex&gt; </span><span class="nc">Channel</span><span class="o">.</span><span class="n">new</span><span class="p" data-group-id="9389323000-1">(</span><span class="ss">:email</span><span class="p">,</span><span class="w"> </span><span class="ss">:user</span><span class="p" data-group-id="9389323000-1">)</span><span class="w">
+</span><span class="p" data-group-id="9389323000-2">%</span><span class="nc" data-group-id="9389323000-2">Channel</span><span class="p" data-group-id="9389323000-2">{</span><span class="ss">transport</span><span class="p">:</span><span class="w"> </span><span class="ss">:email</span><span class="p">,</span><span class="w"> </span><span class="ss">audience</span><span class="p">:</span><span class="w"> </span><span class="ss">:user</span><span class="p">,</span><span class="w"> </span><span class="ss">time</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="9389323000-3">{</span><span class="ss">:in</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p" data-group-id="9389323000-3">}</span><span class="p" data-group-id="9389323000-2">}</span><span class="w">
 
-</span><span class="gp unselectable">iex&gt; </span><span class="nc">Channel</span><span class="o">.</span><span class="n">new</span><span class="p" data-group-id="7240374100-4">(</span><span class="ss">:email</span><span class="p">,</span><span class="w"> </span><span class="ss">:user</span><span class="p">,</span><span class="w"> </span><span class="ss">time</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="o">.</span><span class="n">minutes</span><span class="p" data-group-id="7240374100-5">(</span><span class="p" data-group-id="7240374100-5">)</span><span class="p">,</span><span class="w"> </span><span class="ss">skip_if_read</span><span class="p">:</span><span class="w"> </span><span class="no">true</span><span class="p" data-group-id="7240374100-4">)</span><span class="w">
-</span><span class="p" data-group-id="7240374100-6">%</span><span class="nc" data-group-id="7240374100-6">Channel</span><span class="p" data-group-id="7240374100-6">{</span><span class="w">
+</span><span class="gp unselectable">iex&gt; </span><span class="nc">Channel</span><span class="o">.</span><span class="n">new</span><span class="p" data-group-id="9389323000-4">(</span><span class="ss">:email</span><span class="p">,</span><span class="w"> </span><span class="ss">:user</span><span class="p">,</span><span class="w"> </span><span class="ss">time</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="o">.</span><span class="n">minutes</span><span class="p" data-group-id="9389323000-5">(</span><span class="p" data-group-id="9389323000-5">)</span><span class="p">,</span><span class="w"> </span><span class="ss">skip_if_read</span><span class="p">:</span><span class="w"> </span><span class="no">true</span><span class="p" data-group-id="9389323000-4">)</span><span class="w">
+</span><span class="p" data-group-id="9389323000-6">%</span><span class="nc" data-group-id="9389323000-6">Channel</span><span class="p" data-group-id="9389323000-6">{</span><span class="w">
   </span><span class="ss">transport</span><span class="p">:</span><span class="w"> </span><span class="ss">:email</span><span class="p">,</span><span class="w">
   </span><span class="ss">audience</span><span class="p">:</span><span class="w"> </span><span class="ss">:user</span><span class="p">,</span><span class="w">
-  </span><span class="ss">time</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="7240374100-7">{</span><span class="ss">:in</span><span class="p">,</span><span class="w"> </span><span class="mi">300</span><span class="p" data-group-id="7240374100-7">}</span><span class="p">,</span><span class="w">
+  </span><span class="ss">time</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="9389323000-7">{</span><span class="ss">:in</span><span class="p">,</span><span class="w"> </span><span class="mi">300</span><span class="p" data-group-id="9389323000-7">}</span><span class="p">,</span><span class="w">
   </span><span class="ss">policy</span><span class="p">:</span><span class="w"> </span><span class="ss">:skip_if_read</span><span class="w">
-</span><span class="p" data-group-id="7240374100-6">}</span></code></pre>
+</span><span class="p" data-group-id="9389323000-6">}</span></code></pre>
   </section>
 </section>
 <section class="detail" id="normalize_time/1">
@@ -585,7 +587,7 @@ Used in DSL and event modules for cleaner syntax.</p><h2 id="channel/3-examples"
       <h1 class="signature" translate="no">normalize_time(seconds)</h1>
 
 
-        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/channel.ex#L122" class="icon-action" rel="help" aria-label="View Source">
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/channel.ex#L126" class="icon-action" rel="help" aria-label="View Source">
           <i class="ri-code-s-slash-line" aria-hidden="true"></i>
         </a>
 
@@ -594,14 +596,14 @@ Used in DSL and event modules for cleaner syntax.</p><h2 id="channel/3-examples"
 
   <section class="docstring">
 
-<p>Normalizes time specification to internal format.</p><h2 id="normalize_time/1-examples" class="section-heading"><a href="#normalize_time/1-examples" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Examples</span></h2><pre><code class="makeup elixir" translate="no"><span class="gp unselectable">iex&gt; </span><span class="nc">Channel</span><span class="o">.</span><span class="n">normalize_time</span><span class="p" data-group-id="6050805967-1">(</span><span class="ss">:immediate</span><span class="p" data-group-id="6050805967-1">)</span><span class="w">
-</span><span class="p" data-group-id="6050805967-2">{</span><span class="ss">:in</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p" data-group-id="6050805967-2">}</span><span class="w">
+<p>Normalizes time specification to internal format.</p><h2 id="normalize_time/1-examples" class="section-heading"><a href="#normalize_time/1-examples" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Examples</span></h2><pre><code class="makeup elixir" translate="no"><span class="gp unselectable">iex&gt; </span><span class="nc">Channel</span><span class="o">.</span><span class="n">normalize_time</span><span class="p" data-group-id="6200167529-1">(</span><span class="ss">:immediate</span><span class="p" data-group-id="6200167529-1">)</span><span class="w">
+</span><span class="p" data-group-id="6200167529-2">{</span><span class="ss">:in</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p" data-group-id="6200167529-2">}</span><span class="w">
 
-</span><span class="gp unselectable">iex&gt; </span><span class="nc">Channel</span><span class="o">.</span><span class="n">normalize_time</span><span class="p" data-group-id="6050805967-3">(</span><span class="mi">300</span><span class="p" data-group-id="6050805967-3">)</span><span class="w">
-</span><span class="p" data-group-id="6050805967-4">{</span><span class="ss">:in</span><span class="p">,</span><span class="w"> </span><span class="mi">300</span><span class="p" data-group-id="6050805967-4">}</span><span class="w">
+</span><span class="gp unselectable">iex&gt; </span><span class="nc">Channel</span><span class="o">.</span><span class="n">normalize_time</span><span class="p" data-group-id="6200167529-3">(</span><span class="mi">300</span><span class="p" data-group-id="6200167529-3">)</span><span class="w">
+</span><span class="p" data-group-id="6200167529-4">{</span><span class="ss">:in</span><span class="p">,</span><span class="w"> </span><span class="mi">300</span><span class="p" data-group-id="6200167529-4">}</span><span class="w">
 
-</span><span class="gp unselectable">iex&gt; </span><span class="nc">Channel</span><span class="o">.</span><span class="n">normalize_time</span><span class="p" data-group-id="6050805967-5">(</span><span class="p" data-group-id="6050805967-6">{</span><span class="ss">:in</span><span class="p">,</span><span class="w"> </span><span class="mi">300</span><span class="p" data-group-id="6050805967-6">}</span><span class="p" data-group-id="6050805967-5">)</span><span class="w">
-</span><span class="p" data-group-id="6050805967-7">{</span><span class="ss">:in</span><span class="p">,</span><span class="w"> </span><span class="mi">300</span><span class="p" data-group-id="6050805967-7">}</span></code></pre>
+</span><span class="gp unselectable">iex&gt; </span><span class="nc">Channel</span><span class="o">.</span><span class="n">normalize_time</span><span class="p" data-group-id="6200167529-5">(</span><span class="p" data-group-id="6200167529-6">{</span><span class="ss">:in</span><span class="p">,</span><span class="w"> </span><span class="mi">300</span><span class="p" data-group-id="6200167529-6">}</span><span class="p" data-group-id="6200167529-5">)</span><span class="w">
+</span><span class="p" data-group-id="6200167529-7">{</span><span class="ss">:in</span><span class="p">,</span><span class="w"> </span><span class="mi">300</span><span class="p" data-group-id="6200167529-7">}</span></code></pre>
   </section>
 </section>
 

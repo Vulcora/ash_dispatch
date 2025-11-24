@@ -12,7 +12,7 @@
 
     <link rel="stylesheet" href="dist/html-elixir-ZFNMEJKT.css" />
 
-    <script defer src="dist/sidebar_items-F03CB3D7.js"></script>
+    <script defer src="dist/sidebar_items-08887088.js"></script>
     <script defer src="docs_config.js"></script>
     <script defer src="dist/html-HBZYRXZS.js"></script>
 <style>
@@ -118,10 +118,10 @@ AshDispatch
 
 
     <section id="moduledoc">
-<p>Tracks the delivery lifecycle of events across all transports.</p><p>This resource follows a receipt-first pattern:</p><ol><li>Receipt created with full content (status: <code class="inline">:pending</code>)</li><li>Transport delivers the message</li><li>Status updated based on result (<code class="inline">:sent</code>, <code class="inline">:failed</code>, <code class="inline">:scheduled</code>, etc.)</li></ol><h2 id="module-state-machine" class="section-heading"><a href="#module-state-machine" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">State Machine</span></h2><p>States:</p><ul><li><code class="inline">:pending</code> → Initial state when receipt is created</li><li><code class="inline">:scheduled</code> → Oban job enqueued for async delivery</li><li><code class="inline">:sending</code> → Actively being delivered</li><li><code class="inline">:sent</code> → Successfully delivered</li><li><code class="inline">:failed</code> → Delivery failed (can retry)</li><li><code class="inline">:failed_permanent</code> → Delivery failed permanently (no retry)</li><li><code class="inline">:skipped</code> → Intentionally skipped (e.g., user opted out)</li></ul><h2 id="module-content-storage" class="section-heading"><a href="#module-content-storage" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Content Storage</span></h2><p>All message content is stored in the receipt at creation time:</p><ul><li>Email: <code class="inline">subject</code>, <code class="inline">body_html</code>, <code class="inline">body_text</code></li><li>In-app: <code class="inline">content</code> map with title, message, action_url</li><li>Other transports: <code class="inline">content</code> map with transport-specific data</li></ul><p>This enables:</p><ul><li>Full audit trail of what was sent</li><li>Retry without re-rendering templates</li><li>Debugging delivery issues</li></ul><h2 id="module-usage" class="section-heading"><a href="#module-usage" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Usage</span></h2><p>Receipts are created automatically by the dispatcher. You can query them:</p><pre><code class="makeup elixir" translate="no"><span class="nc">AshDispatch.Resources.DeliveryReceipt</span><span class="w">
-</span><span class="o">|&gt;</span><span class="w"> </span><span class="nc">Ash.Query</span><span class="o">.</span><span class="n">filter</span><span class="p" data-group-id="3239154149-1">(</span><span class="n">event_id</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s">&quot;orders.created&quot;</span><span class="p" data-group-id="3239154149-1">)</span><span class="w">
-</span><span class="o">|&gt;</span><span class="w"> </span><span class="nc">Ash.Query</span><span class="o">.</span><span class="n">filter</span><span class="p" data-group-id="3239154149-2">(</span><span class="n">status</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="ss">:sent</span><span class="p" data-group-id="3239154149-2">)</span><span class="w">
-</span><span class="o">|&gt;</span><span class="w"> </span><span class="nc">Ash</span><span class="o">.</span><span class="n">read!</span><span class="p" data-group-id="3239154149-3">(</span><span class="p" data-group-id="3239154149-3">)</span></code></pre>
+<p>Unified delivery tracking for all transports (email, in-app, Discord, SMS, etc).</p><p>This resource tracks the complete lifecycle of message delivery with a state machine:</p><ul><li>:pending → Initial state when receipt is created</li><li>:scheduled → Oban job has been enqueued</li><li>:sending → Actively being delivered</li><li>:sent → Successfully delivered</li><li>:failed → Delivery failed (temporary, can retry)</li><li>:failed_permanent → Delivery failed permanently (no retry)</li><li>:skipped → Delivery was intentionally skipped</li></ul><h2 id="module-content-storage" class="section-heading"><a href="#module-content-storage" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Content Storage</span></h2><p>All message content (subject, body, embeds, etc.) is stored in the receipt at creation time.
+This enables:</p><ul><li>Debugging of what was actually sent</li><li>Retry without re-rendering</li><li>Historical audit trail</li></ul><h2 id="module-retry-pattern" class="section-heading"><a href="#module-retry-pattern" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Retry Pattern</span></h2><p>Failed deliveries (status: :failed) can be retried by:</p><ol><li>Checking retry_count &lt; max_retries</li><li>Re-enqueueing Oban job with receipt_id</li><li>Updating status to :scheduled</li><li>Incrementing retry_count</li></ol><p>A cron job (<code class="inline">RetryFailedDeliveries</code>) handles automatic retries.</p><h2 id="module-transport-specific-fields" class="section-heading"><a href="#module-transport-specific-fields" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Transport-Specific Fields</span></h2><ul><li>For :email: subject, body_html, body_text</li><li>For :in_app: notification_id links to Notification</li><li>For :discord: embeds stored in content map</li><li>All: content map for flexible storage</li></ul><h2 id="module-configuration" class="section-heading"><a href="#module-configuration" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Configuration</span></h2><p>The resource requires configuration for:</p><ul><li><code class="inline">repo</code>: Postgres repository module</li><li><code class="inline">user_resource</code>: User resource module for relationships</li></ul><p>Example:</p><pre><code class="makeup elixir" translate="no"><span class="n">config</span><span class="w"> </span><span class="ss">:ash_dispatch</span><span class="p">,</span><span class="w">
+  </span><span class="ss">repo</span><span class="p">:</span><span class="w"> </span><span class="nc">MyApp.Repo</span><span class="p">,</span><span class="w">
+  </span><span class="ss">user_resource</span><span class="p">:</span><span class="w"> </span><span class="nc">MyApp.Accounts.User</span></code></pre>
     </section>
 
 </div>
@@ -232,23 +232,35 @@ AshDispatch
   audience: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
   body_html: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
   body_text: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
+  bounced_at: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
   calculations: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
+  clicked_at: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
+  complained_at: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
   content: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
+  delivered_at: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
+  delivery_delayed_at: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
   error_message: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
   event_id: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
+  failed_at: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
   id: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
   inserted_at: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
   last_retry_at: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
+  notification: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
+  notification_id: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
+  oban_job: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
+  oban_job_id: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
+  opened_at: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
   provider_id: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
   provider_response: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
   recipient: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
   retry_count: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
-  scheduled_for: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
   sent_at: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
   status: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
   subject: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
   transport: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
-  updated_at: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>()
+  updated_at: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
+  user: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
+  user_id: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>()
 }</pre>
 
       </div>
@@ -320,8 +332,8 @@ AshDispatch
 be created by Ash as a result of a successful action. You should not be creating records manually in code,
 e.g <code class="inline">%MyResource{value: 1, value: 2}</code>. Generally that is fine, but often with embedded resources it is nice
 to be able to validate the keys that are being provided, e.g</p><pre><code class="makeup elixir" translate="no"><span class="nc">Resource</span><span class="w">
-</span><span class="o">|&gt;</span><span class="w"> </span><span class="nc">Ash.Changeset</span><span class="o">.</span><span class="n">for_create</span><span class="p" data-group-id="6754409013-1">(</span><span class="ss">:create</span><span class="p">,</span><span class="w"> </span><span class="p" data-group-id="6754409013-2">%{</span><span class="ss">embedded</span><span class="p">:</span><span class="w"> </span><span class="nc">EmbeddedResource</span><span class="o">.</span><span class="n">input</span><span class="p" data-group-id="6754409013-3">(</span><span class="ss">foo</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="ss">bar</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p" data-group-id="6754409013-3">)</span><span class="p" data-group-id="6754409013-2">}</span><span class="p" data-group-id="6754409013-1">)</span><span class="w">
-</span><span class="o">|&gt;</span><span class="w"> </span><span class="nc">Ash</span><span class="o">.</span><span class="n">create</span><span class="p" data-group-id="6754409013-4">(</span><span class="p" data-group-id="6754409013-4">)</span></code></pre>
+</span><span class="o">|&gt;</span><span class="w"> </span><span class="nc">Ash.Changeset</span><span class="o">.</span><span class="n">for_create</span><span class="p" data-group-id="3886314188-1">(</span><span class="ss">:create</span><span class="p">,</span><span class="w"> </span><span class="p" data-group-id="3886314188-2">%{</span><span class="ss">embedded</span><span class="p">:</span><span class="w"> </span><span class="nc">EmbeddedResource</span><span class="o">.</span><span class="n">input</span><span class="p" data-group-id="3886314188-3">(</span><span class="ss">foo</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="ss">bar</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p" data-group-id="3886314188-3">)</span><span class="p" data-group-id="3886314188-2">}</span><span class="p" data-group-id="3886314188-1">)</span><span class="w">
+</span><span class="o">|&gt;</span><span class="w"> </span><span class="nc">Ash</span><span class="o">.</span><span class="n">create</span><span class="p" data-group-id="3886314188-4">(</span><span class="p" data-group-id="3886314188-4">)</span></code></pre>
   </section>
 </section>
 <section class="detail" id="input/2">

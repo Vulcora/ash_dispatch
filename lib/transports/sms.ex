@@ -9,8 +9,6 @@ defmodule AshDispatch.Transports.SMS do
   🚧 **Not yet implemented** - Returns {:ok, receipt} with status :skipped
   """
 
-  alias AshDispatch.Resources.DeliveryReceipt
-
   require Logger
 
   def deliver(receipt, _context, _channel, _event_config) do

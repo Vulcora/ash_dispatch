@@ -1,0 +1,260 @@
+defmodule AshDispatch.Resources.DeliveryReceipt.Base do
+  @moduledoc """
+  Provides the base DSL for DeliveryReceipt resources.
+
+  This module exports a `__using__` macro that consuming apps can use to create
+  their own DeliveryReceipt resource with a user relationship, similar to how
+  ash_paper_trail creates version resources.
+
+  ## Usage
+
+      defmodule MyApp.Deliveries.DeliveryReceipt do
+        use AshDispatch.Resources.DeliveryReceipt.Base,
+          repo: MyApp.Repo,
+          user_resource: MyApp.Accounts.User
+      end
+
+  This will create a complete DeliveryReceipt resource with all attributes, actions,
+  and a user relationship to your User resource - no manual duplication needed!
+  """
+
+  defmacro __using__(opts) do
+    repo = Keyword.fetch!(opts, :repo)
+    user_resource = Keyword.get(opts, :user_resource)
+    notification_resource = Keyword.get(opts, :notification_resource, AshDispatch.Resources.Notification)
+
+    quote do
+      use Ash.Resource,
+        domain: unquote(Keyword.get(opts, :domain, AshDispatch.Domain)),
+        data_layer: AshPostgres.DataLayer,
+        authorizers: [Ash.Policy.Authorizer],
+        extensions: [
+          AshStateMachine,
+          AshTypescript.Resource
+        ]
+
+      postgres do
+        table "delivery_receipts"
+        repo unquote(repo)
+
+        references do
+          reference(:notification, on_delete: :nilify)
+
+          # Add user reference if user_resource is configured
+          if unquote(user_resource) do
+            reference(:user, on_delete: :nilify)
+          end
+        end
+      end
+
+      state_machine do
+        initial_states([:pending])
+        default_initial_state(:pending)
+        state_attribute(:status)
+        extra_states([:sending, :sent, :failed_permanent, :skipped, :scheduled, :failed])
+
+        transitions do
+          transition(:schedule, from: :pending, to: :scheduled)
+          transition(:mark_sending, from: [:scheduled, :pending], to: :sending)
+          transition(:mark_sent, from: [:sending, :scheduled, :pending], to: :sent)
+          transition(:mark_failed, from: [:sending, :scheduled, :pending], to: :failed)
+          transition(:mark_failed_permanent, from: [:sending, :scheduled, :failed], to: :failed_permanent)
+          transition(:skip, from: [:pending, :scheduled, :sending], to: :skipped)
+          transition(:retry, from: :failed, to: :scheduled)
+        end
+      end
+
+      # Relationships
+      relationships do
+        belongs_to :notification, unquote(notification_resource) do
+          source_attribute :notification_id
+          destination_attribute :id
+          allow_nil? true
+          public? true
+          define_attribute? false
+        end
+
+        # Add user relationship if user_resource is configured
+        if unquote(user_resource) do
+          belongs_to :user, unquote(user_resource) do
+            source_attribute :user_id
+            destination_attribute :id
+            allow_nil? true
+            public? true
+            define_attribute? false
+          end
+        end
+      end
+
+      # All attributes
+      attributes do
+        uuid_primary_key :id
+
+        attribute :event_id, :string, allow_nil?: false, public?: true
+        attribute :transport, :atom, allow_nil?: false, public?: true, constraints: [one_of: [:email, :in_app, :discord, :sms, :webhook]]
+        attribute :user_id, :uuid, allow_nil?: true, public?: true
+        attribute :notification_id, :uuid, allow_nil?: true, public?: true
+        attribute :audience, :atom, allow_nil?: false, public?: true, constraints: [one_of: [:user, :admin, :system]], description: "Target audience type"
+        attribute :status, :atom, default: :pending, allow_nil?: false, public?: true, constraints: [one_of: [:pending, :scheduled, :sending, :sent, :failed, :failed_permanent, :skipped]]
+        attribute :recipient, :string, allow_nil?: false, public?: true
+        attribute :provider_id, :string, allow_nil?: true, public?: true, description: "Provider-specific message ID"
+        attribute :provider_response, :map, default: %{}, allow_nil?: false, public?: true, description: "Response from delivery provider"
+        attribute :subject, :string, allow_nil?: true, public?: true
+        attribute :body_text, :string, allow_nil?: true, public?: true
+        attribute :body_html, :string, allow_nil?: true, public?: true
+        attribute :content, :map, default: %{}, allow_nil?: false, public?: true
+        attribute :oban_job_id, :integer, allow_nil?: true, public?: true
+        attribute :error_message, :string, allow_nil?: true, public?: true
+        attribute :retry_count, :integer, default: 0, allow_nil?: false, public?: true
+        attribute :last_retry_at, :utc_datetime_usec, allow_nil?: true, public?: true, description: "Timestamp of last retry attempt"
+        attribute :sent_at, :utc_datetime_usec, allow_nil?: true, public?: true
+        attribute :delivered_at, :utc_datetime_usec, allow_nil?: true, public?: true, description: "When provider confirmed delivery"
+        attribute :delivery_delayed_at, :utc_datetime_usec, allow_nil?: true, public?: true, description: "When delivery was delayed by provider"
+        attribute :failed_at, :utc_datetime_usec, allow_nil?: true, public?: true, description: "When delivery failed"
+        attribute :opened_at, :utc_datetime_usec, allow_nil?: true, public?: true, description: "When email was opened"
+        attribute :clicked_at, :utc_datetime_usec, allow_nil?: true, public?: true, description: "When link was clicked"
+        attribute :bounced_at, :utc_datetime_usec, allow_nil?: true, public?: true, description: "When email bounced"
+        attribute :complained_at, :utc_datetime_usec, allow_nil?: true, public?: true, description: "When spam complaint received"
+
+        timestamps public?: true
+      end
+
+      calculations do
+        calculate :oban_job, :map, {AshDispatch.Calculations.ObanJob, []} do
+          public? true
+          description "Loaded Oban job data"
+        end
+      end
+
+      actions do
+        default_accept :*
+        defaults [:read, :destroy]
+
+        create :create do
+          accept [
+            :event_id, :transport, :user_id, :notification_id, :audience,
+            :recipient, :subject, :body_text, :body_html, :content,
+            :oban_job_id, :provider_id, :provider_response
+          ]
+        end
+
+        read :list_all do
+          description "List all delivery receipts with filters (admin only)"
+
+          argument :status, :atom, allow_nil?: true
+          argument :transport, :atom, allow_nil?: true
+          argument :event_id, :string, allow_nil?: true
+          argument :audience, :atom, allow_nil?: true
+
+          filter expr(if(is_nil(^arg(:status)), true, ^ref(:status) == ^arg(:status)))
+          filter expr(if(is_nil(^arg(:transport)), true, ^ref(:transport) == ^arg(:transport)))
+          filter expr(if(is_nil(^arg(:event_id)), true, ^ref(:event_id) == ^arg(:event_id)))
+          filter expr(if(is_nil(^arg(:audience)), true, ^ref(:audience) == ^arg(:audience)))
+
+          pagination offset?: true, keyset?: true, default_limit: 50
+          prepare build(sort: [inserted_at: :desc])
+          prepare {AshDispatch.Preparations.LoadObanJob, []}
+        end
+
+        read :list_for_user do
+          argument :user_id, :uuid, allow_nil?: false
+          argument :status, :atom, allow_nil?: true
+          argument :transport, :atom, allow_nil?: true
+          argument :event_id, :string, allow_nil?: true
+
+          filter expr(^ref(:user_id) == ^arg(:user_id))
+          filter expr(if(is_nil(^arg(:status)), true, ^ref(:status) == ^arg(:status)))
+          filter expr(if(is_nil(^arg(:transport)), true, ^ref(:transport) == ^arg(:transport)))
+          filter expr(if(is_nil(^arg(:event_id)), true, ^ref(:event_id) == ^arg(:event_id)))
+
+          pagination offset?: true, keyset?: true, default_limit: 20
+          prepare build(sort: [inserted_at: :desc])
+        end
+
+        read :get do
+          argument :id, :uuid, allow_nil?: false
+          get? true
+          filter expr(^ref(:id) == ^arg(:id))
+        end
+
+        update :schedule do
+          accept [:oban_job_id, :notification_id]
+          change transition_state(:scheduled)
+        end
+
+        update :mark_sending do
+          change transition_state(:sending)
+        end
+
+        update :mark_sent do
+          require_atomic? false
+          accept [:provider_id, :provider_response, :notification_id]
+          change transition_state(:sent)
+
+          change fn changeset, _ ->
+            Ash.Changeset.change_attribute(changeset, :sent_at, DateTime.utc_now())
+          end
+        end
+
+        update :mark_failed do
+          require_atomic? false
+          accept [:error_message, :provider_response]
+          change transition_state(:failed)
+
+          change fn changeset, _ ->
+            retry_count = Ash.Changeset.get_attribute(changeset, :retry_count) || 0
+
+            changeset
+            |> Ash.Changeset.change_attribute(:retry_count, retry_count + 1)
+            |> Ash.Changeset.change_attribute(:last_retry_at, DateTime.utc_now())
+          end
+        end
+
+        update :mark_failed_permanent do
+          accept [:error_message, :provider_response]
+          change transition_state(:failed_permanent)
+        end
+
+        update :skip do
+          accept [:error_message]
+          change transition_state(:skipped)
+        end
+
+        update :retry do
+          require_atomic? false
+          accept [:oban_job_id]
+
+          validate {AshDispatch.Validations.ValidateCanRetry, []}
+          change transition_state(:scheduled)
+
+          change fn changeset, _ ->
+            retry_count = Ash.Changeset.get_attribute(changeset, :retry_count) || 0
+
+            changeset
+            |> Ash.Changeset.change_attribute(:retry_count, retry_count + 1)
+            |> Ash.Changeset.change_attribute(:last_retry_at, DateTime.utc_now())
+          end
+        end
+      end
+
+      policies do
+        # Bypass all policies for create/update/destroy (for workers, tests)
+        bypass action_type([:create, :update, :destroy]) do
+          authorize_if always()
+        end
+
+        # Read policies - only admins with configured permission can read
+        # Configure permission checker: config :ash_dispatch, permission_checker: MyApp.PolicyHelpers.HasPermission
+        policy action_type(:read) do
+          authorize_if {AshDispatch.PolicyChecks.HasPermission, permission: :manage_delivery_receipts}
+
+          forbid_if always()
+        end
+      end
+
+      identities do
+        identity :oban_job, [:oban_job_id]
+      end
+    end
+  end
+end

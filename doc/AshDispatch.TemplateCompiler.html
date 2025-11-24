@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="ExDoc v0.39.1">
+    <meta name="project" content="AshDispatch v0.1.0">
+
+
+    <title>AshDispatch.TemplateCompiler — AshDispatch v0.1.0</title>
+
+    <link rel="stylesheet" href="dist/html-elixir-ZFNMEJKT.css" />
+
+    <script defer src="dist/sidebar_items-08887088.js"></script>
+    <script defer src="docs_config.js"></script>
+    <script defer src="dist/html-HBZYRXZS.js"></script>
+<style>
+  .sidebar-listNav-list > li > a.sidebar-projectName {
+    font-size: 1.2em;
+    font-weight: 700;
+    color: #2563eb;
+  }
+  .content-inner h1, .content-inner h2, .content-inner h3 {
+    border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 0.3em;
+  }
+</style>
+
+  </head>
+  <body>
+    <script>(()=>{var t="ex_doc:settings",e="dark";var o="dark",s="light";var E="sidebar_state",n="closed";var r="sidebar_width";var a="sidebar-open";var i=new URLSearchParams(window.location.search),S=i.get("theme")||JSON.parse(localStorage.getItem(t)||"{}").theme;(S===o||S!==s&&window.matchMedia("(prefers-color-scheme: dark)").matches)&&document.body.classList.add(e);var d=sessionStorage.getItem(E),A=d!==n&&!window.matchMedia(`screen and (max-width: ${768}px)`).matches;document.body.classList.toggle(a,A);var c=sessionStorage.getItem(r);c&&document.body.style.setProperty("--sidebarWidth",`${c}px`);var p=/(Macintosh|iPhone|iPad|iPod)/.test(window.navigator.userAgent);document.documentElement.classList.toggle("apple-os",p);})();
+</script>
+
+<div class="body-wrapper">
+
+<button id="sidebar-menu" class="sidebar-button sidebar-toggle" aria-label="toggle sidebar" aria-controls="sidebar">
+  <i class="ri-menu-line ri-lg" title="Collapse/expand sidebar"></i>
+</button>
+
+<nav id="sidebar" class="sidebar">
+
+  <div class="sidebar-header">
+    <div class="sidebar-projectInfo">
+
+      <div>
+        <a href="https://github.com/Vulcora/ash_dispatch" class="sidebar-projectName" translate="no">
+AshDispatch
+        </a>
+        <div class="sidebar-projectVersion" translate="no">
+          v0.1.0
+        </div>
+      </div>
+    </div>
+    <ul id="sidebar-list-nav" class="sidebar-list-nav" role="tablist" data-extras=""></ul>
+  </div>
+</nav>
+
+<output role="status" id="toast"></output>
+
+<main class="content page-module" id="main" data-type="modules">
+  <div id="content" class="content-inner">
+    <div class="top-search">
+      <div class="search-settings">
+        <form class="search-bar" action="search.html">
+          <label class="search-label">
+            <span class="sr-only">Search documentation of AshDispatch</span>
+            <div class="search-input-wrapper">
+              <input name="q" type="text" class="search-input" placeholder="Press / to search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+              <button type="button" tabindex="-1" class="search-close-button" aria-hidden="true">
+                <i class="ri-close-line ri-lg" title="Cancel search"></i>
+              </button>
+            </div>
+          </label>
+        </form>
+        <div class="autocomplete">
+        </div>
+        <div class="engine-selector" data-multiple="false">
+          <button type="button" class="engine-button" aria-label="Select search engine" aria-haspopup="true" aria-expanded="false">
+            <i class="ri-search-2-line" aria-hidden="true"></i>
+            <span class="engine-name">Default</span>
+            <i class="ri-arrow-down-s-line" aria-hidden="true"></i>
+          </button>
+          <div class="engine-dropdown" hidden role="menu">
+
+              <button type="button"
+                      class="engine-option"
+                      data-engine-url="search.html?q="
+                      role="menuitemradio"
+                      aria-checked="true">
+                <span class="name">Default</span>
+                <span class="help">In-browser search</span>
+              </button>
+
+          </div>
+        </div>
+        <button class="icon-settings display-settings">
+          <i class="ri-settings-3-line"></i>
+          <span class="sr-only">Settings</span>
+        </button>
+      </div>
+    </div>
+
+<div id="top-content">
+  <div class="heading-with-actions top-heading">
+    <h1>
+      <span translate="no">AshDispatch.TemplateCompiler</span> 
+      <small class="app-vsn" translate="no">(AshDispatch v0.1.0)</small>
+
+    </h1>
+
+      <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/template_compiler.ex#L1" title="View Source" class="icon-action" rel="help">
+        <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        <span class="sr-only">View Source</span>
+      </a>
+
+  </div>
+
+
+    <section id="moduledoc">
+<p><strong>DEPRECATED:</strong> This module is no longer needed. Templates are now automatically
+compiled by <a href="Mix.Tasks.Compile.AshDispatch.html"><code class="inline">Mix.Tasks.Compile.AshDispatch</code></a>.</p><h2 id="module-migration" class="section-heading"><a href="#module-migration" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Migration</span></h2><p><strong>Remove all manual template compilation calls:</strong></p><pre><code class="makeup elixir" translate="no"><span class="c1"># OLD (no longer needed):</span><span class="w">
+</span><span class="kd">defmodule</span><span class="w"> </span><span class="nc">MyApp.Events.Orders.Created</span><span class="w"> </span><span class="k" data-group-id="2653568002-1">do</span><span class="w">
+  </span><span class="kn">use</span><span class="w"> </span><span class="nc">AshDispatch.Event</span><span class="w">
+  </span><span class="kn">require</span><span class="w"> </span><span class="nc">AshDispatch.TemplateCompiler</span><span class="w">
+  </span><span class="nc">AshDispatch.TemplateCompiler</span><span class="o">.</span><span class="n">compile_templates</span><span class="p" data-group-id="2653568002-2">(</span><span class="p" data-group-id="2653568002-2">)</span><span class="w">  </span><span class="c1"># ← Remove this!</span><span class="w">
+
+  </span><span class="c1"># ... rest of event module ...</span><span class="w">
+</span><span class="k" data-group-id="2653568002-1">end</span><span class="w">
+
+</span><span class="c1"># NEW (automatic):</span><span class="w">
+</span><span class="kd">defmodule</span><span class="w"> </span><span class="nc">MyApp.Events.Orders.Created</span><span class="w"> </span><span class="k" data-group-id="2653568002-3">do</span><span class="w">
+  </span><span class="kn">use</span><span class="w"> </span><span class="nc">AshDispatch.Event</span><span class="w">
+
+  </span><span class="c1"># Templates are auto-compiled during mix compile!</span><span class="w">
+  </span><span class="c1"># No manual calls needed.</span><span class="w">
+</span><span class="k" data-group-id="2653568002-3">end</span></code></pre><h2 id="module-how-it-works-now" class="section-heading"><a href="#module-how-it-works-now" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">How It Works Now</span></h2><p>The <a href="Mix.Tasks.Compile.AshDispatch.html"><code class="inline">Mix.Tasks.Compile.AshDispatch</code></a> compiler automatically:</p><ol><li>Scans for templates in both module-based and convention-based locations</li><li>Compiles all templates into <code class="inline">AshDispatch.CompiledTemplates</code> during <a href="https://hexdocs.pm/mix/Mix.Tasks.Compile.html"><code class="inline">mix compile</code></a></li><li>Bundles them in production releases</li><li>Falls back to file-based loading in development</li></ol><p><strong>Benefits:</strong></p><ul><li>✅ No manual macro calls needed</li><li>✅ Works for pure inline DSL events (no event module required)</li><li>✅ Consistent compilation for all templates</li><li>✅ Simpler, cleaner event modules</li></ul><h2 id="module-legacy-support" class="section-heading"><a href="#module-legacy-support" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Legacy Support</span></h2><p>This module is kept for backwards compatibility but will be removed in a future release.
+The macro still works but is redundant - templates are compiled automatically regardless.</p>
+    </section>
+
+</div>
+
+  <section id="summary" class="details-list">
+    <h1 class="section-heading">
+      <a class="hover-link" href="#summary">
+        <i class="ri-link-m" aria-hidden="true"></i>
+      </a>
+      <span class="text">Summary</span>
+    </h1>
+<div class="summary-functions summary">
+  <h2>
+    <a href="#functions">Functions</a>
+  </h2>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#compile_templates/0" data-no-tooltip="" translate="no">compile_templates()</a>
+
+          <span class="deprecated" title="Templates are now auto-compiled by Mix.Tasks.Compile.AshDispatch. Remove this call.">deprecated</span>
+
+      </div>
+
+        <div class="summary-synopsis"><p><strong>DEPRECATED:</strong> Templates are now auto-compiled by Mix.Tasks.Compile.AshDispatch.
+Remove all calls to this macro.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#get_template/2" data-no-tooltip="" translate="no">get_template(module, filename)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Gets a specific compiled template by filename.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#list_templates/1" data-no-tooltip="" translate="no">list_templates(module)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Lists all compiled template filenames.</p></div>
+
+    </div>
+
+</div>
+
+  </section>
+
+
+  <section id="functions" class="details-list">
+    <h1 class="section-heading">
+      <a class="hover-link" href="#functions">
+        <i class="ri-link-m" aria-hidden="true"></i>
+      </a>
+      <span class="text">Functions</span>
+    </h1>
+
+    <div class="functions-list">
+<section class="detail" id="compile_templates/0">
+
+  <div class="detail-header">
+    <a href="#compile_templates/0" class="detail-link" data-no-tooltip="" aria-label="Link to this macro">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">compile_templates()</h1>
+
+        <span class="note">(macro)</span>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/template_compiler.ex#L73" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+    <div class="deprecated">
+      This macro is deprecated. Templates are now auto-compiled by Mix.Tasks.Compile.AshDispatch. Remove this call..
+    </div>
+
+  <section class="docstring">
+
+<p><strong>DEPRECATED:</strong> Templates are now auto-compiled by Mix.Tasks.Compile.AshDispatch.
+Remove all calls to this macro.</p><h2 id="compile_templates/0-example-directory-structure" class="section-heading"><a href="#compile_templates/0-example-directory-structure" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Example Directory Structure</span></h2><pre><code class="makeup elixir" translate="no"><span class="n">lib</span><span class="o">/</span><span class="n">my_app</span><span class="o">/</span><span class="n">events</span><span class="o">/</span><span class="n">orders</span><span class="o">/</span><span class="n">created</span><span class="o">/</span><span class="w">
+</span><span class="err">├</span><span class="err">─</span><span class="err">─</span><span class="w"> </span><span class="n">event</span><span class="o">.</span><span class="n">ex</span><span class="w">                    </span><span class="c1"># Event module</span><span class="w">
+</span><span class="err">└</span><span class="err">─</span><span class="err">─</span><span class="w"> </span><span class="n">templates</span><span class="o">/</span><span class="w">
+    </span><span class="err">├</span><span class="err">─</span><span class="err">─</span><span class="w"> </span><span class="n">email</span><span class="o">.</span><span class="n">html</span><span class="o">.</span><span class="n">heex</span><span class="w">         </span><span class="c1"># Default HTML email</span><span class="w">
+    </span><span class="err">├</span><span class="err">─</span><span class="err">─</span><span class="w"> </span><span class="n">email</span><span class="o">.</span><span class="n">text</span><span class="o">.</span><span class="n">eex</span><span class="w">          </span><span class="c1"># Default text email</span><span class="w">
+    </span><span class="err">├</span><span class="err">─</span><span class="err">─</span><span class="w"> </span><span class="n">email</span><span class="o">.</span><span class="n">admin</span><span class="o">.</span><span class="n">html</span><span class="o">.</span><span class="n">heex</span><span class="w">   </span><span class="c1"># Admin-specific HTML</span><span class="w">
+    </span><span class="err">└</span><span class="err">─</span><span class="err">─</span><span class="w"> </span><span class="n">email</span><span class="o">.</span><span class="n">admin</span><span class="o">.</span><span class="n">text</span><span class="o">.</span><span class="n">eex</span><span class="w">    </span><span class="c1"># Admin-specific text</span></code></pre><h2 id="compile_templates/0-generated-function" class="section-heading"><a href="#compile_templates/0-generated-function" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Generated Function</span></h2><p>Creates a <code class="inline">__compiled_templates__/0</code> function that returns:</p><pre><code class="makeup elixir" translate="no"><span class="p" data-group-id="3941960512-1">%{</span><span class="w">
+  </span><span class="s">&quot;email.html.heex&quot;</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="s">&quot;&lt;html&gt;...&lt;/html&gt;&quot;</span><span class="p">,</span><span class="w">
+  </span><span class="s">&quot;email.text.eex&quot;</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="s">&quot;Plain text...&quot;</span><span class="p">,</span><span class="w">
+  </span><span class="s">&quot;email.admin.html.heex&quot;</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="s">&quot;&lt;html&gt;Admin version...&lt;/html&gt;&quot;</span><span class="p">,</span><span class="w">
+  </span><span class="s">&quot;email.admin.text.eex&quot;</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="s">&quot;Admin text...&quot;</span><span class="w">
+</span><span class="p" data-group-id="3941960512-1">}</span></code></pre>
+  </section>
+</section>
+<section class="detail" id="get_template/2">
+
+  <div class="detail-header">
+    <a href="#get_template/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">get_template(module, filename)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/template_compiler.ex#L133" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+<p>Gets a specific compiled template by filename.</p><p>Returns <code class="inline">{:ok, content}</code> or <code class="inline">:error</code>.</p>
+  </section>
+</section>
+<section class="detail" id="list_templates/1">
+
+  <div class="detail-header">
+    <a href="#list_templates/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">list_templates(module)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/template_compiler.ex#L118" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+<p>Lists all compiled template filenames.</p><p>Returns empty list if templates haven't been compiled.</p>
+  </section>
+</section>
+
+    </div>
+  </section>
+
+    <footer class="footer">
+      <p>
+
+          <span class="line">
+            <a href="https://hex.pm/packages/ash_dispatch/0.1.0" class="footer-hex-package">Hex Package</a>
+
+            <a href="https://preview.hex.pm/preview/ash_dispatch/0.1.0">Hex Preview</a>
+
+          </span>
+
+        <span class="line">
+          <button class="a-main footer-button display-quick-switch" title="Search HexDocs packages">
+            Search HexDocs
+          </button>
+
+        </span>
+      </p>
+
+      <p class="built-using">
+        Built using
+        <a href="https://github.com/elixir-lang/ex_doc" title="ExDoc" target="_blank" rel="help noopener" translate="no">ExDoc</a> (v0.39.1) for the
+
+          <a href="https://elixir-lang.org" title="Elixir" target="_blank" translate="no">Elixir programming language</a>
+
+      </p>
+
+    </footer>
+  </div>
+</main>
+</div>
+<script>
+  // Add copy buttons to code blocks
+  document.querySelectorAll('pre code').forEach(function(block) {
+    if (!block.parentElement.querySelector('.copy-button')) {
+      const button = document.createElement('button');
+      button.className = 'copy-button';
+      button.textContent = 'Copy';
+      button.onclick = function() {
+        navigator.clipboard.writeText(block.textContent);
+        button.textContent = 'Copied!';
+        setTimeout(() => button.textContent = 'Copy', 2000);
+      };
+      block.parentElement.style.position = 'relative';
+      block.parentElement.appendChild(button);
+    }
+  });
+</script>
+
+  </body>
+</html>

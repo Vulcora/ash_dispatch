@@ -27,6 +27,7 @@ defmodule AshDispatch.Context do
   @type t :: %__MODULE__{
           event_id: String.t(),
           data: map(),
+          variables: map(),
           resource_key: atom() | nil,
           locale: String.t(),
           user: struct() | nil,
@@ -47,7 +48,8 @@ defmodule AshDispatch.Context do
     base_url: "",
     now: nil,
     metadata: %{},
-    opts: %{}
+    opts: %{},
+    variables: %{}
   ]
 
   @doc """
@@ -56,7 +58,8 @@ defmodule AshDispatch.Context do
   ## Options
 
   - `:event_id` - Event identifier
-  - `:data` - Event data map
+  - `:data` - Event data map (resources, domain objects)
+  - `:variables` - Variables map (tokens, simple values, template data)
   - `:resource_key` - Hint for nested user lookup
   - `:locale` - Locale for i18n
   - `:user` - Actor/user triggering the event
@@ -69,6 +72,7 @@ defmodule AshDispatch.Context do
       Context.new(
         event_id: "orders.created",
         data: %{order: order, user: user},
+        variables: %{confirmation_token: token},
         user: user,
         locale: "sv"
       )
@@ -77,6 +81,7 @@ defmodule AshDispatch.Context do
     %__MODULE__{
       event_id: Keyword.fetch!(opts, :event_id),
       data: atomize_keys(Keyword.get(opts, :data, %{})),
+      variables: atomize_keys(Keyword.get(opts, :variables, %{})),
       resource_key: Keyword.get(opts, :resource_key),
       locale: Keyword.get(opts, :locale, "en"),
       user: Keyword.get(opts, :user),
@@ -139,11 +144,52 @@ defmodule AshDispatch.Context do
     %{context | metadata: Map.merge(context.metadata, metadata)}
   end
 
+  @doc """
+  Gets all assigns for template rendering by merging data and variables.
+
+  Variables take precedence over data in case of key conflicts.
+
+  ## Example
+
+      context = %Context{
+        data: %{user: user, order: order},
+        variables: %{confirmation_token: "abc123"}
+      }
+
+      Context.template_assigns(context)
+      # => %{user: user, order: order, confirmation_token: "abc123"}
+  """
+  def template_assigns(%__MODULE__{} = context) do
+    Map.merge(context.data, context.variables)
+  end
+
   # Private helpers
 
   defp get_default_base_url do
-    # Try to get from Phoenix endpoint if available
-    # Fallback to empty string (will be set by application config)
-    ""
+    # Priority order:
+    # 1. Configured endpoint module (calls Endpoint.url())
+    # 2. PHX_HOST environment variable
+    # 3. Explicit base_url config (deprecated)
+    # 4. Fallback to localhost
+    cond do
+      endpoint = Application.get_env(:ash_dispatch, :endpoint) ->
+        endpoint.url()
+
+      host = System.get_env("PHX_HOST") ->
+        scheme = System.get_env("PHX_SCHEME", "https")
+        port = System.get_env("PHX_PORT", "443")
+
+        case {scheme, port} do
+          {"https", "443"} -> "#{scheme}://#{host}"
+          {"http", "80"} -> "#{scheme}://#{host}"
+          _ -> "#{scheme}://#{host}:#{port}"
+        end
+
+      base_url = Application.get_env(:ash_dispatch, :base_url) ->
+        base_url
+
+      true ->
+        "http://localhost:4000"
+    end
   end
 end

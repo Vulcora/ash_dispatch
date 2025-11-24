@@ -96,8 +96,8 @@ defmodule AshDispatch.Workers.SendWebhook do
 
     Logger.info("Processing webhook job for receipt #{receipt_id}")
 
-    # Fetch receipt
-    case DeliveryReceipt |> Ash.get(receipt_id) do
+    # Fetch receipt (bypass authorization - workers run as system)
+    case DeliveryReceipt |> Ash.get(receipt_id, authorize?: false) do
       {:ok, receipt} ->
         process_webhook(receipt, args)
 
@@ -169,7 +169,8 @@ defmodule AshDispatch.Workers.SendWebhook do
            json: payload,
            headers: headers,
            receive_timeout: 10_000,
-           retry: false  # We handle retries via Oban
+           # We handle retries via Oban
+           retry: false
          ) do
       {:ok, %Req.Response{status: status} = response} when status in 200..299 ->
         # Success - extract any useful info from response
@@ -190,7 +191,10 @@ defmodule AshDispatch.Workers.SendWebhook do
           reason: "HTTP #{status} response"
         }
 
-        Logger.warning("Webhook HTTP error: status=#{status}, url=#{webhook_url}, body=#{inspect(body)}")
+        Logger.warning(
+          "Webhook HTTP error: status=#{status}, url=#{webhook_url}, body=#{inspect(body)}"
+        )
+
         {:error, error}
 
       {:error, error} ->

@@ -12,7 +12,7 @@
 
     <link rel="stylesheet" href="dist/html-elixir-ZFNMEJKT.css" />
 
-    <script defer src="dist/sidebar_items-F03CB3D7.js"></script>
+    <script defer src="dist/sidebar_items-08887088.js"></script>
     <script defer src="docs_config.js"></script>
     <script defer src="dist/html-HBZYRXZS.js"></script>
 <style>
@@ -118,18 +118,18 @@ AshDispatch
 
 
     <section id="moduledoc">
-<p>In-app notification transport.</p><p>Creates in-app notifications immediately (synchronous).</p><h2 id="module-behavior" class="section-heading"><a href="#module-behavior" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Behavior</span></h2><ol><li>Checks user preferences (if event is user_configurable)</li><li>Resolves recipients from context</li><li>Creates Notification records</li><li>Updates receipt status to <code class="inline">:sent</code></li></ol><h2 id="module-status-flow" class="section-heading"><a href="#module-status-flow" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Status Flow</span></h2><pre><code class="makeup elixir" translate="no"><span class="n">pending</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">sent</span><span class="w"> </span><span class="p" data-group-id="5853880050-1">(</span><span class="n">success</span><span class="p" data-group-id="5853880050-1">)</span><span class="w">
-        </span><span class="err">↘</span><span class="w"> </span><span class="n">failed</span><span class="w"> </span><span class="p" data-group-id="5853880050-2">(</span><span class="n">error</span><span class="p" data-group-id="5853880050-2">)</span><span class="w">
-        </span><span class="err">↘</span><span class="w"> </span><span class="n">skipped</span><span class="w"> </span><span class="p" data-group-id="5853880050-3">(</span><span class="n">user</span><span class="w"> </span><span class="n">opted</span><span class="w"> </span><span class="n">out</span><span class="p" data-group-id="5853880050-3">)</span></code></pre><h2 id="module-example" class="section-heading"><a href="#module-example" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Example</span></h2><pre><code class="makeup elixir" translate="no"><span class="n">receipt</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p" data-group-id="7574833476-1">%{</span><span class="w">
-  </span><span class="ss">content</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="7574833476-2">%{</span><span class="w">
+<p>In-app notification transport.</p><p>Creates in-app notifications immediately (synchronous).</p><h2 id="module-behavior" class="section-heading"><a href="#module-behavior" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Behavior</span></h2><ol><li>Checks user preferences (if event is user_configurable)</li><li>Resolves recipients from context</li><li>Creates Notification records</li><li>Updates receipt status to <code class="inline">:sent</code></li></ol><h2 id="module-status-flow" class="section-heading"><a href="#module-status-flow" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Status Flow</span></h2><pre><code class="makeup elixir" translate="no"><span class="n">pending</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">sent</span><span class="w"> </span><span class="p" data-group-id="9578807394-1">(</span><span class="n">success</span><span class="p" data-group-id="9578807394-1">)</span><span class="w">
+        </span><span class="err">↘</span><span class="w"> </span><span class="n">failed</span><span class="w"> </span><span class="p" data-group-id="9578807394-2">(</span><span class="n">error</span><span class="p" data-group-id="9578807394-2">)</span><span class="w">
+        </span><span class="err">↘</span><span class="w"> </span><span class="n">skipped</span><span class="w"> </span><span class="p" data-group-id="9578807394-3">(</span><span class="n">user</span><span class="w"> </span><span class="n">opted</span><span class="w"> </span><span class="n">out</span><span class="p" data-group-id="9578807394-3">)</span></code></pre><h2 id="module-example" class="section-heading"><a href="#module-example" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Example</span></h2><pre><code class="makeup elixir" translate="no"><span class="n">receipt</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p" data-group-id="8047931826-1">%{</span><span class="w">
+  </span><span class="ss">content</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="8047931826-2">%{</span><span class="w">
     </span><span class="ss">title</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Order Created&quot;</span><span class="p">,</span><span class="w">
     </span><span class="ss">message</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Your order #1234 is being processed&quot;</span><span class="p">,</span><span class="w">
     </span><span class="ss">action_url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;/orders/1234&quot;</span><span class="p">,</span><span class="w">
     </span><span class="ss">notification_type</span><span class="p">:</span><span class="w"> </span><span class="ss">:success</span><span class="w">
-  </span><span class="p" data-group-id="7574833476-2">}</span><span class="w">
-</span><span class="p" data-group-id="7574833476-1">}</span><span class="w">
+  </span><span class="p" data-group-id="8047931826-2">}</span><span class="w">
+</span><span class="p" data-group-id="8047931826-1">}</span><span class="w">
 
-</span><span class="nc">InApp</span><span class="o">.</span><span class="n">deliver</span><span class="p" data-group-id="7574833476-3">(</span><span class="n">receipt</span><span class="p">,</span><span class="w"> </span><span class="n">context</span><span class="p">,</span><span class="w"> </span><span class="n">channel</span><span class="p">,</span><span class="w"> </span><span class="n">event_config</span><span class="p" data-group-id="7574833476-3">)</span><span class="w">
+</span><span class="nc">InApp</span><span class="o">.</span><span class="n">deliver</span><span class="p" data-group-id="8047931826-3">(</span><span class="n">receipt</span><span class="p">,</span><span class="w"> </span><span class="n">context</span><span class="p">,</span><span class="w"> </span><span class="n">channel</span><span class="p">,</span><span class="w"> </span><span class="n">event_config</span><span class="p" data-group-id="8047931826-3">)</span><span class="w">
 </span><span class="c1"># -&gt; Creates Notification records</span><span class="w">
 </span><span class="c1"># -&gt; Returns {:ok, updated_receipt}</span></code></pre>
     </section>
@@ -182,7 +182,7 @@ AshDispatch
       <h1 class="signature" translate="no">deliver(receipt, context, channel, event_config)</h1>
 
 
-        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/transports/in_app.ex#L58" class="icon-action" rel="help" aria-label="View Source">
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/transports/in_app.ex#L55" class="icon-action" rel="help" aria-label="View Source">
           <i class="ri-code-s-slash-line" aria-hidden="true"></i>
         </a>
 

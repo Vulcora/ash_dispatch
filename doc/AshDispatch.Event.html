@@ -12,7 +12,7 @@
 
     <link rel="stylesheet" href="dist/html-elixir-ZFNMEJKT.css" />
 
-    <script defer src="dist/sidebar_items-F03CB3D7.js"></script>
+    <script defer src="dist/sidebar_items-08887088.js"></script>
     <script defer src="docs_config.js"></script>
     <script defer src="dist/html-HBZYRXZS.js"></script>
 <style>
@@ -119,32 +119,32 @@ AshDispatch
 
     <section id="moduledoc">
 <p>Behaviour and DSL for defining events.</p><p>Events represent business occurrences that trigger notifications across
-multiple channels (email, in-app, Discord, etc.).</p><h2 id="module-usage" class="section-heading"><a href="#module-usage" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Usage</span></h2><p>Define an event module:</p><pre><code class="makeup elixir" translate="no"><span class="kd">defmodule</span><span class="w"> </span><span class="nc">MyApp.Events.Orders.Created</span><span class="w"> </span><span class="k" data-group-id="8778400788-1">do</span><span class="w">
+multiple channels (email, in-app, Discord, etc.).</p><h2 id="module-usage" class="section-heading"><a href="#module-usage" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Usage</span></h2><p>Define an event module:</p><pre><code class="makeup elixir" translate="no"><span class="kd">defmodule</span><span class="w"> </span><span class="nc">MyApp.Events.Orders.Created</span><span class="w"> </span><span class="k" data-group-id="3438217878-1">do</span><span class="w">
   </span><span class="kn">use</span><span class="w"> </span><span class="nc">AshDispatch.Event</span><span class="w">
 
-  </span><span class="n">dispatch</span><span class="w"> </span><span class="k" data-group-id="8778400788-2">do</span><span class="w">
+  </span><span class="n">dispatch</span><span class="w"> </span><span class="k" data-group-id="3438217878-2">do</span><span class="w">
     </span><span class="n">id</span><span class="w"> </span><span class="s">&quot;orders.created&quot;</span><span class="w">
     </span><span class="n">domain</span><span class="w"> </span><span class="ss">:orders</span><span class="w">
 
-    </span><span class="n">channels</span><span class="w"> </span><span class="k" data-group-id="8778400788-3">do</span><span class="w">
+    </span><span class="n">channels</span><span class="w"> </span><span class="k" data-group-id="3438217878-3">do</span><span class="w">
       </span><span class="n">channel</span><span class="w"> </span><span class="ss">:in_app</span><span class="p">,</span><span class="w"> </span><span class="ss">:user</span><span class="p">,</span><span class="w"> </span><span class="ss">time</span><span class="p">:</span><span class="w"> </span><span class="ss">:immediate</span><span class="w">
-      </span><span class="n">channel</span><span class="w"> </span><span class="ss">:email</span><span class="p">,</span><span class="w"> </span><span class="ss">:user</span><span class="p">,</span><span class="w"> </span><span class="ss">time</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="o">.</span><span class="n">minutes</span><span class="p" data-group-id="8778400788-4">(</span><span class="p" data-group-id="8778400788-4">)</span><span class="p">,</span><span class="w"> </span><span class="ss">skip_if_read</span><span class="p">:</span><span class="w"> </span><span class="no">true</span><span class="w">
-    </span><span class="k" data-group-id="8778400788-3">end</span><span class="w">
+      </span><span class="n">channel</span><span class="w"> </span><span class="ss">:email</span><span class="p">,</span><span class="w"> </span><span class="ss">:user</span><span class="p">,</span><span class="w"> </span><span class="ss">time</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="o">.</span><span class="n">minutes</span><span class="p" data-group-id="3438217878-4">(</span><span class="p" data-group-id="3438217878-4">)</span><span class="p">,</span><span class="w"> </span><span class="ss">skip_if_read</span><span class="p">:</span><span class="w"> </span><span class="no">true</span><span class="w">
+    </span><span class="k" data-group-id="3438217878-3">end</span><span class="w">
 
-    </span><span class="n">content</span><span class="w"> </span><span class="k" data-group-id="8778400788-5">do</span><span class="w">
+    </span><span class="n">content</span><span class="w"> </span><span class="k" data-group-id="3438217878-5">do</span><span class="w">
       </span><span class="n">subject</span><span class="w"> </span><span class="s">&quot;Your order has been created&quot;</span><span class="w">
       </span><span class="n">notification_title</span><span class="w"> </span><span class="s">&quot;Order created&quot;</span><span class="w">
-      </span><span class="n">notification_message</span><span class="w"> </span><span class="s">&quot;Order </span><span class="si" data-group-id="8778400788-6">#{</span><span class="p" data-group-id="8778400788-7">{</span><span class="n">order_number</span><span class="p" data-group-id="8778400788-7">}</span><span class="si" data-group-id="8778400788-6">}</span><span class="s"> has been created&quot;</span><span class="w">
-    </span><span class="k" data-group-id="8778400788-5">end</span><span class="w">
-  </span><span class="k" data-group-id="8778400788-2">end</span><span class="w">
+      </span><span class="n">notification_message</span><span class="w"> </span><span class="s">&quot;Order </span><span class="si" data-group-id="3438217878-6">#{</span><span class="p" data-group-id="3438217878-7">{</span><span class="n">order_number</span><span class="p" data-group-id="3438217878-7">}</span><span class="si" data-group-id="3438217878-6">}</span><span class="s"> has been created&quot;</span><span class="w">
+    </span><span class="k" data-group-id="3438217878-5">end</span><span class="w">
+  </span><span class="k" data-group-id="3438217878-2">end</span><span class="w">
 
   </span><span class="c1"># Override for complex logic:</span><span class="w">
-  </span><span class="kd">def</span><span class="w"> </span><span class="nf">prepare_template_assigns</span><span class="p" data-group-id="8778400788-8">(</span><span class="n">context</span><span class="p">,</span><span class="w"> </span><span class="n">channel</span><span class="p" data-group-id="8778400788-8">)</span><span class="w"> </span><span class="k" data-group-id="8778400788-9">do</span><span class="w">
-    </span><span class="p" data-group-id="8778400788-10">%{</span><span class="w">
-      </span><span class="ss">order_number</span><span class="p">:</span><span class="w"> </span><span class="n">format_order_id</span><span class="p" data-group-id="8778400788-11">(</span><span class="n">context</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">order</span><span class="p" data-group-id="8778400788-11">)</span><span class="w">
-    </span><span class="p" data-group-id="8778400788-10">}</span><span class="w">
-  </span><span class="k" data-group-id="8778400788-9">end</span><span class="w">
-</span><span class="k" data-group-id="8778400788-1">end</span></code></pre><h2 id="module-callbacks" class="section-heading"><a href="#module-callbacks" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Callbacks</span></h2><p>All callbacks are optional with sensible defaults. Override only what you need:</p><h3 id="module-required-if-not-in-dsl" class="section-heading"><a href="#module-required-if-not-in-dsl" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Required (if not in DSL)</span></h3><ul><li><code class="inline">id/0</code> - Event identifier</li><li><code class="inline">channels/1</code> - List of delivery channels</li></ul><h3 id="module-content" class="section-heading"><a href="#module-content" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Content</span></h3><ul><li><code class="inline">subject/2</code> - Email subject</li><li><code class="inline">from/2</code> - Email from address</li><li><code class="inline">notification_title/2</code> - In-app notification title</li><li><code class="inline">notification_message/2</code> - In-app notification message</li></ul><h3 id="module-metadata" class="section-heading"><a href="#module-metadata" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Metadata</span></h3><ul><li><code class="inline">domain/0</code> - Event domain</li><li><code class="inline">category/1</code> - Email preference category</li><li><code class="inline">user_configurable?/1</code> - Can users opt-out?</li><li><code class="inline">notification_type/1</code> - Notification type (:info, :success, :warning, :error)</li></ul><h3 id="module-advanced" class="section-heading"><a href="#module-advanced" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Advanced</span></h3><ul><li><code class="inline">recipients/2</code> - Get recipients for channel</li><li><code class="inline">prepare_template_assigns/2</code> - Prepare template variables</li><li><code class="inline">sample_data/0</code> - Sample data for previews</li><li><code class="inline">counters/2</code> - Counters to broadcast</li></ul><p>See behaviour documentation for complete list.</p>
+  </span><span class="kd">def</span><span class="w"> </span><span class="nf">prepare_template_assigns</span><span class="p" data-group-id="3438217878-8">(</span><span class="n">context</span><span class="p">,</span><span class="w"> </span><span class="n">channel</span><span class="p" data-group-id="3438217878-8">)</span><span class="w"> </span><span class="k" data-group-id="3438217878-9">do</span><span class="w">
+    </span><span class="p" data-group-id="3438217878-10">%{</span><span class="w">
+      </span><span class="ss">order_number</span><span class="p">:</span><span class="w"> </span><span class="n">format_order_id</span><span class="p" data-group-id="3438217878-11">(</span><span class="n">context</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">order</span><span class="p" data-group-id="3438217878-11">)</span><span class="w">
+    </span><span class="p" data-group-id="3438217878-10">}</span><span class="w">
+  </span><span class="k" data-group-id="3438217878-9">end</span><span class="w">
+</span><span class="k" data-group-id="3438217878-1">end</span></code></pre><h2 id="module-callbacks" class="section-heading"><a href="#module-callbacks" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Callbacks</span></h2><p>All callbacks are optional with sensible defaults. Override only what you need:</p><h3 id="module-required-if-not-in-dsl" class="section-heading"><a href="#module-required-if-not-in-dsl" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Required (if not in DSL)</span></h3><ul><li><code class="inline">id/0</code> - Event identifier</li><li><code class="inline">channels/1</code> - List of delivery channels</li></ul><h3 id="module-content" class="section-heading"><a href="#module-content" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Content</span></h3><ul><li><code class="inline">subject/2</code> - Email subject</li><li><code class="inline">from/2</code> - Email from address</li><li><code class="inline">notification_title/2</code> - In-app notification title</li><li><code class="inline">notification_message/2</code> - In-app notification message</li></ul><h3 id="module-metadata" class="section-heading"><a href="#module-metadata" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Metadata</span></h3><ul><li><code class="inline">domain/0</code> - Event domain</li><li><code class="inline">category/1</code> - Email preference category</li><li><code class="inline">user_configurable?/1</code> - Can users opt-out?</li><li><code class="inline">notification_type/1</code> - Notification type (:info, :success, :warning, :error)</li></ul><h3 id="module-advanced" class="section-heading"><a href="#module-advanced" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Advanced</span></h3><ul><li><code class="inline">recipients/2</code> - Get recipients for channel</li><li><code class="inline">prepare_template_assigns/2</code> - Prepare template variables</li><li><code class="inline">sample_data/0</code> - Sample data for previews</li><li><code class="inline">counters/2</code> - Counters to broadcast</li></ul><p>See behaviour documentation for complete list.</p>
     </section>
 
 </div>
@@ -234,6 +234,16 @@ multiple channels (email, in-app, Discord, etc.).</p><h2 id="module-usage" class
       </div>
 
         <div class="summary-synopsis"><p>In-app notification action URL.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#c:applicable_for_user?/1" data-no-tooltip="" translate="no">applicable_for_user?(user)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Whether this event is applicable for a specific user.</p></div>
 
     </div>
 
@@ -360,6 +370,16 @@ multiple channels (email, in-app, Discord, etc.).</p><h2 id="module-usage" class
       </div>
 
         <div class="summary-synopsis"><p>Returns the recipients for a specific channel.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#c:required_resources/0" data-no-tooltip="" translate="no">required_resources()</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Required resources for manual trigger.</p></div>
 
     </div>
 
@@ -690,6 +710,46 @@ multiple channels (email, in-app, Discord, etc.).</p><h2 id="module-usage" class
 <p>In-app notification action URL.</p>
   </section>
 </section>
+<section class="detail" id="c:applicable_for_user?/1">
+
+  <div class="detail-header">
+    <a href="#c:applicable_for_user?/1" class="detail-link" data-no-tooltip="" aria-label="Link to this callback">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">applicable_for_user?(user)</h1>
+
+        <span class="note">(optional)</span>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/event.ex#L241" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@callback</span> applicable_for_user?(user :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>()) :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">boolean</a>()</pre>
+
+      </div>
+
+<p>Whether this event is applicable for a specific user.</p><p>Used by manual trigger to filter events based on user state.
+For example, only show email confirmation event if user is not confirmed.</p><p>This callback is <strong>only</strong> used for filtering the manual trigger event list
+in admin UIs. It does NOT affect normal event dispatch.</p><h2 id="c:applicable_for_user?/1-example" class="section-heading"><a href="#c:applicable_for_user?/1-example" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Example</span></h2><pre><code class="makeup elixir" translate="no"><span class="c1"># Only show in manual trigger if user hasn&#39;t confirmed</span><span class="w">
+</span><span class="kd">def</span><span class="w"> </span><span class="nf">applicable_for_user?</span><span class="p" data-group-id="7220356172-1">(</span><span class="n">user</span><span class="p" data-group-id="7220356172-1">)</span><span class="w"> </span><span class="k" data-group-id="7220356172-2">do</span><span class="w">
+  </span><span class="n">is_nil</span><span class="p" data-group-id="7220356172-3">(</span><span class="n">user</span><span class="o">.</span><span class="n">confirmed_at</span><span class="p" data-group-id="7220356172-3">)</span><span class="w">
+</span><span class="k" data-group-id="7220356172-2">end</span><span class="w">
+
+</span><span class="c1"># Only show if user is archived</span><span class="w">
+</span><span class="kd">def</span><span class="w"> </span><span class="nf">applicable_for_user?</span><span class="p" data-group-id="7220356172-4">(</span><span class="n">user</span><span class="p" data-group-id="7220356172-4">)</span><span class="w"> </span><span class="k" data-group-id="7220356172-5">do</span><span class="w">
+  </span><span class="ow">not</span><span class="w"> </span><span class="n">is_nil</span><span class="p" data-group-id="7220356172-6">(</span><span class="n">user</span><span class="o">.</span><span class="n">archived_at</span><span class="p" data-group-id="7220356172-6">)</span><span class="w">
+</span><span class="k" data-group-id="7220356172-5">end</span></code></pre>
+  </section>
+</section>
 <section class="detail" id="c:category/1">
 
   <div class="detail-header">
@@ -745,12 +805,12 @@ multiple channels (email, in-app, Discord, etc.).</p><h2 id="module-usage" class
 
       </div>
 
-<p>Returns the list of delivery channels for this event.</p><h2 id="c:channels/1-example" class="section-heading"><a href="#c:channels/1-example" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Example</span></h2><pre><code class="makeup elixir" translate="no"><span class="kd">def</span><span class="w"> </span><span class="nf">channels</span><span class="p" data-group-id="4129142561-1">(</span><span class="c">_context</span><span class="p" data-group-id="4129142561-1">)</span><span class="w"> </span><span class="k" data-group-id="4129142561-2">do</span><span class="w">
-  </span><span class="p" data-group-id="4129142561-3">[</span><span class="w">
-    </span><span class="p" data-group-id="4129142561-4">%</span><span class="nc" data-group-id="4129142561-4">Channel</span><span class="p" data-group-id="4129142561-4">{</span><span class="ss">transport</span><span class="p">:</span><span class="w"> </span><span class="ss">:in_app</span><span class="p">,</span><span class="w"> </span><span class="ss">audience</span><span class="p">:</span><span class="w"> </span><span class="ss">:user</span><span class="p" data-group-id="4129142561-4">}</span><span class="p">,</span><span class="w">
-    </span><span class="p" data-group-id="4129142561-5">%</span><span class="nc" data-group-id="4129142561-5">Channel</span><span class="p" data-group-id="4129142561-5">{</span><span class="ss">transport</span><span class="p">:</span><span class="w"> </span><span class="ss">:email</span><span class="p">,</span><span class="w"> </span><span class="ss">audience</span><span class="p">:</span><span class="w"> </span><span class="ss">:user</span><span class="p">,</span><span class="w"> </span><span class="ss">time</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="4129142561-6">{</span><span class="ss">:in</span><span class="p">,</span><span class="w"> </span><span class="mi">300</span><span class="p" data-group-id="4129142561-6">}</span><span class="p" data-group-id="4129142561-5">}</span><span class="w">
-  </span><span class="p" data-group-id="4129142561-3">]</span><span class="w">
-</span><span class="k" data-group-id="4129142561-2">end</span></code></pre>
+<p>Returns the list of delivery channels for this event.</p><h2 id="c:channels/1-example" class="section-heading"><a href="#c:channels/1-example" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Example</span></h2><pre><code class="makeup elixir" translate="no"><span class="kd">def</span><span class="w"> </span><span class="nf">channels</span><span class="p" data-group-id="4282240367-1">(</span><span class="c">_context</span><span class="p" data-group-id="4282240367-1">)</span><span class="w"> </span><span class="k" data-group-id="4282240367-2">do</span><span class="w">
+  </span><span class="p" data-group-id="4282240367-3">[</span><span class="w">
+    </span><span class="p" data-group-id="4282240367-4">%</span><span class="nc" data-group-id="4282240367-4">Channel</span><span class="p" data-group-id="4282240367-4">{</span><span class="ss">transport</span><span class="p">:</span><span class="w"> </span><span class="ss">:in_app</span><span class="p">,</span><span class="w"> </span><span class="ss">audience</span><span class="p">:</span><span class="w"> </span><span class="ss">:user</span><span class="p" data-group-id="4282240367-4">}</span><span class="p">,</span><span class="w">
+    </span><span class="p" data-group-id="4282240367-5">%</span><span class="nc" data-group-id="4282240367-5">Channel</span><span class="p" data-group-id="4282240367-5">{</span><span class="ss">transport</span><span class="p">:</span><span class="w"> </span><span class="ss">:email</span><span class="p">,</span><span class="w"> </span><span class="ss">audience</span><span class="p">:</span><span class="w"> </span><span class="ss">:user</span><span class="p">,</span><span class="w"> </span><span class="ss">time</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="4282240367-6">{</span><span class="ss">:in</span><span class="p">,</span><span class="w"> </span><span class="mi">300</span><span class="p" data-group-id="4282240367-6">}</span><span class="p" data-group-id="4282240367-5">}</span><span class="w">
+  </span><span class="p" data-group-id="4282240367-3">]</span><span class="w">
+</span><span class="k" data-group-id="4282240367-2">end</span></code></pre>
   </section>
 </section>
 <section class="detail" id="c:counters/2">
@@ -780,11 +840,11 @@ multiple channels (email, in-app, Discord, etc.).</p><h2 id="module-usage" class
 
       </div>
 
-<p>Counters to broadcast when this event creates notifications.</p><p>Return list of counter atoms for specific channel.</p><h2 id="c:counters/2-example" class="section-heading"><a href="#c:counters/2-example" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Example</span></h2><pre><code class="makeup elixir" translate="no"><span class="kd">def</span><span class="w"> </span><span class="nf">counters</span><span class="p" data-group-id="5397495224-1">(</span><span class="c">_ctx</span><span class="p">,</span><span class="w"> </span><span class="p" data-group-id="5397495224-2">%</span><span class="nc" data-group-id="5397495224-2">Channel</span><span class="p" data-group-id="5397495224-2">{</span><span class="ss">transport</span><span class="p">:</span><span class="w"> </span><span class="ss">:in_app</span><span class="p">,</span><span class="w"> </span><span class="ss">audience</span><span class="p">:</span><span class="w"> </span><span class="ss">:user</span><span class="p" data-group-id="5397495224-2">}</span><span class="p" data-group-id="5397495224-1">)</span><span class="w"> </span><span class="k" data-group-id="5397495224-3">do</span><span class="w">
-  </span><span class="p" data-group-id="5397495224-4">[</span><span class="ss">:pending_orders</span><span class="p">,</span><span class="w"> </span><span class="ss">:cart_items</span><span class="p" data-group-id="5397495224-4">]</span><span class="w">
-</span><span class="k" data-group-id="5397495224-3">end</span><span class="w">
+<p>Counters to broadcast when this event creates notifications.</p><p>Return list of counter atoms for specific channel.</p><h2 id="c:counters/2-example" class="section-heading"><a href="#c:counters/2-example" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Example</span></h2><pre><code class="makeup elixir" translate="no"><span class="kd">def</span><span class="w"> </span><span class="nf">counters</span><span class="p" data-group-id="3156933736-1">(</span><span class="c">_ctx</span><span class="p">,</span><span class="w"> </span><span class="p" data-group-id="3156933736-2">%</span><span class="nc" data-group-id="3156933736-2">Channel</span><span class="p" data-group-id="3156933736-2">{</span><span class="ss">transport</span><span class="p">:</span><span class="w"> </span><span class="ss">:in_app</span><span class="p">,</span><span class="w"> </span><span class="ss">audience</span><span class="p">:</span><span class="w"> </span><span class="ss">:user</span><span class="p" data-group-id="3156933736-2">}</span><span class="p" data-group-id="3156933736-1">)</span><span class="w"> </span><span class="k" data-group-id="3156933736-3">do</span><span class="w">
+  </span><span class="p" data-group-id="3156933736-4">[</span><span class="ss">:pending_orders</span><span class="p">,</span><span class="w"> </span><span class="ss">:cart_items</span><span class="p" data-group-id="3156933736-4">]</span><span class="w">
+</span><span class="k" data-group-id="3156933736-3">end</span><span class="w">
 
-</span><span class="kd">def</span><span class="w"> </span><span class="nf">counters</span><span class="p" data-group-id="5397495224-5">(</span><span class="c">_ctx</span><span class="p">,</span><span class="w"> </span><span class="c">_channel</span><span class="p" data-group-id="5397495224-5">)</span><span class="p">,</span><span class="w"> </span><span class="ss">do</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="5397495224-6">[</span><span class="p" data-group-id="5397495224-6">]</span></code></pre>
+</span><span class="kd">def</span><span class="w"> </span><span class="nf">counters</span><span class="p" data-group-id="3156933736-5">(</span><span class="c">_ctx</span><span class="p">,</span><span class="w"> </span><span class="c">_channel</span><span class="p" data-group-id="3156933736-5">)</span><span class="p">,</span><span class="w"> </span><span class="ss">do</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="3156933736-6">[</span><span class="p" data-group-id="3156933736-6">]</span></code></pre>
   </section>
 </section>
 <section class="detail" id="c:domain/0">
@@ -829,7 +889,7 @@ multiple channels (email, in-app, Discord, etc.).</p><h2 id="module-usage" class
         <span class="note">(optional)</span>
 
 
-        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/event.ex#L225" class="icon-action" rel="help" aria-label="View Source">
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/event.ex#L293" class="icon-action" rel="help" aria-label="View Source">
           <i class="ri-code-s-slash-line" aria-hidden="true"></i>
         </a>
 
@@ -1007,7 +1067,7 @@ multiple channels (email, in-app, Discord, etc.).</p><h2 id="module-usage" class
         <span class="note">(optional)</span>
 
 
-        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/event.ex#L224" class="icon-action" rel="help" aria-label="View Source">
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/event.ex#L292" class="icon-action" rel="help" aria-label="View Source">
           <i class="ri-code-s-slash-line" aria-hidden="true"></i>
         </a>
 
@@ -1052,12 +1112,12 @@ multiple channels (email, in-app, Discord, etc.).</p><h2 id="module-usage" class
 
       </div>
 
-<p>Prepare additional template assigns.</p><p>Return a map that will be available in templates.</p><h2 id="c:prepare_template_assigns/2-example" class="section-heading"><a href="#c:prepare_template_assigns/2-example" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Example</span></h2><pre><code class="makeup elixir" translate="no"><span class="kd">def</span><span class="w"> </span><span class="nf">prepare_template_assigns</span><span class="p" data-group-id="9613810700-1">(</span><span class="n">context</span><span class="p">,</span><span class="w"> </span><span class="n">channel</span><span class="p" data-group-id="9613810700-1">)</span><span class="w"> </span><span class="k" data-group-id="9613810700-2">do</span><span class="w">
-  </span><span class="p" data-group-id="9613810700-3">%{</span><span class="w">
-    </span><span class="ss">order_number</span><span class="p">:</span><span class="w"> </span><span class="n">format_order_id</span><span class="p" data-group-id="9613810700-4">(</span><span class="n">context</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">order</span><span class="p" data-group-id="9613810700-4">)</span><span class="p">,</span><span class="w">
-    </span><span class="ss">order_url</span><span class="p">:</span><span class="w"> </span><span class="n">build_url</span><span class="p" data-group-id="9613810700-5">(</span><span class="n">context</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">order</span><span class="p">,</span><span class="w"> </span><span class="n">channel</span><span class="p" data-group-id="9613810700-5">)</span><span class="w">
-  </span><span class="p" data-group-id="9613810700-3">}</span><span class="w">
-</span><span class="k" data-group-id="9613810700-2">end</span></code></pre>
+<p>Prepare additional template assigns.</p><p>Return a map that will be available in templates.</p><h2 id="c:prepare_template_assigns/2-example" class="section-heading"><a href="#c:prepare_template_assigns/2-example" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Example</span></h2><pre><code class="makeup elixir" translate="no"><span class="kd">def</span><span class="w"> </span><span class="nf">prepare_template_assigns</span><span class="p" data-group-id="0252922568-1">(</span><span class="n">context</span><span class="p">,</span><span class="w"> </span><span class="n">channel</span><span class="p" data-group-id="0252922568-1">)</span><span class="w"> </span><span class="k" data-group-id="0252922568-2">do</span><span class="w">
+  </span><span class="p" data-group-id="0252922568-3">%{</span><span class="w">
+    </span><span class="ss">order_number</span><span class="p">:</span><span class="w"> </span><span class="n">format_order_id</span><span class="p" data-group-id="0252922568-4">(</span><span class="n">context</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">order</span><span class="p" data-group-id="0252922568-4">)</span><span class="p">,</span><span class="w">
+    </span><span class="ss">order_url</span><span class="p">:</span><span class="w"> </span><span class="n">build_url</span><span class="p" data-group-id="0252922568-5">(</span><span class="n">context</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">order</span><span class="p">,</span><span class="w"> </span><span class="n">channel</span><span class="p" data-group-id="0252922568-5">)</span><span class="w">
+  </span><span class="p" data-group-id="0252922568-3">}</span><span class="w">
+</span><span class="k" data-group-id="0252922568-2">end</span></code></pre>
   </section>
 </section>
 <section class="detail" id="c:recipients/2">
@@ -1088,6 +1148,61 @@ multiple channels (email, in-app, Discord, etc.).</p><h2 id="module-usage" class
 <p>Returns the recipients for a specific channel.</p><p>Default implementation delegates to RecipientResolver.from_audience/2.</p>
   </section>
 </section>
+<section class="detail" id="c:required_resources/0">
+
+  <div class="detail-header">
+    <a href="#c:required_resources/0" class="detail-link" data-no-tooltip="" aria-label="Link to this callback">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">required_resources()</h1>
+
+        <span class="note">(optional)</span>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/event.ex#L287" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@callback</span> required_resources() :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">keyword</a>(<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | {<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>(), <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">keyword</a>()})</pre>
+
+      </div>
+
+<p>Required resources for manual trigger.</p><p>Declares which resources this event needs to render properly, along with
+optional Ash filters to restrict which records can be selected.</p><p>Used by manual trigger UIs to show resource selectors. For example, an
+&quot;order processed&quot; event needs an Order resource, and should only show
+orders with status: :processed.</p><p>Returns a keyword list where:</p><ul><li>Key is the data key (e.g., :order, :ticket)</li><li>Value is either:<ul><li>Just the resource module: <code class="inline">ProductOrder</code></li><li>Tuple with module and filter: <code class="inline">{ProductOrder, filter: [status: :processed]}</code></li></ul></li></ul><h2 id="c:required_resources/0-examples" class="section-heading"><a href="#c:required_resources/0-examples" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Examples</span></h2><pre><code class="makeup elixir" translate="no"><span class="c1"># Event needs an order, any status</span><span class="w">
+</span><span class="kd">def</span><span class="w"> </span><span class="nf">required_resources</span><span class="w"> </span><span class="k" data-group-id="1852068971-1">do</span><span class="w">
+  </span><span class="p" data-group-id="1852068971-2">[</span><span class="ss">order</span><span class="p">:</span><span class="w"> </span><span class="nc">Magasin.Orders.ProductOrder</span><span class="p" data-group-id="1852068971-2">]</span><span class="w">
+</span><span class="k" data-group-id="1852068971-1">end</span><span class="w">
+
+</span><span class="c1"># Event needs a processed order only</span><span class="w">
+</span><span class="kd">def</span><span class="w"> </span><span class="nf">required_resources</span><span class="w"> </span><span class="k" data-group-id="1852068971-3">do</span><span class="w">
+  </span><span class="p" data-group-id="1852068971-4">[</span><span class="ss">order</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="1852068971-5">{</span><span class="nc">Magasin.Orders.ProductOrder</span><span class="p">,</span><span class="w"> </span><span class="ss">filter</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="1852068971-6">[</span><span class="ss">status</span><span class="p">:</span><span class="w"> </span><span class="ss">:processed</span><span class="p" data-group-id="1852068971-6">]</span><span class="p" data-group-id="1852068971-5">}</span><span class="p" data-group-id="1852068971-4">]</span><span class="w">
+</span><span class="k" data-group-id="1852068971-3">end</span><span class="w">
+
+</span><span class="c1"># Event needs multiple resources</span><span class="w">
+</span><span class="kd">def</span><span class="w"> </span><span class="nf">required_resources</span><span class="w"> </span><span class="k" data-group-id="1852068971-7">do</span><span class="w">
+  </span><span class="p" data-group-id="1852068971-8">[</span><span class="w">
+    </span><span class="ss">order</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="1852068971-9">{</span><span class="nc">Magasin.Orders.ProductOrder</span><span class="p">,</span><span class="w"> </span><span class="ss">filter</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="1852068971-10">[</span><span class="ss">status</span><span class="p">:</span><span class="w"> </span><span class="ss">:completed</span><span class="p" data-group-id="1852068971-10">]</span><span class="p" data-group-id="1852068971-9">}</span><span class="p">,</span><span class="w">
+    </span><span class="ss">user</span><span class="p">:</span><span class="w"> </span><span class="nc">Magasin.Accounts.User</span><span class="w">
+  </span><span class="p" data-group-id="1852068971-8">]</span><span class="w">
+</span><span class="k" data-group-id="1852068971-7">end</span><span class="w">
+
+</span><span class="c1"># Event needs no resources (just user context)</span><span class="w">
+</span><span class="kd">def</span><span class="w"> </span><span class="nf">required_resources</span><span class="w"> </span><span class="k" data-group-id="1852068971-11">do</span><span class="w">
+  </span><span class="p" data-group-id="1852068971-12">[</span><span class="p" data-group-id="1852068971-12">]</span><span class="w">
+</span><span class="k" data-group-id="1852068971-11">end</span></code></pre><p>The filter keyword list is passed directly to Ash queries, supporting any
+valid Ash filter syntax.</p>
+  </section>
+</section>
 <section class="detail" id="c:sample_data/0">
 
   <div class="detail-header">
@@ -1115,12 +1230,12 @@ multiple channels (email, in-app, Discord, etc.).</p><h2 id="module-usage" class
 
       </div>
 
-<p>Sample data for event previews.</p><p>Return a map with sample data matching the expected event data structure.</p><h2 id="c:sample_data/0-example" class="section-heading"><a href="#c:sample_data/0-example" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Example</span></h2><pre><code class="makeup elixir" translate="no"><span class="kd">def</span><span class="w"> </span><span class="nf">sample_data</span><span class="w"> </span><span class="k" data-group-id="1630683708-1">do</span><span class="w">
-  </span><span class="p" data-group-id="1630683708-2">%{</span><span class="w">
-    </span><span class="ss">order</span><span class="p">:</span><span class="w"> </span><span class="nc">MyApp.Factory</span><span class="o">.</span><span class="n">build</span><span class="p" data-group-id="1630683708-3">(</span><span class="ss">:order</span><span class="p" data-group-id="1630683708-3">)</span><span class="p">,</span><span class="w">
-    </span><span class="ss">user</span><span class="p">:</span><span class="w"> </span><span class="nc">MyApp.Factory</span><span class="o">.</span><span class="n">build</span><span class="p" data-group-id="1630683708-4">(</span><span class="ss">:user</span><span class="p" data-group-id="1630683708-4">)</span><span class="w">
-  </span><span class="p" data-group-id="1630683708-2">}</span><span class="w">
-</span><span class="k" data-group-id="1630683708-1">end</span></code></pre>
+<p>Sample data for event previews.</p><p>Return a map with sample data matching the expected event data structure.</p><h2 id="c:sample_data/0-example" class="section-heading"><a href="#c:sample_data/0-example" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Example</span></h2><pre><code class="makeup elixir" translate="no"><span class="kd">def</span><span class="w"> </span><span class="nf">sample_data</span><span class="w"> </span><span class="k" data-group-id="5140617908-1">do</span><span class="w">
+  </span><span class="p" data-group-id="5140617908-2">%{</span><span class="w">
+    </span><span class="ss">order</span><span class="p">:</span><span class="w"> </span><span class="nc">MyApp.Factory</span><span class="o">.</span><span class="n">build</span><span class="p" data-group-id="5140617908-3">(</span><span class="nc">MyApp.Orders.Order</span><span class="p" data-group-id="5140617908-3">)</span><span class="p">,</span><span class="w">
+    </span><span class="ss">user</span><span class="p">:</span><span class="w"> </span><span class="nc">MyApp.Factory</span><span class="o">.</span><span class="n">build</span><span class="p" data-group-id="5140617908-4">(</span><span class="nc">MyApp.Accounts.User</span><span class="p" data-group-id="5140617908-4">)</span><span class="w">
+  </span><span class="p" data-group-id="5140617908-2">}</span><span class="w">
+</span><span class="k" data-group-id="5140617908-1">end</span></code></pre>
   </section>
 </section>
 <section class="detail" id="c:should_send?/2">
@@ -1135,7 +1250,7 @@ multiple channels (email, in-app, Discord, etc.).</p><h2 id="module-usage" class
         <span class="note">(optional)</span>
 
 
-        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/event.ex#L223" class="icon-action" rel="help" aria-label="View Source">
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/event.ex#L291" class="icon-action" rel="help" aria-label="View Source">
           <i class="ri-code-s-slash-line" aria-hidden="true"></i>
         </a>
 
@@ -1180,8 +1295,8 @@ multiple channels (email, in-app, Discord, etc.).</p><h2 id="module-usage" class
 
       </div>
 
-<p>Email subject line.</p><p>Can be overridden per-channel via pattern matching:</p><pre><code class="makeup elixir" translate="no"><span class="kd">def</span><span class="w"> </span><span class="nf">subject</span><span class="p" data-group-id="2625278497-1">(</span><span class="c">_ctx</span><span class="p">,</span><span class="w"> </span><span class="p" data-group-id="2625278497-2">%</span><span class="nc" data-group-id="2625278497-2">Channel</span><span class="p" data-group-id="2625278497-2">{</span><span class="ss">audience</span><span class="p">:</span><span class="w"> </span><span class="ss">:user</span><span class="p" data-group-id="2625278497-2">}</span><span class="p" data-group-id="2625278497-1">)</span><span class="p">,</span><span class="w"> </span><span class="ss">do</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Your order&quot;</span><span class="w">
-</span><span class="kd">def</span><span class="w"> </span><span class="nf">subject</span><span class="p" data-group-id="2625278497-3">(</span><span class="c">_ctx</span><span class="p">,</span><span class="w"> </span><span class="p" data-group-id="2625278497-4">%</span><span class="nc" data-group-id="2625278497-4">Channel</span><span class="p" data-group-id="2625278497-4">{</span><span class="ss">audience</span><span class="p">:</span><span class="w"> </span><span class="ss">:admin</span><span class="p" data-group-id="2625278497-4">}</span><span class="p" data-group-id="2625278497-3">)</span><span class="p">,</span><span class="w"> </span><span class="ss">do</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;New order&quot;</span></code></pre>
+<p>Email subject line.</p><p>Can be overridden per-channel via pattern matching:</p><pre><code class="makeup elixir" translate="no"><span class="kd">def</span><span class="w"> </span><span class="nf">subject</span><span class="p" data-group-id="2848283606-1">(</span><span class="c">_ctx</span><span class="p">,</span><span class="w"> </span><span class="p" data-group-id="2848283606-2">%</span><span class="nc" data-group-id="2848283606-2">Channel</span><span class="p" data-group-id="2848283606-2">{</span><span class="ss">audience</span><span class="p">:</span><span class="w"> </span><span class="ss">:user</span><span class="p" data-group-id="2848283606-2">}</span><span class="p" data-group-id="2848283606-1">)</span><span class="p">,</span><span class="w"> </span><span class="ss">do</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Your order&quot;</span><span class="w">
+</span><span class="kd">def</span><span class="w"> </span><span class="nf">subject</span><span class="p" data-group-id="2848283606-3">(</span><span class="c">_ctx</span><span class="p">,</span><span class="w"> </span><span class="p" data-group-id="2848283606-4">%</span><span class="nc" data-group-id="2848283606-4">Channel</span><span class="p" data-group-id="2848283606-4">{</span><span class="ss">audience</span><span class="p">:</span><span class="w"> </span><span class="ss">:admin</span><span class="p" data-group-id="2848283606-4">}</span><span class="p" data-group-id="2848283606-3">)</span><span class="p">,</span><span class="w"> </span><span class="ss">do</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;New order&quot;</span></code></pre>
   </section>
 </section>
 <section class="detail" id="c:template_variant/2">
@@ -1196,7 +1311,7 @@ multiple channels (email, in-app, Discord, etc.).</p><h2 id="module-usage" class
         <span class="note">(optional)</span>
 
 
-        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/event.ex#L222" class="icon-action" rel="help" aria-label="View Source">
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/event.ex#L290" class="icon-action" rel="help" aria-label="View Source">
           <i class="ri-code-s-slash-line" aria-hidden="true"></i>
         </a>
 
@@ -1299,7 +1414,7 @@ multiple channels (email, in-app, Discord, etc.).</p><h2 id="module-usage" class
         <span class="note">(macro)</span>
 
 
-        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/event.ex#L251" class="icon-action" rel="help" aria-label="View Source">
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/event.ex#L321" class="icon-action" rel="help" aria-label="View Source">
           <i class="ri-code-s-slash-line" aria-hidden="true"></i>
         </a>
 

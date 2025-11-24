@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="ExDoc v0.39.1">
+    <meta name="project" content="AshDispatch v0.1.0">
+
+
+    <title>AshDispatch.Event.RecipientExtractor — AshDispatch v0.1.0</title>
+
+    <link rel="stylesheet" href="dist/html-elixir-ZFNMEJKT.css" />
+
+    <script defer src="dist/sidebar_items-08887088.js"></script>
+    <script defer src="docs_config.js"></script>
+    <script defer src="dist/html-HBZYRXZS.js"></script>
+<style>
+  .sidebar-listNav-list > li > a.sidebar-projectName {
+    font-size: 1.2em;
+    font-weight: 700;
+    color: #2563eb;
+  }
+  .content-inner h1, .content-inner h2, .content-inner h3 {
+    border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 0.3em;
+  }
+</style>
+
+  </head>
+  <body>
+    <script>(()=>{var t="ex_doc:settings",e="dark";var o="dark",s="light";var E="sidebar_state",n="closed";var r="sidebar_width";var a="sidebar-open";var i=new URLSearchParams(window.location.search),S=i.get("theme")||JSON.parse(localStorage.getItem(t)||"{}").theme;(S===o||S!==s&&window.matchMedia("(prefers-color-scheme: dark)").matches)&&document.body.classList.add(e);var d=sessionStorage.getItem(E),A=d!==n&&!window.matchMedia(`screen and (max-width: ${768}px)`).matches;document.body.classList.toggle(a,A);var c=sessionStorage.getItem(r);c&&document.body.style.setProperty("--sidebarWidth",`${c}px`);var p=/(Macintosh|iPhone|iPad|iPod)/.test(window.navigator.userAgent);document.documentElement.classList.toggle("apple-os",p);})();
+</script>
+
+<div class="body-wrapper">
+
+<button id="sidebar-menu" class="sidebar-button sidebar-toggle" aria-label="toggle sidebar" aria-controls="sidebar">
+  <i class="ri-menu-line ri-lg" title="Collapse/expand sidebar"></i>
+</button>
+
+<nav id="sidebar" class="sidebar">
+
+  <div class="sidebar-header">
+    <div class="sidebar-projectInfo">
+
+      <div>
+        <a href="https://github.com/Vulcora/ash_dispatch" class="sidebar-projectName" translate="no">
+AshDispatch
+        </a>
+        <div class="sidebar-projectVersion" translate="no">
+          v0.1.0
+        </div>
+      </div>
+    </div>
+    <ul id="sidebar-list-nav" class="sidebar-list-nav" role="tablist" data-extras=""></ul>
+  </div>
+</nav>
+
+<output role="status" id="toast"></output>
+
+<main class="content page-module" id="main" data-type="modules">
+  <div id="content" class="content-inner">
+    <div class="top-search">
+      <div class="search-settings">
+        <form class="search-bar" action="search.html">
+          <label class="search-label">
+            <span class="sr-only">Search documentation of AshDispatch</span>
+            <div class="search-input-wrapper">
+              <input name="q" type="text" class="search-input" placeholder="Press / to search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+              <button type="button" tabindex="-1" class="search-close-button" aria-hidden="true">
+                <i class="ri-close-line ri-lg" title="Cancel search"></i>
+              </button>
+            </div>
+          </label>
+        </form>
+        <div class="autocomplete">
+        </div>
+        <div class="engine-selector" data-multiple="false">
+          <button type="button" class="engine-button" aria-label="Select search engine" aria-haspopup="true" aria-expanded="false">
+            <i class="ri-search-2-line" aria-hidden="true"></i>
+            <span class="engine-name">Default</span>
+            <i class="ri-arrow-down-s-line" aria-hidden="true"></i>
+          </button>
+          <div class="engine-dropdown" hidden role="menu">
+
+              <button type="button"
+                      class="engine-option"
+                      data-engine-url="search.html?q="
+                      role="menuitemradio"
+                      aria-checked="true">
+                <span class="name">Default</span>
+                <span class="help">In-browser search</span>
+              </button>
+
+          </div>
+        </div>
+        <button class="icon-settings display-settings">
+          <i class="ri-settings-3-line"></i>
+          <span class="sr-only">Settings</span>
+        </button>
+      </div>
+    </div>
+
+<div id="top-content">
+  <div class="heading-with-actions top-heading">
+    <h1>
+      <span translate="no">AshDispatch.Event.RecipientExtractor</span> 
+      <small class="app-vsn" translate="no">(AshDispatch v0.1.0)</small>
+
+    </h1>
+
+      <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/event/recipient_extractor.ex#L1" title="View Source" class="icon-action" rel="help">
+        <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        <span class="sr-only">View Source</span>
+      </a>
+
+  </div>
+
+
+    <section id="moduledoc">
+<p>Extracts recipient identifiers and names from recipient structs using cascading configuration.</p><blockquote><p><strong>For usage examples and complete guide</strong>, see the <a href="recipient-extractor.html">Recipient Field Extraction</a> topic guide.</p></blockquote><h2 id="module-configuration-resolution-order" class="section-heading"><a href="#module-configuration-resolution-order" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Configuration Resolution Order</span></h2><p>The extractor uses a cascading resolution strategy (most specific to least specific):</p><ol><li><strong>Event DSL override</strong> - Configured directly in the event definition</li><li><strong>Audience + Transport config</strong> - Audience-specific transport configuration</li><li><strong>Transport config</strong> - Transport-specific configuration</li><li><strong>Generic default</strong> - Single default for all transports</li><li><strong>Error</strong> - No configuration found</li></ol><h2 id="module-configuration-structure" class="section-heading"><a href="#module-configuration-structure" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Configuration Structure</span></h2><pre><code class="makeup elixir" translate="no"><span class="c1"># config/config.exs</span><span class="w">
+</span><span class="n">config</span><span class="w"> </span><span class="ss">:ash_dispatch</span><span class="p">,</span><span class="w">
+  </span><span class="ss">recipient_fields</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="4312390299-1">[</span><span class="w">
+    </span><span class="c1"># Generic defaults (work for all transports)</span><span class="w">
+    </span><span class="ss">identifier</span><span class="p">:</span><span class="w"> </span><span class="ss">:email</span><span class="p">,</span><span class="w">
+    </span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="ss">:contact_person</span><span class="p">,</span><span class="w">
+
+    </span><span class="c1"># Per-transport overrides (optional)</span><span class="w">
+    </span><span class="ss">sms</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="4312390299-2">[</span><span class="w">
+      </span><span class="ss">identifier</span><span class="p">:</span><span class="w"> </span><span class="ss">:mobile_phone</span><span class="p">,</span><span class="w">
+      </span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="ss">:first_name</span><span class="w">
+    </span><span class="p" data-group-id="4312390299-2">]</span><span class="p">,</span><span class="w">
+
+    </span><span class="c1"># Per-audience overrides (optional)</span><span class="w">
+    </span><span class="ss">audiences</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="4312390299-3">[</span><span class="w">
+      </span><span class="ss">admin</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="4312390299-4">[</span><span class="w">
+        </span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="ss">:full_name</span><span class="w">  </span><span class="c1"># Admins use different name field</span><span class="w">
+      </span><span class="p" data-group-id="4312390299-4">]</span><span class="p">,</span><span class="w">
+      </span><span class="ss">lead</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="4312390299-5">[</span><span class="w">
+        </span><span class="ss">identifier</span><span class="p">:</span><span class="w"> </span><span class="ss">:primary_email</span><span class="p">,</span><span class="w">
+        </span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="ss">:company_name</span><span class="w">
+      </span><span class="p" data-group-id="4312390299-5">]</span><span class="w">
+    </span><span class="p" data-group-id="4312390299-3">]</span><span class="w">
+  </span><span class="p" data-group-id="4312390299-1">]</span></code></pre><h2 id="module-field-extraction-formats" class="section-heading"><a href="#module-field-extraction-formats" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Field Extraction Formats</span></h2><p>The extractor supports multiple field specification formats:</p><ul><li><code class="inline">:field_name</code> - Direct atom field access</li><li><code class="inline">{:field, :field_name}</code> - Explicit field tuple</li><li><code class="inline">{:field, [:nested, :path]}</code> - Nested field access via <a href="https://hexdocs.pm/elixir/Kernel.html#get_in/2"><code class="inline">get_in/2</code></a></li><li><code class="inline">{:string_field, &quot;key&quot;}</code> - String key access for JSON data</li><li><code class="inline">&amp;Module.function/1</code> - Custom extraction function</li><li><code class="inline">nil</code> - No field (e.g., webhooks don't need names)</li></ul><h2 id="module-examples" class="section-heading"><a href="#module-examples" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Examples</span></h2><pre><code class="makeup elixir" translate="no"><span class="c1"># Extract with generic defaults</span><span class="w">
+</span><span class="nc">RecipientExtractor</span><span class="o">.</span><span class="n">extract_identifier</span><span class="p" data-group-id="2165531802-1">(</span><span class="n">user</span><span class="p">,</span><span class="w"> </span><span class="ss">:email</span><span class="p">,</span><span class="w"> </span><span class="ss">:user</span><span class="p" data-group-id="2165531802-1">)</span><span class="w">
+</span><span class="c1"># → Uses config[:recipient_fields][:identifier] → :email</span><span class="w">
+
+</span><span class="c1"># Extract with transport override</span><span class="w">
+</span><span class="nc">RecipientExtractor</span><span class="o">.</span><span class="n">extract_identifier</span><span class="p" data-group-id="2165531802-2">(</span><span class="n">user</span><span class="p">,</span><span class="w"> </span><span class="ss">:sms</span><span class="p">,</span><span class="w"> </span><span class="ss">:user</span><span class="p" data-group-id="2165531802-2">)</span><span class="w">
+</span><span class="c1"># → Uses config[:recipient_fields][:sms][:identifier] → :mobile_phone</span><span class="w">
+
+</span><span class="c1"># Extract with audience override</span><span class="w">
+</span><span class="nc">RecipientExtractor</span><span class="o">.</span><span class="n">extract_name</span><span class="p" data-group-id="2165531802-3">(</span><span class="n">admin</span><span class="p">,</span><span class="w"> </span><span class="ss">:email</span><span class="p">,</span><span class="w"> </span><span class="ss">:admin</span><span class="p" data-group-id="2165531802-3">)</span><span class="w">
+</span><span class="c1"># → Uses config[:recipient_fields][:audiences][:admin][:name] → :full_name</span><span class="w">
+
+</span><span class="c1"># Extract with nested field</span><span class="w">
+</span><span class="nc">RecipientExtractor</span><span class="o">.</span><span class="n">extract_identifier</span><span class="p" data-group-id="2165531802-4">(</span><span class="p" data-group-id="2165531802-5">%{</span><span class="ss">contact</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="2165531802-6">%{</span><span class="ss">email</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;...&quot;</span><span class="p" data-group-id="2165531802-6">}</span><span class="p" data-group-id="2165531802-5">}</span><span class="p">,</span><span class="w"> </span><span class="ss">:email</span><span class="p">,</span><span class="w"> </span><span class="ss">:user</span><span class="p" data-group-id="2165531802-4">)</span><span class="w">
+</span><span class="c1"># With config: identifier: {:field, [:contact, :email]}</span><span class="w">
+</span><span class="c1"># → &quot;...&quot;</span><span class="w">
+
+</span><span class="c1"># Extract with custom function</span><span class="w">
+</span><span class="nc">RecipientExtractor</span><span class="o">.</span><span class="n">extract_identifier</span><span class="p" data-group-id="2165531802-7">(</span><span class="n">lead</span><span class="p">,</span><span class="w"> </span><span class="ss">:email</span><span class="p">,</span><span class="w"> </span><span class="ss">:lead</span><span class="p" data-group-id="2165531802-7">)</span><span class="w">
+</span><span class="c1"># With config: identifier: &amp;MyApp.extract_lead_email/1</span><span class="w">
+</span><span class="c1"># → Calls MyApp.extract_lead_email(lead)</span></code></pre>
+    </section>
+
+</div>
+
+  <section id="summary" class="details-list">
+    <h1 class="section-heading">
+      <a class="hover-link" href="#summary">
+        <i class="ri-link-m" aria-hidden="true"></i>
+      </a>
+      <span class="text">Summary</span>
+    </h1>
+<div class="summary-functions summary">
+  <h2>
+    <a href="#functions">Functions</a>
+  </h2>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#extract_identifier/4" data-no-tooltip="" translate="no">extract_identifier(recipient, transport, audience, event_config \\ nil)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Extracts the recipient identifier (email, phone, webhook URL, etc.) based on transport and audience.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#extract_name/4" data-no-tooltip="" translate="no">extract_name(recipient, transport, audience, event_config \\ nil)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Extracts the recipient display name based on transport and audience.</p></div>
+
+    </div>
+
+</div>
+
+  </section>
+
+
+  <section id="functions" class="details-list">
+    <h1 class="section-heading">
+      <a class="hover-link" href="#functions">
+        <i class="ri-link-m" aria-hidden="true"></i>
+      </a>
+      <span class="text">Functions</span>
+    </h1>
+
+    <div class="functions-list">
+<section class="detail" id="extract_identifier/4">
+
+    <span id="extract_identifier/3"></span>
+
+  <div class="detail-header">
+    <a href="#extract_identifier/4" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">extract_identifier(recipient, transport, audience, event_config \\ nil)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/event/recipient_extractor.ex#L105" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+<p>Extracts the recipient identifier (email, phone, webhook URL, etc.) based on transport and audience.</p><h2 id="extract_identifier/4-parameters" class="section-heading"><a href="#extract_identifier/4-parameters" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Parameters</span></h2><ul><li><code class="inline">recipient</code> - The recipient struct/map to extract from</li><li><code class="inline">transport</code> - The transport type (<code class="inline">:email</code>, <code class="inline">:sms</code>, <code class="inline">:in_app</code>, etc.)</li><li><code class="inline">audience</code> - The audience type (<code class="inline">:user</code>, <code class="inline">:admin</code>, <code class="inline">:lead</code>, etc.)</li><li><code class="inline">event_config</code> - Optional event-specific configuration (from DSL)</li></ul><h2 id="extract_identifier/4-returns" class="section-heading"><a href="#extract_identifier/4-returns" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Returns</span></h2><p>The extracted identifier string, or raises an error if extraction fails.</p><h2 id="extract_identifier/4-examples" class="section-heading"><a href="#extract_identifier/4-examples" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Examples</span></h2><pre><code class="makeup elixir" translate="no"><span class="gp unselectable">iex&gt; </span><span class="n">user</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p" data-group-id="5829935054-1">%</span><span class="nc" data-group-id="5829935054-1">User</span><span class="p" data-group-id="5829935054-1">{</span><span class="ss">email</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;user@example.com&quot;</span><span class="p">,</span><span class="w"> </span><span class="ss">phone</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;555-1234&quot;</span><span class="p" data-group-id="5829935054-1">}</span><span class="w">
+</span><span class="gp unselectable">iex&gt; </span><span class="nc">RecipientExtractor</span><span class="o">.</span><span class="n">extract_identifier</span><span class="p" data-group-id="5829935054-2">(</span><span class="n">user</span><span class="p">,</span><span class="w"> </span><span class="ss">:email</span><span class="p">,</span><span class="w"> </span><span class="ss">:user</span><span class="p" data-group-id="5829935054-2">)</span><span class="w">
+</span><span class="s">&quot;user@example.com&quot;</span><span class="w">
+
+</span><span class="gp unselectable">iex&gt; </span><span class="nc">RecipientExtractor</span><span class="o">.</span><span class="n">extract_identifier</span><span class="p" data-group-id="5829935054-3">(</span><span class="n">user</span><span class="p">,</span><span class="w"> </span><span class="ss">:sms</span><span class="p">,</span><span class="w"> </span><span class="ss">:user</span><span class="p" data-group-id="5829935054-3">)</span><span class="w">
+</span><span class="s">&quot;555-1234&quot;</span></code></pre>
+  </section>
+</section>
+<section class="detail" id="extract_name/4">
+
+    <span id="extract_name/3"></span>
+
+  <div class="detail-header">
+    <a href="#extract_name/4" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">extract_name(recipient, transport, audience, event_config \\ nil)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/event/recipient_extractor.ex#L141" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+<p>Extracts the recipient display name based on transport and audience.</p><h2 id="extract_name/4-parameters" class="section-heading"><a href="#extract_name/4-parameters" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Parameters</span></h2><ul><li><code class="inline">recipient</code> - The recipient struct/map to extract from</li><li><code class="inline">transport</code> - The transport type (<code class="inline">:email</code>, <code class="inline">:sms</code>, <code class="inline">:in_app</code>, etc.)</li><li><code class="inline">audience</code> - The audience type (<code class="inline">:user</code>, <code class="inline">:admin</code>, <code class="inline">:lead</code>, etc.)</li><li><code class="inline">event_config</code> - Optional event-specific configuration (from DSL)</li></ul><h2 id="extract_name/4-returns" class="section-heading"><a href="#extract_name/4-returns" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Returns</span></h2><p>The extracted name string, or <code class="inline">nil</code> if no name is configured/available.</p><h2 id="extract_name/4-examples" class="section-heading"><a href="#extract_name/4-examples" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Examples</span></h2><pre><code class="makeup elixir" translate="no"><span class="gp unselectable">iex&gt; </span><span class="n">user</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p" data-group-id="7139953138-1">%</span><span class="nc" data-group-id="7139953138-1">User</span><span class="p" data-group-id="7139953138-1">{</span><span class="ss">email</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;user@example.com&quot;</span><span class="p">,</span><span class="w"> </span><span class="ss">contact_person</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;John Doe&quot;</span><span class="p" data-group-id="7139953138-1">}</span><span class="w">
+</span><span class="gp unselectable">iex&gt; </span><span class="nc">RecipientExtractor</span><span class="o">.</span><span class="n">extract_name</span><span class="p" data-group-id="7139953138-2">(</span><span class="n">user</span><span class="p">,</span><span class="w"> </span><span class="ss">:email</span><span class="p">,</span><span class="w"> </span><span class="ss">:user</span><span class="p" data-group-id="7139953138-2">)</span><span class="w">
+</span><span class="s">&quot;John Doe&quot;</span></code></pre>
+  </section>
+</section>
+
+    </div>
+  </section>
+
+    <footer class="footer">
+      <p>
+
+          <span class="line">
+            <a href="https://hex.pm/packages/ash_dispatch/0.1.0" class="footer-hex-package">Hex Package</a>
+
+            <a href="https://preview.hex.pm/preview/ash_dispatch/0.1.0">Hex Preview</a>
+
+          </span>
+
+        <span class="line">
+          <button class="a-main footer-button display-quick-switch" title="Search HexDocs packages">
+            Search HexDocs
+          </button>
+
+        </span>
+      </p>
+
+      <p class="built-using">
+        Built using
+        <a href="https://github.com/elixir-lang/ex_doc" title="ExDoc" target="_blank" rel="help noopener" translate="no">ExDoc</a> (v0.39.1) for the
+
+          <a href="https://elixir-lang.org" title="Elixir" target="_blank" translate="no">Elixir programming language</a>
+
+      </p>
+
+    </footer>
+  </div>
+</main>
+</div>
+<script>
+  // Add copy buttons to code blocks
+  document.querySelectorAll('pre code').forEach(function(block) {
+    if (!block.parentElement.querySelector('.copy-button')) {
+      const button = document.createElement('button');
+      button.className = 'copy-button';
+      button.textContent = 'Copy';
+      button.onclick = function() {
+        navigator.clipboard.writeText(block.textContent);
+        button.textContent = 'Copied!';
+        setTimeout(() => button.textContent = 'Copy', 2000);
+      };
+      block.parentElement.style.position = 'relative';
+      block.parentElement.appendChild(button);
+    }
+  });
+</script>
+
+  </body>
+</html>

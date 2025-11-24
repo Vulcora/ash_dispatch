@@ -12,7 +12,7 @@
 
     <link rel="stylesheet" href="dist/html-elixir-ZFNMEJKT.css" />
 
-    <script defer src="dist/sidebar_items-F03CB3D7.js"></script>
+    <script defer src="dist/sidebar_items-08887088.js"></script>
     <script defer src="docs_config.js"></script>
     <script defer src="dist/html-HBZYRXZS.js"></script>
 <style>
@@ -122,21 +122,21 @@ AshDispatch
 returns <code class="inline">true</code>, meaning all notifications are sent.</p><h2 id="module-why-default-to-allow" class="section-heading"><a href="#module-why-default-to-allow" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Why Default to Allow?</span></h2><p>AshDispatch should work out-of-the-box without requiring preference setup.
 Apps can add preference checking later when they're ready.</p><h2 id="module-configuring-a-custom-checker" class="section-heading"><a href="#module-configuring-a-custom-checker" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Configuring a Custom Checker</span></h2><p>To enable user preference checking, configure your own implementation:</p><pre><code class="makeup elixir" translate="no"><span class="c1"># config/config.exs</span><span class="w">
 </span><span class="n">config</span><span class="w"> </span><span class="ss">:ash_dispatch</span><span class="p">,</span><span class="w">
-  </span><span class="ss">user_preference</span><span class="p">:</span><span class="w"> </span><span class="nc">MyApp.NotificationPreferences</span></code></pre><p>Then implement the behaviour:</p><pre><code class="makeup elixir" translate="no"><span class="kd">defmodule</span><span class="w"> </span><span class="nc">MyApp.NotificationPreferences</span><span class="w"> </span><span class="k" data-group-id="6755612484-1">do</span><span class="w">
+  </span><span class="ss">user_preference</span><span class="p">:</span><span class="w"> </span><span class="nc">MyApp.NotificationPreferences</span></code></pre><p>Then implement the behaviour:</p><pre><code class="makeup elixir" translate="no"><span class="kd">defmodule</span><span class="w"> </span><span class="nc">MyApp.NotificationPreferences</span><span class="w"> </span><span class="k" data-group-id="2992319975-1">do</span><span class="w">
   </span><span class="na">@behaviour</span><span class="w"> </span><span class="nc">AshDispatch.UserPreference</span><span class="w">
 
   </span><span class="na">@impl</span><span class="w"> </span><span class="no">true</span><span class="w">
-  </span><span class="kd">def</span><span class="w"> </span><span class="nf">user_allows?</span><span class="p" data-group-id="6755612484-2">(</span><span class="n">user_id</span><span class="p">,</span><span class="w"> </span><span class="c">_event_id</span><span class="p">,</span><span class="w"> </span><span class="c">_transport</span><span class="p">,</span><span class="w"> </span><span class="n">opts</span><span class="p" data-group-id="6755612484-2">)</span><span class="w"> </span><span class="k" data-group-id="6755612484-3">do</span><span class="w">
+  </span><span class="kd">def</span><span class="w"> </span><span class="nf">user_allows?</span><span class="p" data-group-id="2992319975-2">(</span><span class="n">user_id</span><span class="p">,</span><span class="w"> </span><span class="c">_event_id</span><span class="p">,</span><span class="w"> </span><span class="c">_transport</span><span class="p">,</span><span class="w"> </span><span class="n">opts</span><span class="p" data-group-id="2992319975-2">)</span><span class="w"> </span><span class="k" data-group-id="2992319975-3">do</span><span class="w">
     </span><span class="c1"># Your preference logic here</span><span class="w">
-    </span><span class="n">category</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">opts</span><span class="p" data-group-id="6755612484-4">[</span><span class="ss">:category</span><span class="p" data-group-id="6755612484-4">]</span><span class="w">
+    </span><span class="n">category</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">opts</span><span class="p" data-group-id="2992319975-4">[</span><span class="ss">:category</span><span class="p" data-group-id="2992319975-4">]</span><span class="w">
 
     </span><span class="c1"># Example: Check database</span><span class="w">
-    </span><span class="k">case</span><span class="w"> </span><span class="nc">Ash</span><span class="o">.</span><span class="n">get</span><span class="p" data-group-id="6755612484-5">(</span><span class="nc">UserPreference</span><span class="p">,</span><span class="w"> </span><span class="n">user_id</span><span class="p" data-group-id="6755612484-5">)</span><span class="w"> </span><span class="k" data-group-id="6755612484-6">do</span><span class="w">
-      </span><span class="p" data-group-id="6755612484-7">{</span><span class="ss">:ok</span><span class="p">,</span><span class="w"> </span><span class="n">prefs</span><span class="p" data-group-id="6755612484-7">}</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">category</span><span class="w"> </span><span class="ow">not</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">prefs</span><span class="o">.</span><span class="n">disabled_categories</span><span class="w">
+    </span><span class="k">case</span><span class="w"> </span><span class="nc">Ash</span><span class="o">.</span><span class="n">get</span><span class="p" data-group-id="2992319975-5">(</span><span class="nc">UserPreference</span><span class="p">,</span><span class="w"> </span><span class="n">user_id</span><span class="p" data-group-id="2992319975-5">)</span><span class="w"> </span><span class="k" data-group-id="2992319975-6">do</span><span class="w">
+      </span><span class="p" data-group-id="2992319975-7">{</span><span class="ss">:ok</span><span class="p">,</span><span class="w"> </span><span class="n">prefs</span><span class="p" data-group-id="2992319975-7">}</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">category</span><span class="w"> </span><span class="ow">not</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">prefs</span><span class="o">.</span><span class="n">disabled_categories</span><span class="w">
       </span><span class="bp">_</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="no">true</span><span class="w">
-    </span><span class="k" data-group-id="6755612484-6">end</span><span class="w">
-  </span><span class="k" data-group-id="6755612484-3">end</span><span class="w">
-</span><span class="k" data-group-id="6755612484-1">end</span></code></pre><p>See <a href="AshDispatch.UserPreference.html"><code class="inline">AshDispatch.UserPreference</code></a> for complete documentation.</p>
+    </span><span class="k" data-group-id="2992319975-6">end</span><span class="w">
+  </span><span class="k" data-group-id="2992319975-3">end</span><span class="w">
+</span><span class="k" data-group-id="2992319975-1">end</span></code></pre><p>See <a href="AshDispatch.UserPreference.html"><code class="inline">AshDispatch.UserPreference</code></a> for complete documentation.</p>
     </section>
 
 </div>

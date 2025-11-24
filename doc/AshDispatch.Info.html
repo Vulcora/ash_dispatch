@@ -12,7 +12,7 @@
 
     <link rel="stylesheet" href="dist/html-elixir-ZFNMEJKT.css" />
 
-    <script defer src="dist/sidebar_items-F03CB3D7.js"></script>
+    <script defer src="dist/sidebar_items-08887088.js"></script>
     <script defer src="docs_config.js"></script>
     <script defer src="dist/html-HBZYRXZS.js"></script>
 <style>
@@ -120,15 +120,15 @@ AshDispatch
     <section id="moduledoc">
 <p>Introspection helpers for AshDispatch events.</p><p>This module provides functions to introspect event DSL configuration
 at runtime. Generated automatically by <a href="https://hexdocs.pm/spark/2.3.14/Spark.InfoGenerator.html"><code class="inline">Spark.InfoGenerator</code></a>.</p><h2 id="module-usage" class="section-heading"><a href="#module-usage" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Usage</span></h2><pre><code class="makeup elixir" translate="no"><span class="c1"># Get event ID</span><span class="w">
-</span><span class="nc">AshDispatch.Info</span><span class="o">.</span><span class="n">dispatch_id</span><span class="p" data-group-id="4136480487-1">(</span><span class="nc">MyApp.Events.Orders.Created</span><span class="p" data-group-id="4136480487-1">)</span><span class="w">
+</span><span class="nc">AshDispatch.Info</span><span class="o">.</span><span class="n">dispatch_id</span><span class="p" data-group-id="4492170991-1">(</span><span class="nc">MyApp.Events.Orders.Created</span><span class="p" data-group-id="4492170991-1">)</span><span class="w">
 </span><span class="c1"># =&gt; &quot;orders.created&quot;</span><span class="w">
 
 </span><span class="c1"># Get channels</span><span class="w">
-</span><span class="nc">AshDispatch.Info</span><span class="o">.</span><span class="n">dispatch_channels</span><span class="p" data-group-id="4136480487-2">(</span><span class="nc">MyApp.Events.Orders.Created</span><span class="p" data-group-id="4136480487-2">)</span><span class="w">
+</span><span class="nc">AshDispatch.Info</span><span class="o">.</span><span class="n">dispatch_channels</span><span class="p" data-group-id="4492170991-2">(</span><span class="nc">MyApp.Events.Orders.Created</span><span class="p" data-group-id="4492170991-2">)</span><span class="w">
 </span><span class="c1"># =&gt; [%Channel{transport: :email, audience: :user}, ...]</span><span class="w">
 
 </span><span class="c1"># Get domain</span><span class="w">
-</span><span class="nc">AshDispatch.Info</span><span class="o">.</span><span class="n">dispatch_domain</span><span class="p" data-group-id="4136480487-3">(</span><span class="nc">MyApp.Events.Orders.Created</span><span class="p" data-group-id="4136480487-3">)</span><span class="w">
+</span><span class="nc">AshDispatch.Info</span><span class="o">.</span><span class="n">dispatch_domain</span><span class="p" data-group-id="4492170991-3">(</span><span class="nc">MyApp.Events.Orders.Created</span><span class="p" data-group-id="4492170991-3">)</span><span class="w">
 </span><span class="c1"># =&gt; :orders</span></code></pre><h2 id="module-generated-functions" class="section-heading"><a href="#module-generated-functions" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Generated Functions</span></h2><p>All DSL options and sections generate corresponding accessor functions:</p><h3 id="module-dispatch-section" class="section-heading"><a href="#module-dispatch-section" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Dispatch Section</span></h3><ul><li><a href="#dispatch_id/1"><code class="inline">dispatch_id/1</code></a> - Event identifier</li><li><a href="#dispatch_domain/1"><code class="inline">dispatch_domain/1</code></a> - Event domain</li><li><a href="#dispatch_category/1"><code class="inline">dispatch_category/1</code></a> - Email preference category</li><li><a href="#dispatch_user_configurable?/1"><code class="inline">dispatch_user_configurable?/1</code></a> - Whether user can opt-out</li></ul><h3 id="module-channels-section" class="section-heading"><a href="#module-channels-section" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Channels Section</span></h3><ul><li><a href="#dispatch_channels/1"><code class="inline">dispatch_channels/1</code></a> - List of channel entities</li></ul><h3 id="module-content-section" class="section-heading"><a href="#module-content-section" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Content Section</span></h3><ul><li><a href="#dispatch_content_subject/1"><code class="inline">dispatch_content_subject/1</code></a> - Email subject (if in DSL)</li><li><a href="#dispatch_content_from_name/1"><code class="inline">dispatch_content_from_name/1</code></a> - From name</li><li><a href="#dispatch_content_from_email/1"><code class="inline">dispatch_content_from_email/1</code></a> - From email</li><li><a href="#dispatch_content_notification_title/1"><code class="inline">dispatch_content_notification_title/1</code></a> - Notification title</li><li><a href="#dispatch_content_notification_message/1"><code class="inline">dispatch_content_notification_message/1</code></a> - Notification message</li><li><a href="#dispatch_content_action_label/1"><code class="inline">dispatch_content_action_label/1</code></a> - Action button label</li><li><a href="#dispatch_content_action_url/1"><code class="inline">dispatch_content_action_url/1</code></a> - Action URL</li></ul><h3 id="module-metadata-section" class="section-heading"><a href="#module-metadata-section" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Metadata Section</span></h3><ul><li><a href="#dispatch_metadata_action_required?/1"><code class="inline">dispatch_metadata_action_required?/1</code></a> - Whether action required</li><li><a href="#dispatch_metadata_notification_type/1"><code class="inline">dispatch_metadata_notification_type/1</code></a> - Notification type</li></ul><h3 id="module-counters-section" class="section-heading"><a href="#module-counters-section" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Counters Section</span></h3><ul><li><a href="#dispatch_counters/1"><code class="inline">dispatch_counters/1</code></a> - List of counter broadcast configurations</li></ul>
     </section>
 
@@ -394,6 +394,26 @@ If not provided, defaults to &quot;{module_name_last_segment}&quot;.</p></div>
 
     <div class="summary-row">
       <div class="summary-signature">
+        <a href="#dispatch_manual_trigger_filter/1" data-no-tooltip="" translate="no">dispatch_manual_trigger_filter(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Ash filter expression to control visibility in manual trigger UI.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_manual_trigger_filter!/1" data-no-tooltip="" translate="no">dispatch_manual_trigger_filter!(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Ash filter expression to control visibility in manual trigger UI.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
         <a href="#dispatch_metadata_action_required?/1" data-no-tooltip="" translate="no">dispatch_metadata_action_required?(dsl_or_extended)</a>
 
       </div>
@@ -439,6 +459,326 @@ If not provided, defaults to &quot;{module_name_last_segment}&quot;.</p></div>
       </div>
 
         <div class="summary-synopsis"><p>dispatch DSL options</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_recipient_discord_identifier/1" data-no-tooltip="" translate="no">dispatch_recipient_discord_identifier(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Field specification for extracting the recipient identifier (email, phone, etc.).</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_recipient_discord_identifier!/1" data-no-tooltip="" translate="no">dispatch_recipient_discord_identifier!(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Field specification for extracting the recipient identifier (email, phone, etc.).</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_recipient_discord_name/1" data-no-tooltip="" translate="no">dispatch_recipient_discord_name(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Field specification for extracting the recipient display name.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_recipient_discord_name!/1" data-no-tooltip="" translate="no">dispatch_recipient_discord_name!(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Field specification for extracting the recipient display name.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_recipient_discord_options/1" data-no-tooltip="" translate="no">dispatch_recipient_discord_options(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>dispatch.recipient.discord DSL options</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_recipient_email_identifier/1" data-no-tooltip="" translate="no">dispatch_recipient_email_identifier(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Field specification for extracting the recipient identifier (email, phone, etc.).</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_recipient_email_identifier!/1" data-no-tooltip="" translate="no">dispatch_recipient_email_identifier!(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Field specification for extracting the recipient identifier (email, phone, etc.).</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_recipient_email_name/1" data-no-tooltip="" translate="no">dispatch_recipient_email_name(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Field specification for extracting the recipient display name.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_recipient_email_name!/1" data-no-tooltip="" translate="no">dispatch_recipient_email_name!(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Field specification for extracting the recipient display name.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_recipient_email_options/1" data-no-tooltip="" translate="no">dispatch_recipient_email_options(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>dispatch.recipient.email DSL options</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_recipient_in_app_identifier/1" data-no-tooltip="" translate="no">dispatch_recipient_in_app_identifier(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Field specification for extracting the recipient identifier (email, phone, etc.).</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_recipient_in_app_identifier!/1" data-no-tooltip="" translate="no">dispatch_recipient_in_app_identifier!(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Field specification for extracting the recipient identifier (email, phone, etc.).</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_recipient_in_app_name/1" data-no-tooltip="" translate="no">dispatch_recipient_in_app_name(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Field specification for extracting the recipient display name.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_recipient_in_app_name!/1" data-no-tooltip="" translate="no">dispatch_recipient_in_app_name!(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Field specification for extracting the recipient display name.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_recipient_in_app_options/1" data-no-tooltip="" translate="no">dispatch_recipient_in_app_options(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>dispatch.recipient.in_app DSL options</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_recipient_slack_identifier/1" data-no-tooltip="" translate="no">dispatch_recipient_slack_identifier(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Field specification for extracting the recipient identifier (email, phone, etc.).</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_recipient_slack_identifier!/1" data-no-tooltip="" translate="no">dispatch_recipient_slack_identifier!(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Field specification for extracting the recipient identifier (email, phone, etc.).</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_recipient_slack_name/1" data-no-tooltip="" translate="no">dispatch_recipient_slack_name(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Field specification for extracting the recipient display name.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_recipient_slack_name!/1" data-no-tooltip="" translate="no">dispatch_recipient_slack_name!(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Field specification for extracting the recipient display name.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_recipient_slack_options/1" data-no-tooltip="" translate="no">dispatch_recipient_slack_options(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>dispatch.recipient.slack DSL options</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_recipient_sms_identifier/1" data-no-tooltip="" translate="no">dispatch_recipient_sms_identifier(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Field specification for extracting the recipient identifier (email, phone, etc.).</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_recipient_sms_identifier!/1" data-no-tooltip="" translate="no">dispatch_recipient_sms_identifier!(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Field specification for extracting the recipient identifier (email, phone, etc.).</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_recipient_sms_name/1" data-no-tooltip="" translate="no">dispatch_recipient_sms_name(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Field specification for extracting the recipient display name.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_recipient_sms_name!/1" data-no-tooltip="" translate="no">dispatch_recipient_sms_name!(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Field specification for extracting the recipient display name.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_recipient_sms_options/1" data-no-tooltip="" translate="no">dispatch_recipient_sms_options(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>dispatch.recipient.sms DSL options</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_recipient_webhook_identifier/1" data-no-tooltip="" translate="no">dispatch_recipient_webhook_identifier(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Field specification for extracting the recipient identifier (email, phone, etc.).</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_recipient_webhook_identifier!/1" data-no-tooltip="" translate="no">dispatch_recipient_webhook_identifier!(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Field specification for extracting the recipient identifier (email, phone, etc.).</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_recipient_webhook_name/1" data-no-tooltip="" translate="no">dispatch_recipient_webhook_name(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Field specification for extracting the recipient display name.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_recipient_webhook_name!/1" data-no-tooltip="" translate="no">dispatch_recipient_webhook_name!(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Field specification for extracting the recipient display name.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_recipient_webhook_options/1" data-no-tooltip="" translate="no">dispatch_recipient_webhook_options(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>dispatch.recipient.webhook DSL options</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_should_send_filter/1" data-no-tooltip="" translate="no">dispatch_should_send_filter(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Ash filter expression to control whether auto-triggered events should send.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_should_send_filter!/1" data-no-tooltip="" translate="no">dispatch_should_send_filter!(dsl_or_extended)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Ash filter expression to control whether auto-triggered events should send.</p></div>
 
     </div>
 
@@ -1145,6 +1485,82 @@ If not provided, defaults to &quot;{module_name_last_segment}&quot;.</p>
 If not provided, defaults to &quot;{module_name_last_segment}&quot;.</p>
   </section>
 </section>
+<section class="detail" id="dispatch_manual_trigger_filter/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_manual_trigger_filter/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_manual_trigger_filter(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_manual_trigger_filter(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  {:ok, <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>()} | :error</pre>
+
+      </div>
+
+<p>Ash filter expression to control visibility in manual trigger UI.</p><p>Filters are applied to the target user (recipient) to determine if this
+event should be shown as an option in manual trigger interfaces.</p><h2 id="dispatch_manual_trigger_filter/1-examples" class="section-heading"><a href="#dispatch_manual_trigger_filter/1-examples" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Examples</span></h2><pre><code class="makeup elixir" translate="no"><span class="c1"># Only show if user hasn&#39;t confirmed email</span><span class="w">
+</span><span class="ss">manual_trigger_filter</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="2910825606-1">[</span><span class="ss">confirmed_at</span><span class="p">:</span><span class="w"> </span><span class="no">nil</span><span class="p" data-group-id="2910825606-1">]</span><span class="w">
+
+</span><span class="c1"># Only show if user is archived</span><span class="w">
+</span><span class="ss">manual_trigger_filter</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="2910825606-2">[</span><span class="ss">archived_at</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="2910825606-3">[</span><span class="ss">not</span><span class="p">:</span><span class="w"> </span><span class="no">nil</span><span class="p" data-group-id="2910825606-3">]</span><span class="p" data-group-id="2910825606-2">]</span><span class="w">
+
+</span><span class="c1"># Complex filter with multiple conditions</span><span class="w">
+</span><span class="ss">manual_trigger_filter</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="2910825606-4">[</span><span class="ss">admin</span><span class="p">:</span><span class="w"> </span><span class="no">true</span><span class="p">,</span><span class="w"> </span><span class="ss">archived</span><span class="p">:</span><span class="w"> </span><span class="no">false</span><span class="p" data-group-id="2910825606-4">]</span></code></pre><p>Defaults to no filter (show for all users). For complex logic, override
+the <code class="inline">applicable_for_user?/1</code> callback instead.</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_manual_trigger_filter!/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_manual_trigger_filter!/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_manual_trigger_filter!(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_manual_trigger_filter!(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">no_return</a>()</pre>
+
+      </div>
+
+<p>Ash filter expression to control visibility in manual trigger UI.</p><p>Filters are applied to the target user (recipient) to determine if this
+event should be shown as an option in manual trigger interfaces.</p><h2 id="dispatch_manual_trigger_filter!/1-examples" class="section-heading"><a href="#dispatch_manual_trigger_filter!/1-examples" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Examples</span></h2><pre><code class="makeup elixir" translate="no"><span class="c1"># Only show if user hasn&#39;t confirmed email</span><span class="w">
+</span><span class="ss">manual_trigger_filter</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="8889021133-1">[</span><span class="ss">confirmed_at</span><span class="p">:</span><span class="w"> </span><span class="no">nil</span><span class="p" data-group-id="8889021133-1">]</span><span class="w">
+
+</span><span class="c1"># Only show if user is archived</span><span class="w">
+</span><span class="ss">manual_trigger_filter</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="8889021133-2">[</span><span class="ss">archived_at</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="8889021133-3">[</span><span class="ss">not</span><span class="p">:</span><span class="w"> </span><span class="no">nil</span><span class="p" data-group-id="8889021133-3">]</span><span class="p" data-group-id="8889021133-2">]</span><span class="w">
+
+</span><span class="c1"># Complex filter with multiple conditions</span><span class="w">
+</span><span class="ss">manual_trigger_filter</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="8889021133-4">[</span><span class="ss">admin</span><span class="p">:</span><span class="w"> </span><span class="no">true</span><span class="p">,</span><span class="w"> </span><span class="ss">archived</span><span class="p">:</span><span class="w"> </span><span class="no">false</span><span class="p" data-group-id="8889021133-4">]</span></code></pre><p>Defaults to no filter (show for all users). For complex logic, override
+the <code class="inline">applicable_for_user?/1</code> callback instead.</p>
+  </section>
+</section>
 <section class="detail" id="dispatch_metadata_action_required?/1">
 
   <div class="detail-header">
@@ -1290,6 +1706,966 @@ If not provided, defaults to &quot;{module_name_last_segment}&quot;.</p>
       </div>
 
 <p>dispatch DSL options</p><p>Returns a map containing the and any configured or default values.</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_recipient_discord_identifier/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_recipient_discord_identifier/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_recipient_discord_identifier(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_recipient_discord_identifier(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  {:ok, <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>()} | :error</pre>
+
+      </div>
+
+<p>Field specification for extracting the recipient identifier (email, phone, etc.).</p><p>Formats:</p><ul><li><code class="inline">:field_name</code> - Direct field access</li><li><code class="inline">{:field, :field_name}</code> - Explicit field</li><li><code class="inline">{:field, [:nested, :path]}</code> - Nested path</li><li><code class="inline">{:string_field, &quot;key&quot;}</code> - String key</li><li><code class="inline">&amp;Module.function/1</code> - Custom function</li></ul>
+  </section>
+</section>
+<section class="detail" id="dispatch_recipient_discord_identifier!/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_recipient_discord_identifier!/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_recipient_discord_identifier!(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_recipient_discord_identifier!(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">no_return</a>()</pre>
+
+      </div>
+
+<p>Field specification for extracting the recipient identifier (email, phone, etc.).</p><p>Formats:</p><ul><li><code class="inline">:field_name</code> - Direct field access</li><li><code class="inline">{:field, :field_name}</code> - Explicit field</li><li><code class="inline">{:field, [:nested, :path]}</code> - Nested path</li><li><code class="inline">{:string_field, &quot;key&quot;}</code> - String key</li><li><code class="inline">&amp;Module.function/1</code> - Custom function</li></ul>
+  </section>
+</section>
+<section class="detail" id="dispatch_recipient_discord_name/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_recipient_discord_name/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_recipient_discord_name(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_recipient_discord_name(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  {:ok, <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>()} | :error</pre>
+
+      </div>
+
+<p>Field specification for extracting the recipient display name.</p><p>Formats: Same as identifier.
+Set to <code class="inline">nil</code> if name is not needed (e.g., webhooks).</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_recipient_discord_name!/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_recipient_discord_name!/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_recipient_discord_name!(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_recipient_discord_name!(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">no_return</a>()</pre>
+
+      </div>
+
+<p>Field specification for extracting the recipient display name.</p><p>Formats: Same as identifier.
+Set to <code class="inline">nil</code> if name is not needed (e.g., webhooks).</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_recipient_discord_options/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_recipient_discord_options/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_recipient_discord_options(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_recipient_discord_options(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) :: %{
+  required(<a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">atom</a>()) =&gt; <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>()
+}</pre>
+
+      </div>
+
+<p>dispatch.recipient.discord DSL options</p><p>Returns a map containing the and any configured or default values.</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_recipient_email_identifier/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_recipient_email_identifier/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_recipient_email_identifier(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_recipient_email_identifier(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  {:ok, <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>()} | :error</pre>
+
+      </div>
+
+<p>Field specification for extracting the recipient identifier (email, phone, etc.).</p><p>Formats:</p><ul><li><code class="inline">:field_name</code> - Direct field access</li><li><code class="inline">{:field, :field_name}</code> - Explicit field</li><li><code class="inline">{:field, [:nested, :path]}</code> - Nested path</li><li><code class="inline">{:string_field, &quot;key&quot;}</code> - String key</li><li><code class="inline">&amp;Module.function/1</code> - Custom function</li></ul>
+  </section>
+</section>
+<section class="detail" id="dispatch_recipient_email_identifier!/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_recipient_email_identifier!/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_recipient_email_identifier!(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_recipient_email_identifier!(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">no_return</a>()</pre>
+
+      </div>
+
+<p>Field specification for extracting the recipient identifier (email, phone, etc.).</p><p>Formats:</p><ul><li><code class="inline">:field_name</code> - Direct field access</li><li><code class="inline">{:field, :field_name}</code> - Explicit field</li><li><code class="inline">{:field, [:nested, :path]}</code> - Nested path</li><li><code class="inline">{:string_field, &quot;key&quot;}</code> - String key</li><li><code class="inline">&amp;Module.function/1</code> - Custom function</li></ul>
+  </section>
+</section>
+<section class="detail" id="dispatch_recipient_email_name/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_recipient_email_name/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_recipient_email_name(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_recipient_email_name(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  {:ok, <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>()} | :error</pre>
+
+      </div>
+
+<p>Field specification for extracting the recipient display name.</p><p>Formats: Same as identifier.
+Set to <code class="inline">nil</code> if name is not needed (e.g., webhooks).</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_recipient_email_name!/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_recipient_email_name!/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_recipient_email_name!(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_recipient_email_name!(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">no_return</a>()</pre>
+
+      </div>
+
+<p>Field specification for extracting the recipient display name.</p><p>Formats: Same as identifier.
+Set to <code class="inline">nil</code> if name is not needed (e.g., webhooks).</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_recipient_email_options/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_recipient_email_options/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_recipient_email_options(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_recipient_email_options(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) :: %{
+  required(<a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">atom</a>()) =&gt; <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>()
+}</pre>
+
+      </div>
+
+<p>dispatch.recipient.email DSL options</p><p>Returns a map containing the and any configured or default values.</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_recipient_in_app_identifier/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_recipient_in_app_identifier/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_recipient_in_app_identifier(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_recipient_in_app_identifier(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  {:ok, <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>()} | :error</pre>
+
+      </div>
+
+<p>Field specification for extracting the recipient identifier (email, phone, etc.).</p><p>Formats:</p><ul><li><code class="inline">:field_name</code> - Direct field access</li><li><code class="inline">{:field, :field_name}</code> - Explicit field</li><li><code class="inline">{:field, [:nested, :path]}</code> - Nested path</li><li><code class="inline">{:string_field, &quot;key&quot;}</code> - String key</li><li><code class="inline">&amp;Module.function/1</code> - Custom function</li></ul>
+  </section>
+</section>
+<section class="detail" id="dispatch_recipient_in_app_identifier!/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_recipient_in_app_identifier!/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_recipient_in_app_identifier!(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_recipient_in_app_identifier!(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">no_return</a>()</pre>
+
+      </div>
+
+<p>Field specification for extracting the recipient identifier (email, phone, etc.).</p><p>Formats:</p><ul><li><code class="inline">:field_name</code> - Direct field access</li><li><code class="inline">{:field, :field_name}</code> - Explicit field</li><li><code class="inline">{:field, [:nested, :path]}</code> - Nested path</li><li><code class="inline">{:string_field, &quot;key&quot;}</code> - String key</li><li><code class="inline">&amp;Module.function/1</code> - Custom function</li></ul>
+  </section>
+</section>
+<section class="detail" id="dispatch_recipient_in_app_name/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_recipient_in_app_name/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_recipient_in_app_name(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_recipient_in_app_name(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  {:ok, <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>()} | :error</pre>
+
+      </div>
+
+<p>Field specification for extracting the recipient display name.</p><p>Formats: Same as identifier.
+Set to <code class="inline">nil</code> if name is not needed (e.g., webhooks).</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_recipient_in_app_name!/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_recipient_in_app_name!/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_recipient_in_app_name!(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_recipient_in_app_name!(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">no_return</a>()</pre>
+
+      </div>
+
+<p>Field specification for extracting the recipient display name.</p><p>Formats: Same as identifier.
+Set to <code class="inline">nil</code> if name is not needed (e.g., webhooks).</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_recipient_in_app_options/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_recipient_in_app_options/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_recipient_in_app_options(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_recipient_in_app_options(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) :: %{
+  required(<a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">atom</a>()) =&gt; <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>()
+}</pre>
+
+      </div>
+
+<p>dispatch.recipient.in_app DSL options</p><p>Returns a map containing the and any configured or default values.</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_recipient_slack_identifier/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_recipient_slack_identifier/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_recipient_slack_identifier(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_recipient_slack_identifier(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  {:ok, <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>()} | :error</pre>
+
+      </div>
+
+<p>Field specification for extracting the recipient identifier (email, phone, etc.).</p><p>Formats:</p><ul><li><code class="inline">:field_name</code> - Direct field access</li><li><code class="inline">{:field, :field_name}</code> - Explicit field</li><li><code class="inline">{:field, [:nested, :path]}</code> - Nested path</li><li><code class="inline">{:string_field, &quot;key&quot;}</code> - String key</li><li><code class="inline">&amp;Module.function/1</code> - Custom function</li></ul>
+  </section>
+</section>
+<section class="detail" id="dispatch_recipient_slack_identifier!/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_recipient_slack_identifier!/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_recipient_slack_identifier!(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_recipient_slack_identifier!(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">no_return</a>()</pre>
+
+      </div>
+
+<p>Field specification for extracting the recipient identifier (email, phone, etc.).</p><p>Formats:</p><ul><li><code class="inline">:field_name</code> - Direct field access</li><li><code class="inline">{:field, :field_name}</code> - Explicit field</li><li><code class="inline">{:field, [:nested, :path]}</code> - Nested path</li><li><code class="inline">{:string_field, &quot;key&quot;}</code> - String key</li><li><code class="inline">&amp;Module.function/1</code> - Custom function</li></ul>
+  </section>
+</section>
+<section class="detail" id="dispatch_recipient_slack_name/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_recipient_slack_name/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_recipient_slack_name(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_recipient_slack_name(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  {:ok, <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>()} | :error</pre>
+
+      </div>
+
+<p>Field specification for extracting the recipient display name.</p><p>Formats: Same as identifier.
+Set to <code class="inline">nil</code> if name is not needed (e.g., webhooks).</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_recipient_slack_name!/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_recipient_slack_name!/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_recipient_slack_name!(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_recipient_slack_name!(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">no_return</a>()</pre>
+
+      </div>
+
+<p>Field specification for extracting the recipient display name.</p><p>Formats: Same as identifier.
+Set to <code class="inline">nil</code> if name is not needed (e.g., webhooks).</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_recipient_slack_options/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_recipient_slack_options/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_recipient_slack_options(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_recipient_slack_options(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) :: %{
+  required(<a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">atom</a>()) =&gt; <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>()
+}</pre>
+
+      </div>
+
+<p>dispatch.recipient.slack DSL options</p><p>Returns a map containing the and any configured or default values.</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_recipient_sms_identifier/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_recipient_sms_identifier/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_recipient_sms_identifier(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_recipient_sms_identifier(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  {:ok, <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>()} | :error</pre>
+
+      </div>
+
+<p>Field specification for extracting the recipient identifier (email, phone, etc.).</p><p>Formats:</p><ul><li><code class="inline">:field_name</code> - Direct field access</li><li><code class="inline">{:field, :field_name}</code> - Explicit field</li><li><code class="inline">{:field, [:nested, :path]}</code> - Nested path</li><li><code class="inline">{:string_field, &quot;key&quot;}</code> - String key</li><li><code class="inline">&amp;Module.function/1</code> - Custom function</li></ul>
+  </section>
+</section>
+<section class="detail" id="dispatch_recipient_sms_identifier!/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_recipient_sms_identifier!/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_recipient_sms_identifier!(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_recipient_sms_identifier!(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">no_return</a>()</pre>
+
+      </div>
+
+<p>Field specification for extracting the recipient identifier (email, phone, etc.).</p><p>Formats:</p><ul><li><code class="inline">:field_name</code> - Direct field access</li><li><code class="inline">{:field, :field_name}</code> - Explicit field</li><li><code class="inline">{:field, [:nested, :path]}</code> - Nested path</li><li><code class="inline">{:string_field, &quot;key&quot;}</code> - String key</li><li><code class="inline">&amp;Module.function/1</code> - Custom function</li></ul>
+  </section>
+</section>
+<section class="detail" id="dispatch_recipient_sms_name/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_recipient_sms_name/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_recipient_sms_name(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_recipient_sms_name(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  {:ok, <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>()} | :error</pre>
+
+      </div>
+
+<p>Field specification for extracting the recipient display name.</p><p>Formats: Same as identifier.
+Set to <code class="inline">nil</code> if name is not needed (e.g., webhooks).</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_recipient_sms_name!/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_recipient_sms_name!/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_recipient_sms_name!(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_recipient_sms_name!(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">no_return</a>()</pre>
+
+      </div>
+
+<p>Field specification for extracting the recipient display name.</p><p>Formats: Same as identifier.
+Set to <code class="inline">nil</code> if name is not needed (e.g., webhooks).</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_recipient_sms_options/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_recipient_sms_options/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_recipient_sms_options(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_recipient_sms_options(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) :: %{
+  required(<a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">atom</a>()) =&gt; <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>()
+}</pre>
+
+      </div>
+
+<p>dispatch.recipient.sms DSL options</p><p>Returns a map containing the and any configured or default values.</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_recipient_webhook_identifier/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_recipient_webhook_identifier/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_recipient_webhook_identifier(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_recipient_webhook_identifier(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  {:ok, <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>()} | :error</pre>
+
+      </div>
+
+<p>Field specification for extracting the recipient identifier (email, phone, etc.).</p><p>Formats:</p><ul><li><code class="inline">:field_name</code> - Direct field access</li><li><code class="inline">{:field, :field_name}</code> - Explicit field</li><li><code class="inline">{:field, [:nested, :path]}</code> - Nested path</li><li><code class="inline">{:string_field, &quot;key&quot;}</code> - String key</li><li><code class="inline">&amp;Module.function/1</code> - Custom function</li></ul>
+  </section>
+</section>
+<section class="detail" id="dispatch_recipient_webhook_identifier!/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_recipient_webhook_identifier!/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_recipient_webhook_identifier!(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_recipient_webhook_identifier!(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">no_return</a>()</pre>
+
+      </div>
+
+<p>Field specification for extracting the recipient identifier (email, phone, etc.).</p><p>Formats:</p><ul><li><code class="inline">:field_name</code> - Direct field access</li><li><code class="inline">{:field, :field_name}</code> - Explicit field</li><li><code class="inline">{:field, [:nested, :path]}</code> - Nested path</li><li><code class="inline">{:string_field, &quot;key&quot;}</code> - String key</li><li><code class="inline">&amp;Module.function/1</code> - Custom function</li></ul>
+  </section>
+</section>
+<section class="detail" id="dispatch_recipient_webhook_name/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_recipient_webhook_name/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_recipient_webhook_name(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_recipient_webhook_name(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  {:ok, <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>()} | :error</pre>
+
+      </div>
+
+<p>Field specification for extracting the recipient display name.</p><p>Formats: Same as identifier.
+Set to <code class="inline">nil</code> if name is not needed (e.g., webhooks).</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_recipient_webhook_name!/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_recipient_webhook_name!/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_recipient_webhook_name!(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_recipient_webhook_name!(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">no_return</a>()</pre>
+
+      </div>
+
+<p>Field specification for extracting the recipient display name.</p><p>Formats: Same as identifier.
+Set to <code class="inline">nil</code> if name is not needed (e.g., webhooks).</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_recipient_webhook_options/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_recipient_webhook_options/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_recipient_webhook_options(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_recipient_webhook_options(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) :: %{
+  required(<a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">atom</a>()) =&gt; <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>()
+}</pre>
+
+      </div>
+
+<p>dispatch.recipient.webhook DSL options</p><p>Returns a map containing the and any configured or default values.</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_should_send_filter/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_should_send_filter/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_should_send_filter(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_should_send_filter(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  {:ok, <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>()} | :error</pre>
+
+      </div>
+
+<p>Ash filter expression to control whether auto-triggered events should send.</p><p>Filters are applied to the target user (recipient) to determine if this
+auto-triggered event should actually be sent to them.</p><h2 id="dispatch_should_send_filter/1-examples" class="section-heading"><a href="#dispatch_should_send_filter/1-examples" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Examples</span></h2><pre><code class="makeup elixir" translate="no"><span class="c1"># Only send if user hasn&#39;t confirmed email yet</span><span class="w">
+</span><span class="ss">should_send_filter</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="9399718593-1">[</span><span class="ss">confirmed_at</span><span class="p">:</span><span class="w"> </span><span class="no">nil</span><span class="p" data-group-id="9399718593-1">]</span><span class="w">
+
+</span><span class="c1"># Only send to active, non-archived users</span><span class="w">
+</span><span class="ss">should_send_filter</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="9399718593-2">[</span><span class="ss">archived_at</span><span class="p">:</span><span class="w"> </span><span class="no">nil</span><span class="p">,</span><span class="w"> </span><span class="ss">active</span><span class="p">:</span><span class="w"> </span><span class="no">true</span><span class="p" data-group-id="9399718593-2">]</span></code></pre><p>Defaults to no filter (always send). For complex logic, override
+the <code class="inline">should_send?/2</code> callback instead.</p><p>Note: This filter is only checked for auto-triggered events. Manual
+triggers always send (assuming applicable_for_user? returns true).</p>
+  </section>
+</section>
+<section class="detail" id="dispatch_should_send_filter!/1">
+
+  <div class="detail-header">
+    <a href="#dispatch_should_send_filter!/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_should_send_filter!(dsl_or_extended)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/info.ex#L52" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> dispatch_should_send_filter!(dsl_or_extended :: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">module</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>()) ::
+  <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">any</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">no_return</a>()</pre>
+
+      </div>
+
+<p>Ash filter expression to control whether auto-triggered events should send.</p><p>Filters are applied to the target user (recipient) to determine if this
+auto-triggered event should actually be sent to them.</p><h2 id="dispatch_should_send_filter!/1-examples" class="section-heading"><a href="#dispatch_should_send_filter!/1-examples" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Examples</span></h2><pre><code class="makeup elixir" translate="no"><span class="c1"># Only send if user hasn&#39;t confirmed email yet</span><span class="w">
+</span><span class="ss">should_send_filter</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="2961543766-1">[</span><span class="ss">confirmed_at</span><span class="p">:</span><span class="w"> </span><span class="no">nil</span><span class="p" data-group-id="2961543766-1">]</span><span class="w">
+
+</span><span class="c1"># Only send to active, non-archived users</span><span class="w">
+</span><span class="ss">should_send_filter</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="2961543766-2">[</span><span class="ss">archived_at</span><span class="p">:</span><span class="w"> </span><span class="no">nil</span><span class="p">,</span><span class="w"> </span><span class="ss">active</span><span class="p">:</span><span class="w"> </span><span class="no">true</span><span class="p" data-group-id="2961543766-2">]</span></code></pre><p>Defaults to no filter (always send). For complex logic, override
+the <code class="inline">should_send?/2</code> callback instead.</p><p>Note: This filter is only checked for auto-triggered events. Manual
+triggers always send (assuming applicable_for_user? returns true).</p>
   </section>
 </section>
 <section class="detail" id="dispatch_user_configurable?/1">

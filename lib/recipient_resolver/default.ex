@@ -1,15 +1,15 @@
 defmodule AshDispatch.RecipientResolver.Default do
   @moduledoc """
-  Default recipient resolver that logs warnings.
+  Default recipient resolver that raises errors.
 
-  This is used when no custom resolver is configured. It returns empty lists
-  for admin/team/system audiences and logs warnings to help developers
-  realize they need to configure a resolver.
+  This is used when no custom resolver is configured. Following Elixir's
+  "let it crash" philosophy, it raises explicit errors for admin/team/system
+  audiences to force developers to implement proper recipient resolution.
 
   ## Usage
 
   This module is used automatically if you don't configure a resolver.
-  To stop seeing warnings, configure your own resolver:
+  To fix these errors, configure your own resolver:
 
       # config/config.exs
       config :ash_dispatch,
@@ -20,11 +20,9 @@ defmodule AshDispatch.RecipientResolver.Default do
 
   @behaviour AshDispatch.RecipientResolver
 
-  require Logger
-
   @impl true
   def resolve_admins(_context) do
-    Logger.warning("""
+    raise """
     Admin recipient resolution not implemented!
 
     To enable admin notifications, configure a recipient resolver:
@@ -34,14 +32,12 @@ defmodule AshDispatch.RecipientResolver.Default do
           recipient_resolver: MyApp.Recipients.Resolver
 
     See AshDispatch.RecipientResolver documentation for details.
-    """)
-
-    []
+    """
   end
 
   @impl true
   def resolve_team(team_name, _context) do
-    Logger.warning("""
+    raise """
     Team recipient resolution not implemented!
 
     Attempted to resolve team: #{inspect(team_name)}
@@ -53,14 +49,12 @@ defmodule AshDispatch.RecipientResolver.Default do
           recipient_resolver: MyApp.Recipients.Resolver
 
     See AshDispatch.RecipientResolver documentation for details.
-    """)
-
-    []
+    """
   end
 
   @impl true
   def resolve_system(_context) do
-    Logger.warning("""
+    raise """
     System recipient resolution not implemented!
 
     To enable system notifications, configure a recipient resolver:
@@ -70,8 +64,6 @@ defmodule AshDispatch.RecipientResolver.Default do
           recipient_resolver: MyApp.Recipients.Resolver
 
     See AshDispatch.RecipientResolver documentation for details.
-    """)
-
-    []
+    """
   end
 end

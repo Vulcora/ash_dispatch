@@ -91,7 +91,9 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
     # Calculate cutoff time (don't retry if last attempt was too recent)
     cutoff_time = DateTime.add(DateTime.utc_now(), -retry_delay_minutes * 60, :second)
 
-    Logger.info("RetryFailedDeliveries: Starting retry job (max_retries=#{max_retries}, delay=#{retry_delay_minutes}m)")
+    Logger.info(
+      "RetryFailedDeliveries: Starting retry job (max_retries=#{max_retries}, delay=#{retry_delay_minutes}m)"
+    )
 
     # Query for eligible failed receipts
     query =
@@ -118,7 +120,9 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
           succeeded = Enum.count(results, &(&1 == :ok))
           failed = Enum.count(results, &(&1 != :ok))
 
-          Logger.info("RetryFailedDeliveries: Retry results: #{succeeded} succeeded, #{failed} failed")
+          Logger.info(
+            "RetryFailedDeliveries: Retry results: #{succeeded} succeeded, #{failed} failed"
+          )
         else
           Logger.debug("RetryFailedDeliveries: No failed deliveries to retry")
         end
@@ -126,7 +130,10 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
         :ok
 
       {:error, reason} ->
-        Logger.error("RetryFailedDeliveries: Failed to query for failed deliveries: #{inspect(reason)}")
+        Logger.error(
+          "RetryFailedDeliveries: Failed to query for failed deliveries: #{inspect(reason)}"
+        )
+
         {:error, reason}
     end
   end
@@ -182,7 +189,10 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
 
         # If we can't enqueue, mark as failed_permanent after max retries
         if (receipt.retry_count || 0) >= max_retries - 1 do
-          mark_failed_permanent(receipt, "Failed to enqueue retry after #{max_retries} attempts: #{inspect(reason)}")
+          mark_failed_permanent(
+            receipt,
+            "Failed to enqueue retry after #{max_retries} attempts: #{inspect(reason)}"
+          )
         end
 
         {:error, reason}

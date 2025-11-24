@@ -12,7 +12,7 @@
 
     <link rel="stylesheet" href="dist/html-elixir-ZFNMEJKT.css" />
 
-    <script defer src="dist/sidebar_items-F03CB3D7.js"></script>
+    <script defer src="dist/sidebar_items-08887088.js"></script>
     <script defer src="docs_config.js"></script>
     <script defer src="dist/html-HBZYRXZS.js"></script>
 <style>
@@ -118,44 +118,43 @@ AshDispatch
 
 
     <section id="moduledoc">
-<p>Ash.Resource extension for defining event dispatching.</p><p>This extension adds a <code class="inline">dispatch</code> section to Ash resources, allowing you to
-define events that are triggered by resource actions.</p><h2 id="module-usage" class="section-heading"><a href="#module-usage" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Usage</span></h2><pre><code class="makeup elixir" translate="no"><span class="kd">defmodule</span><span class="w"> </span><span class="nc">MyApp.Orders.ProductOrder</span><span class="w"> </span><span class="k" data-group-id="1337265412-1">do</span><span class="w">
+<p>Ash.Resource extension for defining event dispatching and counter broadcasting.</p><p>This extension adds <code class="inline">dispatch</code> and <code class="inline">counters</code> sections to Ash resources, allowing
+you to define events and counters that are triggered by resource actions.</p><h2 id="module-event-dispatching" class="section-heading"><a href="#module-event-dispatching" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Event Dispatching</span></h2><pre><code class="makeup elixir" translate="no"><span class="kd">defmodule</span><span class="w"> </span><span class="nc">MyApp.Orders.ProductOrder</span><span class="w"> </span><span class="k" data-group-id="5014753743-1">do</span><span class="w">
   </span><span class="kn">use</span><span class="w"> </span><span class="nc">Ash.Resource</span><span class="p">,</span><span class="w">
-    </span><span class="ss">extensions</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="1337265412-2">[</span><span class="nc">AshDispatch.Resource</span><span class="p" data-group-id="1337265412-2">]</span><span class="w">
+    </span><span class="ss">extensions</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="5014753743-2">[</span><span class="nc">AshDispatch.Resource</span><span class="p" data-group-id="5014753743-2">]</span><span class="w">
 
-  </span><span class="n">actions</span><span class="w"> </span><span class="k" data-group-id="1337265412-3">do</span><span class="w">
-    </span><span class="n">create</span><span class="w"> </span><span class="ss">:create_from_cart</span><span class="w"> </span><span class="k" data-group-id="1337265412-4">do</span><span class="w">
+  </span><span class="n">actions</span><span class="w"> </span><span class="k" data-group-id="5014753743-3">do</span><span class="w">
+    </span><span class="n">create</span><span class="w"> </span><span class="ss">:create_from_cart</span><span class="w"> </span><span class="k" data-group-id="5014753743-4">do</span><span class="w">
       </span><span class="c1"># ... action logic ...</span><span class="w">
-    </span><span class="k" data-group-id="1337265412-4">end</span><span class="w">
-  </span><span class="k" data-group-id="1337265412-3">end</span><span class="w">
+    </span><span class="k" data-group-id="5014753743-4">end</span><span class="w">
+  </span><span class="k" data-group-id="5014753743-3">end</span><span class="w">
 
-  </span><span class="n">dispatch</span><span class="w"> </span><span class="k" data-group-id="1337265412-5">do</span><span class="w">
+  </span><span class="n">dispatch</span><span class="w"> </span><span class="k" data-group-id="5014753743-5">do</span><span class="w">
     </span><span class="n">event</span><span class="w"> </span><span class="ss">:created</span><span class="p">,</span><span class="w">
       </span><span class="ss">trigger_on</span><span class="p">:</span><span class="w"> </span><span class="ss">:create_from_cart</span><span class="p">,</span><span class="w">
-      </span><span class="ss">channels</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="1337265412-6">[</span><span class="w">
-        </span><span class="p" data-group-id="1337265412-7">[</span><span class="ss">transport</span><span class="p">:</span><span class="w"> </span><span class="ss">:in_app</span><span class="p">,</span><span class="w"> </span><span class="ss">audience</span><span class="p">:</span><span class="w"> </span><span class="ss">:user</span><span class="p" data-group-id="1337265412-7">]</span><span class="p">,</span><span class="w">
-        </span><span class="p" data-group-id="1337265412-8">[</span><span class="ss">transport</span><span class="p">:</span><span class="w"> </span><span class="ss">:email</span><span class="p">,</span><span class="w"> </span><span class="ss">audience</span><span class="p">:</span><span class="w"> </span><span class="ss">:user</span><span class="p">,</span><span class="w"> </span><span class="ss">delay</span><span class="p">:</span><span class="w"> </span><span class="mi">300</span><span class="p" data-group-id="1337265412-8">]</span><span class="w">
-      </span><span class="p" data-group-id="1337265412-6">]</span><span class="p">,</span><span class="w">
-      </span><span class="ss">content</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="1337265412-9">[</span><span class="w">
+      </span><span class="ss">channels</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="5014753743-6">[</span><span class="w">
+        </span><span class="p" data-group-id="5014753743-7">[</span><span class="ss">transport</span><span class="p">:</span><span class="w"> </span><span class="ss">:in_app</span><span class="p">,</span><span class="w"> </span><span class="ss">audience</span><span class="p">:</span><span class="w"> </span><span class="ss">:user</span><span class="p" data-group-id="5014753743-7">]</span><span class="p">,</span><span class="w">
+        </span><span class="p" data-group-id="5014753743-8">[</span><span class="ss">transport</span><span class="p">:</span><span class="w"> </span><span class="ss">:email</span><span class="p">,</span><span class="w"> </span><span class="ss">audience</span><span class="p">:</span><span class="w"> </span><span class="ss">:user</span><span class="p">,</span><span class="w"> </span><span class="ss">delay</span><span class="p">:</span><span class="w"> </span><span class="mi">300</span><span class="p" data-group-id="5014753743-8">]</span><span class="w">
+      </span><span class="p" data-group-id="5014753743-6">]</span><span class="p">,</span><span class="w">
+      </span><span class="ss">content</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="5014753743-9">[</span><span class="w">
         </span><span class="ss">subject</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Order created&quot;</span><span class="p">,</span><span class="w">
         </span><span class="ss">notification_title</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Order created&quot;</span><span class="w">
-      </span><span class="p" data-group-id="1337265412-9">]</span><span class="w">
+      </span><span class="p" data-group-id="5014753743-9">]</span><span class="w">
+  </span><span class="k" data-group-id="5014753743-5">end</span><span class="w">
 
-    </span><span class="n">event</span><span class="w"> </span><span class="ss">:cancelled</span><span class="p">,</span><span class="w">
-      </span><span class="ss">trigger_on</span><span class="p">:</span><span class="w"> </span><span class="ss">:cancel</span><span class="p">,</span><span class="w">
-      </span><span class="ss">channels</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="1337265412-10">[</span><span class="w">
-        </span><span class="p" data-group-id="1337265412-11">[</span><span class="ss">transport</span><span class="p">:</span><span class="w"> </span><span class="ss">:email</span><span class="p">,</span><span class="w"> </span><span class="ss">audience</span><span class="p">:</span><span class="w"> </span><span class="ss">:user</span><span class="p" data-group-id="1337265412-11">]</span><span class="w">
-      </span><span class="p" data-group-id="1337265412-10">]</span><span class="p">,</span><span class="w">
-      </span><span class="ss">content</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="1337265412-12">[</span><span class="w">
-        </span><span class="ss">subject</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Order cancelled&quot;</span><span class="w">
-      </span><span class="p" data-group-id="1337265412-12">]</span><span class="w">
-  </span><span class="k" data-group-id="1337265412-5">end</span><span class="w">
-</span><span class="k" data-group-id="1337265412-1">end</span></code></pre><h2 id="module-complex-events" class="section-heading"><a href="#module-complex-events" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Complex Events</span></h2><p>For events that need custom logic, reference a callback module:</p><pre><code class="makeup elixir" translate="no"><span class="n">dispatch</span><span class="w"> </span><span class="k" data-group-id="7120719362-1">do</span><span class="w">
+  </span><span class="n">counters</span><span class="w"> </span><span class="k" data-group-id="5014753743-10">do</span><span class="w">
+    </span><span class="n">counter</span><span class="w"> </span><span class="ss">:pending_orders</span><span class="w"> </span><span class="k" data-group-id="5014753743-11">do</span><span class="w">
+      </span><span class="n">trigger_on</span><span class="w"> </span><span class="p" data-group-id="5014753743-12">[</span><span class="ss">:create_from_cart</span><span class="p">,</span><span class="w"> </span><span class="ss">:cancel</span><span class="p" data-group-id="5014753743-12">]</span><span class="w">
+      </span><span class="n">counter_name</span><span class="w"> </span><span class="ss">:pending_orders</span><span class="w">
+      </span><span class="n">audience</span><span class="w"> </span><span class="ss">:user</span><span class="w">
+      </span><span class="n">invalidates</span><span class="w"> </span><span class="p" data-group-id="5014753743-13">[</span><span class="s">&quot;orders&quot;</span><span class="p" data-group-id="5014753743-13">]</span><span class="w">
+    </span><span class="k" data-group-id="5014753743-11">end</span><span class="w">
+  </span><span class="k" data-group-id="5014753743-10">end</span><span class="w">
+</span><span class="k" data-group-id="5014753743-1">end</span></code></pre><h2 id="module-complex-events" class="section-heading"><a href="#module-complex-events" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Complex Events</span></h2><p>For events that need custom logic, reference a callback module:</p><pre><code class="makeup elixir" translate="no"><span class="n">dispatch</span><span class="w"> </span><span class="k" data-group-id="0705898568-1">do</span><span class="w">
   </span><span class="n">event</span><span class="w"> </span><span class="ss">:created</span><span class="p">,</span><span class="w">
     </span><span class="ss">trigger_on</span><span class="p">:</span><span class="w"> </span><span class="ss">:create_from_cart</span><span class="p">,</span><span class="w">
     </span><span class="ss">module</span><span class="p">:</span><span class="w"> </span><span class="nc">MyApp.Events.OrderCreated</span><span class="w">
-</span><span class="k" data-group-id="7120719362-1">end</span></code></pre><p>The callback module implements <a href="AshDispatch.Event.html"><code class="inline">AshDispatch.Event</code></a> behaviour (without DSL).</p><h2 id="module-auto-dispatch" class="section-heading"><a href="#module-auto-dispatch" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Auto-Dispatch</span></h2><p>The extension automatically injects a <code class="inline">DispatchEvent</code> change into actions
-specified by <code class="inline">trigger_on</code>. You don't need to manually add the change.</p><h2 id="module-features" class="section-heading"><a href="#module-features" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Features</span></h2><ul><li><strong>Inline event definitions</strong> - Simple events defined right in the resource</li><li><strong>Auto-dispatch</strong> - Events automatically triggered by actions</li><li><strong>Type safety</strong> - Compile-time validation of event configurations</li><li><strong>Optional complexity</strong> - Use callback modules when needed</li></ul>
+</span><span class="k" data-group-id="0705898568-1">end</span></code></pre><p>The callback module implements <a href="AshDispatch.Event.html"><code class="inline">AshDispatch.Event</code></a> behaviour.</p><h2 id="module-auto-injection" class="section-heading"><a href="#module-auto-injection" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Auto-Injection</span></h2><p>The extension automatically injects changes into actions:</p><ul><li><code class="inline">DispatchEvent</code> for events specified in <code class="inline">dispatch</code> section</li><li><code class="inline">BroadcastCounterUpdate</code> for counters specified in <code class="inline">counters</code> section</li></ul><p>You don't need to manually add these changes.</p><h2 id="module-features" class="section-heading"><a href="#module-features" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Features</span></h2><ul><li><strong>Inline definitions</strong> - Simple events/counters defined in the resource</li><li><strong>Auto-injection</strong> - Changes automatically added to actions</li><li><strong>Type safety</strong> - Compile-time validation of configurations</li><li><strong>Optional complexity</strong> - Use callback modules when needed</li></ul>
     </section>
 
 </div>
@@ -171,6 +170,14 @@ specified by <code class="inline">trigger_on</code>. You don't need to manually 
   <h2>
     <a href="#functions">Functions</a>
   </h2>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#counters/1" data-no-tooltip="" translate="no">counters(body)</a>
+
+      </div>
+
+    </div>
 
     <div class="summary-row">
       <div class="summary-signature">
@@ -194,6 +201,30 @@ specified by <code class="inline">trigger_on</code>. You don't need to manually 
     </h1>
 
     <div class="functions-list">
+<section class="detail" id="counters/1">
+
+  <div class="detail-header">
+    <a href="#counters/1" class="detail-link" data-no-tooltip="" aria-label="Link to this macro">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">counters(body)</h1>
+
+        <span class="note">(macro)</span>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/resource.ex#L71" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
 <section class="detail" id="dispatch/1">
 
   <div class="detail-header">
@@ -206,7 +237,7 @@ specified by <code class="inline">trigger_on</code>. You don't need to manually 
         <span class="note">(macro)</span>
 
 
-        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/resource.ex#L68" class="icon-action" rel="help" aria-label="View Source">
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/resource.ex#L71" class="icon-action" rel="help" aria-label="View Source">
           <i class="ri-code-s-slash-line" aria-hidden="true"></i>
         </a>
 

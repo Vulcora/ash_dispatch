@@ -14,7 +14,11 @@ defmodule AshDispatch.Dsl.Channel do
     __spark_metadata__: nil,
     time: {:in, 0},
     policy: :always,
-    opts: %{}
+    content: %{},
+    metadata: %{},
+    opts: %{},
+    counters: [],
+    load: []
   ]
 
   @type t :: %__MODULE__{
@@ -24,6 +28,10 @@ defmodule AshDispatch.Dsl.Channel do
           policy: atom(),
           variant: atom() | nil,
           webhook_url: String.t() | nil,
-          opts: map()
+          content: map(),
+          metadata: map(),
+          opts: map(),
+          counters: [atom()],
+          load: [atom() | {atom(), any()}]
         }
 end

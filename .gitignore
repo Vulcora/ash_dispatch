@@ -27,3 +27,6 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.log
+
+# Build artifacts
+/priv/ash_dispatch/

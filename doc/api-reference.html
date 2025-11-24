@@ -12,7 +12,7 @@
 
     <link rel="stylesheet" href="dist/html-elixir-ZFNMEJKT.css" />
 
-    <script defer src="dist/sidebar_items-F03CB3D7.js"></script>
+    <script defer src="dist/sidebar_items-08887088.js"></script>
     <script defer src="docs_config.js"></script>
     <script defer src="dist/html-HBZYRXZS.js"></script>
 <style>
@@ -115,6 +115,60 @@ AshDispatch
     <section class="details-list">
       <h2 id="modules" class="section-heading">Modules</h2>
       <div class="summary">
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Behaviours.CounterBroadcaster.html" translate="no">AshDispatch.Behaviours.CounterBroadcaster</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Behaviour for broadcasting real-time counter updates to users.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Behaviours.CounterRegistry.html" translate="no">AshDispatch.Behaviours.CounterRegistry</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Behaviour for defining and executing counter queries.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Behaviours.PreferenceProvider.html" translate="no">AshDispatch.Behaviours.PreferenceProvider</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Behavior for checking user email preferences.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Calculations.LoadUser.html" translate="no">AshDispatch.Calculations.LoadUser</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Calculation for loading user records from the configured user resource.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Calculations.ObanJob.html" translate="no">AshDispatch.Calculations.ObanJob</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Calculation that loads Oban job data for delivery receipts.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Changes.BroadcastCounterUpdate.html" translate="no">AshDispatch.Changes.BroadcastCounterUpdate</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Broadcasts real-time counter updates for actions that don't dispatch events.</p></div>
+
+</div>
 <div class="summary-row">
   <div class="summary-signature">
     <a href="AshDispatch.Changes.DispatchEvent.html" translate="no">AshDispatch.Changes.DispatchEvent</a>
@@ -234,6 +288,15 @@ AshDispatch
 </div>
 <div class="summary-row">
   <div class="summary-signature">
+    <a href="AshDispatch.Event.Helpers.html" translate="no">AshDispatch.Event.Helpers</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Helper functions for events that use Ash introspection to derive behavior.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
     <a href="AshDispatch.Event.Interpolation.html" translate="no">AshDispatch.Event.Interpolation</a>
 
   </div>
@@ -243,11 +306,56 @@ AshDispatch
 </div>
 <div class="summary-row">
   <div class="summary-signature">
+    <a href="AshDispatch.Event.RecipientExtractor.html" translate="no">AshDispatch.Event.RecipientExtractor</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Extracts recipient identifiers and names from recipient structs using cascading configuration.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Helpers.CounterHelper.html" translate="no">AshDispatch.Helpers.CounterHelper</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Helper module for broadcasting counter updates.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Helpers.CounterLoader.html" translate="no">AshDispatch.Helpers.CounterLoader</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Helper for loading initial counter values when users connect.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
     <a href="AshDispatch.Info.html" translate="no">AshDispatch.Info</a>
 
   </div>
 
     <div class="summary-synopsis"><p>Introspection helpers for AshDispatch events.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.PolicyChecks.HasPermission.html" translate="no">AshDispatch.PolicyChecks.HasPermission</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Policy check that delegates to a configured permission checker.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Preparations.LoadObanJob.html" translate="no">AshDispatch.Preparations.LoadObanJob</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Preparation that loads Oban job data for delivery receipts.</p></div>
 
 </div>
 <div class="summary-row">
@@ -265,7 +373,7 @@ AshDispatch
 
   </div>
 
-    <div class="summary-synopsis"><p>Default recipient resolver that logs warnings.</p></div>
+    <div class="summary-synopsis"><p>Default recipient resolver that raises errors.</p></div>
 
 </div>
 <div class="summary-row">
@@ -274,7 +382,7 @@ AshDispatch
 
   </div>
 
-    <div class="summary-synopsis"><p>Ash.Resource extension for defining event dispatching.</p></div>
+    <div class="summary-synopsis"><p>Ash.Resource extension for defining event dispatching and counter broadcasting.</p></div>
 
 </div>
 <div class="summary-row">
@@ -284,6 +392,24 @@ AshDispatch
   </div>
 
     <div class="summary-synopsis"><p>DSL sections for AshDispatch.Resource extension.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Resource.Dsl.Counter.html" translate="no">AshDispatch.Resource.Dsl.Counter</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Data structure representing a counter definition from the DSL.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Resource.Dsl.Counter.Audience.html" translate="no">AshDispatch.Resource.Dsl.Counter.Audience</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Data structure representing a counter audience (broadcast target).</p></div>
 
 </div>
 <div class="summary-row">
@@ -302,6 +428,15 @@ AshDispatch
   </div>
 
     <div class="summary-synopsis"><p>Introspection helpers for AshDispatch.Resource.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Resource.Transformers.InjectCounterBroadcasts.html" translate="no">AshDispatch.Resource.Transformers.InjectCounterBroadcasts</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Transformer that automatically injects counter broadcasting into actions.</p></div>
 
 </div>
 <div class="summary-row">
@@ -328,7 +463,25 @@ AshDispatch
 
   </div>
 
-    <div class="summary-synopsis"><p>Tracks the delivery lifecycle of events across all transports.</p></div>
+    <div class="summary-synopsis"><p>Unified delivery tracking for all transports (email, in-app, Discord, SMS, etc).</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Resources.EmailEvent.html" translate="no">AshDispatch.Resources.EmailEvent</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Read-only Ash resource exposing email event metadata via RPC.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Resources.ManualTrigger.html" translate="no">AshDispatch.Resources.ManualTrigger</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Non-persisted resource for manually triggering events from admin interfaces.</p></div>
 
 </div>
 <div class="summary-row">
@@ -338,6 +491,25 @@ AshDispatch
   </div>
 
     <div class="summary-synopsis"><p>In-app notification resource for AshDispatch.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.TemplateCompiler.html" translate="no">AshDispatch.TemplateCompiler</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p><strong>DEPRECATED:</strong> This module is no longer needed. Templates are now automatically
+compiled by <a><code class="inline">Mix.Tasks.Compile.AshDispatch</code></a>.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.TemplateResolver.html" translate="no">AshDispatch.TemplateResolver</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Resolves and renders HEEx/EEx templates for events with fallback chain.</p></div>
 
 </div>
 <div class="summary-row">
@@ -414,11 +586,29 @@ AshDispatch
 </div>
 <div class="summary-row">
   <div class="summary-signature">
+    <a href="AshDispatch.Validations.ValidateCanRetry.html" translate="no">AshDispatch.Validations.ValidateCanRetry</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Validates that a delivery receipt can be retried.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
     <a href="AshDispatch.VariableInterpolator.html" translate="no">AshDispatch.VariableInterpolator</a>
 
   </div>
 
     <div class="summary-synopsis"><p>Interpolates variables in template strings.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.WebhookHandlers.Resend.html" translate="no">AshDispatch.WebhookHandlers.Resend</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Handles webhooks from Resend for email delivery events.</p></div>
 
 </div>
 <div class="summary-row">
@@ -452,6 +642,31 @@ AshDispatch
       </div>
     </section>
 
+
+    <section class="details-list">
+      <h2 id="tasks" class="section-heading">Mix Tasks</h2>
+      <div class="summary">
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="Mix.Tasks.AshDispatch.Gen.Diagrams.html" translate="no">mix ash_dispatch.gen.diagrams</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Generates Mermaid diagrams showing AshDispatch events, channels, and counters.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="Mix.Tasks.Compile.AshDispatch.html" translate="no">mix compile.ash_dispatch</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Mix compiler that auto-discovers and compiles all AshDispatch templates.</p></div>
+
+</div>
+
+      </div>
+    </section>
 
 </div>
     <footer class="footer">

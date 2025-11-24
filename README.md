@@ -1,6 +1,7 @@
 # AshDispatch
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Documentation](https://img.shields.io/badge/docs-online-blue.svg)](https://ash-dispatch-docs.pages.dev)
 
 **Status:** 🚧 **Active Development** - Extracting proven notification engine from Magasin into reusable Ash extension
 
@@ -54,6 +55,8 @@ end
 - **📊 Delivery Tracking** - Full audit trail with delivery receipts
 - **🔄 Automatic Retries** - Failed deliveries retry with exponential backoff
 - **🎨 Template Interpolation** - `{{variable}}` syntax for dynamic content
+- **📈 Real-Time Counters** - Declarative counter DSL with automatic Phoenix Channel broadcasting
+- **⚡ Zero-Config Helpers** - `ChannelState`, `CounterLoader`, `NotificationLoader` for Phoenix integration
 - **🔌 Extensible** - Add custom transports and event modules
 - **🧪 Test-Friendly** - Factory integration for testing templates
 
@@ -65,12 +68,15 @@ end
 ## Topics
 
 - [What is AshDispatch?](documentation/topics/what-is-ash-dispatch.md)
+- [Phoenix Channel Integration](documentation/topics/phoenix-integration.md) - **NEW!** Zero-config helpers for real-time updates
+- [Counter Broadcasting](documentation/topics/counter-broadcasting.md) - **NEW!** Declarative counter DSL with auto-discovery
 - [Understanding Events](documentation/topics/events.md)
 - [Delivery Transports](documentation/topics/transports.md)
 - [User Preferences](documentation/topics/user-preferences.md)
+- [Recipient Resolution](documentation/topics/recipient-resolution.md)
+- [Configuration](documentation/topics/configuration.md)
 - [Template Interpolation](documentation/topics/template-interpolation.md)
 - [Delivery Receipts & Tracking](documentation/topics/delivery-tracking.md)
-- [Counter Broadcasting](documentation/topics/counter-broadcasting.md)
 - [Testing Events](documentation/topics/testing-events.md)
 
 ## Reference
@@ -141,6 +147,64 @@ Ticket
 # -> Creates in-app notification for user
 # -> Sends email to admin
 ```
+
+## Real-Time Counter Broadcasting
+
+AshDispatch also provides **automatic real-time counter updates** with zero boilerplate:
+
+```elixir
+# 1. Define counters in your resource
+defmodule MyApp.Orders.ProductOrder do
+  use Ash.Resource,
+    extensions: [AshDispatch.Resource]
+
+  counters do
+    # User sees their own pending orders
+    counter :pending_orders,
+      trigger_on: [:create, :complete, :cancel],
+      counter_name: :pending_orders,
+      query_filter: [status: :pending],
+      audience: :user,
+      invalidates: ["orders"]
+
+    # Admins see ALL pending orders
+    counter :admin_pending_orders,
+      trigger_on: [:create, :complete, :cancel],
+      counter_name: :admin_pending_orders,
+      query_filter: [status: :pending],
+      audience: :admin,
+      invalidates: ["orders", "analytics"]
+  end
+end
+
+# 2. Configure broadcasting (one line!)
+# config/config.exs
+config :ash_dispatch,
+  counter_broadcast_fn: {MyAppWeb.UserChannel, :broadcast_counter}
+
+# 3. Use helper in Phoenix Channel (one line!)
+defmodule MyAppWeb.UserChannel do
+  alias AshDispatch.Helpers.ChannelState
+
+  def handle_info(:after_join, socket) do
+    # Loads ALL counters automatically - no manual queries!
+    initial_state = ChannelState.build(socket.assigns.user_id)
+    # => %{"counters" => %{"pending_orders" => 5}, "notifications" => [...]}
+
+    push(socket, "initial_state", initial_state)
+    {:noreply, socket}
+  end
+end
+
+# 4. That's it! Counters update in real-time automatically
+Order.create!(%{status: :pending})
+# -> Automatically broadcasts counter update to Phoenix Channel
+# -> Frontend receives "counter_updated" event with new value
+```
+
+**Zero configuration, automatic discovery, real-time updates!**
+
+See [Counter Broadcasting](documentation/topics/counter-broadcasting.md) and [Phoenix Integration](documentation/topics/phoenix-integration.md) for complete guides.
 
 ## Design Principles
 

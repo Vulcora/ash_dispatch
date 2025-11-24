@@ -11,6 +11,7 @@ defmodule AshDispatch.MixProject do
       version: @version,
       elixir: "~> 1.15",
       elixirc_paths: elixirc_paths(Mix.env()),
+      compilers: Mix.compilers() ++ [:ash_dispatch],
       start_permanent: Mix.env() == :prod,
       description: @description,
       package: package(),
@@ -39,9 +40,16 @@ defmodule AshDispatch.MixProject do
       {:ash_state_machine, "~> 0.2"},
       {:oban, "~> 2.0"},
 
+      # Data layer (Postgres for persistent storage)
+      {:ash_postgres, "~> 2.0"},
+      # SAT solver for Ash policy validation
+      {:picosat_elixir, "~> 0.2"},
+
       # Optional transport dependencies
       {:swoosh, "~> 1.16", optional: true},
+      {:hackney, "~> 1.9", optional: true},
       {:req, "~> 0.5", optional: true},
+      {:ash_typescript, "~> 0.2", optional: true},
 
       # Development and testing
       {:ex_doc, "~> 0.34", only: [:dev, :test], runtime: false},
@@ -74,6 +82,7 @@ defmodule AshDispatch.MixProject do
         "lib/documentation/tutorials/getting-started.md",
         "lib/documentation/topics/what-is-ash-dispatch.md",
         "lib/documentation/topics/recipient-resolution.md",
+        "lib/documentation/topics/recipient-extractor.md",
         "lib/documentation/topics/user-preferences.md",
         "lib/documentation/topics/oban-configuration.md"
       ],
@@ -82,14 +91,15 @@ defmodule AshDispatch.MixProject do
         Topics: ~r/documentation\/topics\/.*/
       ],
       groups_for_modules: [
-        "Core": [
+        Core: [
           AshDispatch,
           AshDispatch.Event,
+          AshDispatch.Event.RecipientExtractor,
           AshDispatch.Dispatcher,
           AshDispatch.Context,
           AshDispatch.Channel
         ],
-        "Transports": [
+        Transports: [
           AshDispatch.Transports,
           AshDispatch.Transports.Email,
           AshDispatch.Transports.InApp,
@@ -103,12 +113,12 @@ defmodule AshDispatch.MixProject do
           AshDispatch.EmailBackend.Mock,
           AshDispatch.EmailBackend.Swoosh
         ],
-        "Workers": [
+        Workers: [
           AshDispatch.Workers.SendEmail,
           AshDispatch.Workers.SendWebhook,
           AshDispatch.Workers.RetryFailedDeliveries
         ],
-        "Resources": [
+        Resources: [
           AshDispatch.Resources.DeliveryReceipt,
           AshDispatch.Resources.Notification
         ],
@@ -122,7 +132,7 @@ defmodule AshDispatch.MixProject do
           AshDispatch.Resource.Dsl,
           AshDispatch.Dsl.Sections
         ],
-        "Testing": [
+        Testing: [
           AshDispatch.Test.RecipientResolver,
           AshDispatch.Test.UserPreference
         ]

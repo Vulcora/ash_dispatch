@@ -1,11 +1,11 @@
 defmodule AshDispatch.Resource do
   @moduledoc """
-  Ash.Resource extension for defining event dispatching.
+  Ash.Resource extension for defining event dispatching and counter broadcasting.
 
-  This extension adds a `dispatch` section to Ash resources, allowing you to
-  define events that are triggered by resource actions.
+  This extension adds `dispatch` and `counters` sections to Ash resources, allowing
+  you to define events and counters that are triggered by resource actions.
 
-  ## Usage
+  ## Event Dispatching
 
       defmodule MyApp.Orders.ProductOrder do
         use Ash.Resource,
@@ -28,15 +28,15 @@ defmodule AshDispatch.Resource do
               subject: "Order created",
               notification_title: "Order created"
             ]
+        end
 
-          event :cancelled,
-            trigger_on: :cancel,
-            channels: [
-              [transport: :email, audience: :user]
-            ],
-            content: [
-              subject: "Order cancelled"
-            ]
+        counters do
+          counter :pending_orders do
+            trigger_on [:create_from_cart, :cancel]
+            counter_name :pending_orders
+            audience :user
+            invalidates ["orders"]
+          end
         end
       end
 
@@ -50,25 +50,32 @@ defmodule AshDispatch.Resource do
           module: MyApp.Events.OrderCreated
       end
 
-  The callback module implements `AshDispatch.Event` behaviour (without DSL).
+  The callback module implements `AshDispatch.Event` behaviour.
 
-  ## Auto-Dispatch
+  ## Auto-Injection
 
-  The extension automatically injects a `DispatchEvent` change into actions
-  specified by `trigger_on`. You don't need to manually add the change.
+  The extension automatically injects changes into actions:
+  - `DispatchEvent` for events specified in `dispatch` section
+  - `BroadcastCounterUpdate` for counters specified in `counters` section
+
+  You don't need to manually add these changes.
 
   ## Features
 
-  - **Inline event definitions** - Simple events defined right in the resource
-  - **Auto-dispatch** - Events automatically triggered by actions
-  - **Type safety** - Compile-time validation of event configurations
+  - **Inline definitions** - Simple events/counters defined in the resource
+  - **Auto-injection** - Changes automatically added to actions
+  - **Type safety** - Compile-time validation of configurations
   - **Optional complexity** - Use callback modules when needed
   """
 
   use Spark.Dsl.Extension,
-    sections: [AshDispatch.Resource.Dsl.dispatch_section()],
+    sections: [
+      AshDispatch.Resource.Dsl.dispatch_section(),
+      AshDispatch.Resource.Dsl.counters_section()
+    ],
     transformers: [
       AshDispatch.Resource.Transformers.ValidateEvents,
-      AshDispatch.Resource.Transformers.InjectDispatchChanges
+      AshDispatch.Resource.Transformers.InjectDispatchChanges,
+      AshDispatch.Resource.Transformers.InjectCounterBroadcasts
     ]
 end

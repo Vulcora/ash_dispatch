@@ -12,7 +12,7 @@
 
     <link rel="stylesheet" href="dist/html-elixir-ZFNMEJKT.css" />
 
-    <script defer src="dist/sidebar_items-F03CB3D7.js"></script>
+    <script defer src="dist/sidebar_items-08887088.js"></script>
     <script defer src="docs_config.js"></script>
     <script defer src="dist/html-HBZYRXZS.js"></script>
 <style>
@@ -120,23 +120,23 @@ AshDispatch
     <section id="moduledoc">
 <p>Transformer that automatically injects DispatchEvent changes into actions.</p><p>For each event defined in the <code class="inline">dispatch</code> section, this transformer finds the
 corresponding action(s) specified by <code class="inline">trigger_on</code> and adds a <code class="inline">DispatchEvent</code>
-change to dispatch the event after the action completes.</p><h2 id="module-example" class="section-heading"><a href="#module-example" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Example</span></h2><p>Given this resource:</p><pre><code class="makeup elixir" translate="no"><span class="n">dispatch</span><span class="w"> </span><span class="k" data-group-id="6934542747-1">do</span><span class="w">
-  </span><span class="n">event</span><span class="w"> </span><span class="ss">:created</span><span class="p">,</span><span class="w"> </span><span class="ss">trigger_on</span><span class="p">:</span><span class="w"> </span><span class="ss">:create_from_cart</span><span class="w"> </span><span class="k" data-group-id="6934542747-2">do</span><span class="w">
-    </span><span class="n">channels</span><span class="w"> </span><span class="k" data-group-id="6934542747-3">do</span><span class="w">
+change to dispatch the event after the action completes.</p><h2 id="module-example" class="section-heading"><a href="#module-example" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Example</span></h2><p>Given this resource:</p><pre><code class="makeup elixir" translate="no"><span class="n">dispatch</span><span class="w"> </span><span class="k" data-group-id="3771285891-1">do</span><span class="w">
+  </span><span class="n">event</span><span class="w"> </span><span class="ss">:created</span><span class="p">,</span><span class="w"> </span><span class="ss">trigger_on</span><span class="p">:</span><span class="w"> </span><span class="ss">:create_from_cart</span><span class="w"> </span><span class="k" data-group-id="3771285891-2">do</span><span class="w">
+    </span><span class="n">channels</span><span class="w"> </span><span class="k" data-group-id="3771285891-3">do</span><span class="w">
       </span><span class="n">channel</span><span class="w"> </span><span class="ss">:email</span><span class="p">,</span><span class="w"> </span><span class="ss">:user</span><span class="w">
-    </span><span class="k" data-group-id="6934542747-3">end</span><span class="w">
-  </span><span class="k" data-group-id="6934542747-2">end</span><span class="w">
-</span><span class="k" data-group-id="6934542747-1">end</span></code></pre><p>The transformer will inject:</p><pre><code class="makeup elixir" translate="no"><span class="n">create</span><span class="w"> </span><span class="ss">:create_from_cart</span><span class="w"> </span><span class="k" data-group-id="0712372654-1">do</span><span class="w">
+    </span><span class="k" data-group-id="3771285891-3">end</span><span class="w">
+  </span><span class="k" data-group-id="3771285891-2">end</span><span class="w">
+</span><span class="k" data-group-id="3771285891-1">end</span></code></pre><p>The transformer will inject:</p><pre><code class="makeup elixir" translate="no"><span class="n">create</span><span class="w"> </span><span class="ss">:create_from_cart</span><span class="w"> </span><span class="k" data-group-id="6028265269-1">do</span><span class="w">
   </span><span class="c1"># ... existing action logic ...</span><span class="w">
 
   </span><span class="c1"># AUTO-INJECTED:</span><span class="w">
-  </span><span class="n">change</span><span class="w"> </span><span class="p" data-group-id="0712372654-2">{</span><span class="nc">AshDispatch.Changes.DispatchEvent</span><span class="p">,</span><span class="w">
+  </span><span class="n">change</span><span class="w"> </span><span class="p" data-group-id="6028265269-2">{</span><span class="nc">AshDispatch.Changes.DispatchEvent</span><span class="p">,</span><span class="w">
           </span><span class="ss">event_id</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;product_order.created&quot;</span><span class="p">,</span><span class="w">
-          </span><span class="ss">load</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="0712372654-3">[</span><span class="p" data-group-id="0712372654-3">]</span><span class="p">,</span><span class="w">
-          </span><span class="ss">event_config</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="0712372654-4">%{</span><span class="n">...</span><span class="p" data-group-id="0712372654-4">}</span><span class="p" data-group-id="0712372654-2">}</span><span class="w">
-</span><span class="k" data-group-id="0712372654-1">end</span></code></pre><h2 id="module-multiple-actions" class="section-heading"><a href="#module-multiple-actions" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Multiple Actions</span></h2><p>If <code class="inline">trigger_on</code> is a list, the change is injected into all specified actions:</p><pre><code class="makeup elixir" translate="no"><span class="n">event</span><span class="w"> </span><span class="ss">:status_changed</span><span class="p">,</span><span class="w"> </span><span class="ss">trigger_on</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="4418427636-1">[</span><span class="ss">:process</span><span class="p">,</span><span class="w"> </span><span class="ss">:complete</span><span class="p">,</span><span class="w"> </span><span class="ss">:cancel</span><span class="p" data-group-id="4418427636-1">]</span><span class="w"> </span><span class="k" data-group-id="4418427636-2">do</span><span class="w">
+          </span><span class="ss">load</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="6028265269-3">[</span><span class="p" data-group-id="6028265269-3">]</span><span class="p">,</span><span class="w">
+          </span><span class="ss">event_config</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="6028265269-4">%{</span><span class="n">...</span><span class="p" data-group-id="6028265269-4">}</span><span class="p" data-group-id="6028265269-2">}</span><span class="w">
+</span><span class="k" data-group-id="6028265269-1">end</span></code></pre><h2 id="module-multiple-actions" class="section-heading"><a href="#module-multiple-actions" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Multiple Actions</span></h2><p>If <code class="inline">trigger_on</code> is a list, the change is injected into all specified actions:</p><pre><code class="makeup elixir" translate="no"><span class="n">event</span><span class="w"> </span><span class="ss">:status_changed</span><span class="p">,</span><span class="w"> </span><span class="ss">trigger_on</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="0413767280-1">[</span><span class="ss">:process</span><span class="p">,</span><span class="w"> </span><span class="ss">:complete</span><span class="p">,</span><span class="w"> </span><span class="ss">:cancel</span><span class="p" data-group-id="0413767280-1">]</span><span class="w"> </span><span class="k" data-group-id="0413767280-2">do</span><span class="w">
   </span><span class="c1"># ...</span><span class="w">
-</span><span class="k" data-group-id="4418427636-2">end</span></code></pre><h2 id="module-skipping-injection" class="section-heading"><a href="#module-skipping-injection" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Skipping Injection</span></h2><p>If the event has a <code class="inline">module</code> specified, the transformer still injects the change
+</span><span class="k" data-group-id="0413767280-2">end</span></code></pre><h2 id="module-skipping-injection" class="section-heading"><a href="#module-skipping-injection" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Skipping Injection</span></h2><p>If the event has a <code class="inline">module</code> specified, the transformer still injects the change
 but passes the module reference for custom handling.</p>
     </section>
 

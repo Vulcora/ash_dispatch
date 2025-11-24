@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="ExDoc v0.39.1">
+    <meta name="project" content="AshDispatch v0.1.0">
+
+
+    <title>Recipient Field Extraction — AshDispatch v0.1.0</title>
+
+    <link rel="stylesheet" href="dist/html-elixir-ZFNMEJKT.css" />
+
+    <script defer src="dist/sidebar_items-08887088.js"></script>
+    <script defer src="docs_config.js"></script>
+    <script defer src="dist/html-HBZYRXZS.js"></script>
+<style>
+  .sidebar-listNav-list > li > a.sidebar-projectName {
+    font-size: 1.2em;
+    font-weight: 700;
+    color: #2563eb;
+  }
+  .content-inner h1, .content-inner h2, .content-inner h3 {
+    border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 0.3em;
+  }
+</style>
+
+  </head>
+  <body>
+    <script>(()=>{var t="ex_doc:settings",e="dark";var o="dark",s="light";var E="sidebar_state",n="closed";var r="sidebar_width";var a="sidebar-open";var i=new URLSearchParams(window.location.search),S=i.get("theme")||JSON.parse(localStorage.getItem(t)||"{}").theme;(S===o||S!==s&&window.matchMedia("(prefers-color-scheme: dark)").matches)&&document.body.classList.add(e);var d=sessionStorage.getItem(E),A=d!==n&&!window.matchMedia(`screen and (max-width: ${768}px)`).matches;document.body.classList.toggle(a,A);var c=sessionStorage.getItem(r);c&&document.body.style.setProperty("--sidebarWidth",`${c}px`);var p=/(Macintosh|iPhone|iPad|iPod)/.test(window.navigator.userAgent);document.documentElement.classList.toggle("apple-os",p);})();
+</script>
+
+<div class="body-wrapper">
+
+<button id="sidebar-menu" class="sidebar-button sidebar-toggle" aria-label="toggle sidebar" aria-controls="sidebar">
+  <i class="ri-menu-line ri-lg" title="Collapse/expand sidebar"></i>
+</button>
+
+<nav id="sidebar" class="sidebar">
+
+  <div class="sidebar-header">
+    <div class="sidebar-projectInfo">
+
+      <div>
+        <a href="https://github.com/Vulcora/ash_dispatch" class="sidebar-projectName" translate="no">
+AshDispatch
+        </a>
+        <div class="sidebar-projectVersion" translate="no">
+          v0.1.0
+        </div>
+      </div>
+    </div>
+    <ul id="sidebar-list-nav" class="sidebar-list-nav" role="tablist" data-extras=""></ul>
+  </div>
+</nav>
+
+<output role="status" id="toast"></output>
+
+<main class="content page-extra" id="main" data-type="extras">
+  <div id="content" class="content-inner">
+    <div class="top-search">
+      <div class="search-settings">
+        <form class="search-bar" action="search.html">
+          <label class="search-label">
+            <span class="sr-only">Search documentation of AshDispatch</span>
+            <div class="search-input-wrapper">
+              <input name="q" type="text" class="search-input" placeholder="Press / to search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+              <button type="button" tabindex="-1" class="search-close-button" aria-hidden="true">
+                <i class="ri-close-line ri-lg" title="Cancel search"></i>
+              </button>
+            </div>
+          </label>
+        </form>
+        <div class="autocomplete">
+        </div>
+        <div class="engine-selector" data-multiple="false">
+          <button type="button" class="engine-button" aria-label="Select search engine" aria-haspopup="true" aria-expanded="false">
+            <i class="ri-search-2-line" aria-hidden="true"></i>
+            <span class="engine-name">Default</span>
+            <i class="ri-arrow-down-s-line" aria-hidden="true"></i>
+          </button>
+          <div class="engine-dropdown" hidden role="menu">
+
+              <button type="button"
+                      class="engine-option"
+                      data-engine-url="search.html?q="
+                      role="menuitemradio"
+                      aria-checked="true">
+                <span class="name">Default</span>
+                <span class="help">In-browser search</span>
+              </button>
+
+          </div>
+        </div>
+        <button class="icon-settings display-settings">
+          <i class="ri-settings-3-line"></i>
+          <span class="sr-only">Settings</span>
+        </button>
+      </div>
+    </div>
+
+<div id="top-content">
+  <div class="heading-with-actions top-heading">
+    <h1>Recipient Field Extraction</h1>
+
+
+      <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/documentation/topics/recipient-extractor.md#L1" title="View Source" class="icon-action" rel="help">
+        <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        <span class="sr-only">View Source</span>
+      </a>
+
+  </div>
+
+
+<p>The <a href="AshDispatch.Event.RecipientExtractor.html"><code class="inline">AshDispatch.Event.RecipientExtractor</code></a> provides a flexible, configuration-driven approach to extracting recipient identifiers and display names from any data structure, eliminating hardcoded field assumptions.</p><blockquote><p><strong>API Documentation</strong>: For complete function documentation, see <a href="AshDispatch.Event.RecipientExtractor.html"><code class="inline">AshDispatch.Event.RecipientExtractor</code></a>.</p></blockquote><h2 id="overview" class="section-heading"><a href="#overview" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Overview</span></h2><p>The RecipientExtractor eliminates the need for hardcoded field names like <code class="inline">:email</code> or <code class="inline">:contact_person</code>. Instead, you configure which fields to use once, and the system works with any recipient data structure - User structs, external contacts, leads, or even plain maps.</p><h2 id="quick-start" class="section-heading"><a href="#quick-start" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Quick Start</span></h2><h3 id="1-basic-configuration-zero-config" class="section-heading"><a href="#1-basic-configuration-zero-config" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">1. Basic Configuration (Zero Config)</span></h3><p>For most applications, you only need to configure generic defaults:</p><pre><code class="makeup elixir" translate="no"><span class="c1"># config/config.exs</span><span class="w">
+</span><span class="n">config</span><span class="w"> </span><span class="ss">:ash_dispatch</span><span class="p">,</span><span class="w">
+  </span><span class="ss">recipient_fields</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="7273211949-1">[</span><span class="w">
+    </span><span class="ss">identifier</span><span class="p">:</span><span class="w"> </span><span class="ss">:email</span><span class="p">,</span><span class="w">
+    </span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="ss">:contact_person</span><span class="w">
+  </span><span class="p" data-group-id="7273211949-1">]</span></code></pre><p>This works for <strong>all transports</strong> (email, SMS, in-app, etc.) by default.</p><h3 id="2-transport-specific-overrides" class="section-heading"><a href="#2-transport-specific-overrides" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">2. Transport-Specific Overrides</span></h3><p>If different transports need different fields:</p><pre><code class="makeup elixir" translate="no"><span class="n">config</span><span class="w"> </span><span class="ss">:ash_dispatch</span><span class="p">,</span><span class="w">
+  </span><span class="ss">recipient_fields</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="4333035485-1">[</span><span class="w">
+    </span><span class="c1"># Generic defaults</span><span class="w">
+    </span><span class="ss">identifier</span><span class="p">:</span><span class="w"> </span><span class="ss">:email</span><span class="p">,</span><span class="w">
+    </span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="ss">:contact_person</span><span class="p">,</span><span class="w">
+
+    </span><span class="c1"># SMS uses phone number instead of email</span><span class="w">
+    </span><span class="ss">sms</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="4333035485-2">[</span><span class="w">
+      </span><span class="ss">identifier</span><span class="p">:</span><span class="w"> </span><span class="ss">:mobile_phone</span><span class="p">,</span><span class="w">
+      </span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="ss">:first_name</span><span class="w">
+    </span><span class="p" data-group-id="4333035485-2">]</span><span class="w">
+  </span><span class="p" data-group-id="4333035485-1">]</span></code></pre><h3 id="3-audience-specific-overrides" class="section-heading"><a href="#3-audience-specific-overrides" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">3. Audience-Specific Overrides</span></h3><p>If different user types have different field names:</p><pre><code class="makeup elixir" translate="no"><span class="n">config</span><span class="w"> </span><span class="ss">:ash_dispatch</span><span class="p">,</span><span class="w">
+  </span><span class="ss">recipient_fields</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="1918866657-1">[</span><span class="w">
+    </span><span class="c1"># Generic defaults</span><span class="w">
+    </span><span class="ss">identifier</span><span class="p">:</span><span class="w"> </span><span class="ss">:email</span><span class="p">,</span><span class="w">
+    </span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="ss">:contact_person</span><span class="p">,</span><span class="w">
+
+    </span><span class="c1"># Admins use different name field</span><span class="w">
+    </span><span class="ss">audiences</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="1918866657-2">[</span><span class="w">
+      </span><span class="ss">admin</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="1918866657-3">[</span><span class="w">
+        </span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="ss">:full_name</span><span class="w">
+      </span><span class="p" data-group-id="1918866657-3">]</span><span class="p">,</span><span class="w">
+
+      </span><span class="c1"># Leads use different email field</span><span class="w">
+      </span><span class="ss">lead</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="1918866657-4">[</span><span class="w">
+        </span><span class="ss">identifier</span><span class="p">:</span><span class="w"> </span><span class="ss">:primary_email</span><span class="p">,</span><span class="w">
+        </span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="ss">:company_name</span><span class="w">
+      </span><span class="p" data-group-id="1918866657-4">]</span><span class="w">
+    </span><span class="p" data-group-id="1918866657-2">]</span><span class="w">
+  </span><span class="p" data-group-id="1918866657-1">]</span></code></pre><h3 id="4-event-level-overrides" class="section-heading"><a href="#4-event-level-overrides" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">4. Event-Level Overrides</span></h3><p>Override for specific events using DSL:</p><pre><code class="makeup elixir" translate="no"><span class="c1"># In your event module</span><span class="w">
+</span><span class="kd">defmodule</span><span class="w"> </span><span class="nc">MyApp.Events.SpecialEvent</span><span class="w"> </span><span class="k" data-group-id="9631595735-1">do</span><span class="w">
+  </span><span class="kn">use</span><span class="w"> </span><span class="nc">AshDispatch.Event</span><span class="w">
+
+  </span><span class="n">dispatch</span><span class="w"> </span><span class="k" data-group-id="9631595735-2">do</span><span class="w">
+    </span><span class="n">id</span><span class="w"> </span><span class="s">&quot;special.event&quot;</span><span class="w">
+    </span><span class="n">domain</span><span class="w"> </span><span class="ss">:custom</span><span class="w">
+
+    </span><span class="c1"># Override recipient fields for this event only</span><span class="w">
+    </span><span class="n">recipient</span><span class="w"> </span><span class="k" data-group-id="9631595735-3">do</span><span class="w">
+      </span><span class="n">email</span><span class="w"> </span><span class="k" data-group-id="9631595735-4">do</span><span class="w">
+        </span><span class="n">identifier</span><span class="w"> </span><span class="ss">:alternate_email</span><span class="w">
+        </span><span class="n">name</span><span class="w"> </span><span class="ss">:display_name</span><span class="w">
+      </span><span class="k" data-group-id="9631595735-4">end</span><span class="w">
+    </span><span class="k" data-group-id="9631595735-3">end</span><span class="w">
+
+    </span><span class="n">channels</span><span class="w"> </span><span class="k" data-group-id="9631595735-5">do</span><span class="w">
+      </span><span class="n">channel</span><span class="w"> </span><span class="ss">:email</span><span class="p">,</span><span class="w"> </span><span class="ss">:user</span><span class="w">
+    </span><span class="k" data-group-id="9631595735-5">end</span><span class="w">
+  </span><span class="k" data-group-id="9631595735-2">end</span><span class="w">
+</span><span class="k" data-group-id="9631595735-1">end</span></code></pre><p>Or in resource-based events:</p><pre><code class="makeup elixir" translate="no"><span class="c1"># In your resource</span><span class="w">
+</span><span class="n">dispatch</span><span class="w"> </span><span class="k" data-group-id="4063902111-1">do</span><span class="w">
+  </span><span class="n">event</span><span class="w"> </span><span class="ss">:special_case</span><span class="p">,</span><span class="w">
+    </span><span class="ss">trigger_on</span><span class="p">:</span><span class="w"> </span><span class="ss">:special_action</span><span class="p">,</span><span class="w">
+    </span><span class="ss">recipient</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="4063902111-2">[</span><span class="w">
+      </span><span class="ss">email</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="4063902111-3">[</span><span class="w">
+        </span><span class="ss">identifier</span><span class="p">:</span><span class="w"> </span><span class="ss">:backup_email</span><span class="p">,</span><span class="w">
+        </span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="ss">:preferred_name</span><span class="w">
+      </span><span class="p" data-group-id="4063902111-3">]</span><span class="w">
+    </span><span class="p" data-group-id="4063902111-2">]</span><span class="w">
+</span><span class="k" data-group-id="4063902111-1">end</span></code></pre><h2 id="advanced-field-formats" class="section-heading"><a href="#advanced-field-formats" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Advanced Field Formats</span></h2><h3 id="nested-fields" class="section-heading"><a href="#nested-fields" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Nested Fields</span></h3><pre><code class="makeup elixir" translate="no"><span class="n">config</span><span class="w"> </span><span class="ss">:ash_dispatch</span><span class="p">,</span><span class="w">
+  </span><span class="ss">recipient_fields</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="8936718029-1">[</span><span class="w">
+    </span><span class="ss">identifier</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="8936718029-2">{</span><span class="ss">:field</span><span class="p">,</span><span class="w"> </span><span class="p" data-group-id="8936718029-3">[</span><span class="ss">:contact</span><span class="p">,</span><span class="w"> </span><span class="ss">:email</span><span class="p" data-group-id="8936718029-3">]</span><span class="p" data-group-id="8936718029-2">}</span><span class="p">,</span><span class="w">
+    </span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="8936718029-4">{</span><span class="ss">:field</span><span class="p">,</span><span class="w"> </span><span class="p" data-group-id="8936718029-5">[</span><span class="ss">:contact</span><span class="p">,</span><span class="w"> </span><span class="ss">:full_name</span><span class="p" data-group-id="8936718029-5">]</span><span class="p" data-group-id="8936718029-4">}</span><span class="w">
+  </span><span class="p" data-group-id="8936718029-1">]</span></code></pre><p>Works with structs like:</p><pre><code class="makeup elixir" translate="no"><span class="p" data-group-id="7253498406-1">%</span><span class="nc" data-group-id="7253498406-1">User</span><span class="p" data-group-id="7253498406-1">{</span><span class="w">
+  </span><span class="ss">contact</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="7253498406-2">%{</span><span class="w">
+    </span><span class="ss">email</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;user@example.com&quot;</span><span class="p">,</span><span class="w">
+    </span><span class="ss">full_name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;John Doe&quot;</span><span class="w">
+  </span><span class="p" data-group-id="7253498406-2">}</span><span class="w">
+</span><span class="p" data-group-id="7253498406-1">}</span></code></pre><h3 id="string-keys-for-json-data" class="section-heading"><a href="#string-keys-for-json-data" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">String Keys (for JSON data)</span></h3><pre><code class="makeup elixir" translate="no"><span class="n">config</span><span class="w"> </span><span class="ss">:ash_dispatch</span><span class="p">,</span><span class="w">
+  </span><span class="ss">recipient_fields</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="9903357372-1">[</span><span class="w">
+    </span><span class="ss">identifier</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="9903357372-2">{</span><span class="ss">:string_field</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;email_address&quot;</span><span class="p" data-group-id="9903357372-2">}</span><span class="p">,</span><span class="w">
+    </span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="9903357372-3">{</span><span class="ss">:string_field</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;display_name&quot;</span><span class="p" data-group-id="9903357372-3">}</span><span class="w">
+  </span><span class="p" data-group-id="9903357372-1">]</span></code></pre><h3 id="custom-extraction-functions" class="section-heading"><a href="#custom-extraction-functions" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Custom Extraction Functions</span></h3><pre><code class="makeup elixir" translate="no"><span class="n">config</span><span class="w"> </span><span class="ss">:ash_dispatch</span><span class="p">,</span><span class="w">
+  </span><span class="ss">recipient_fields</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="4316086752-1">[</span><span class="w">
+    </span><span class="ss">identifier</span><span class="p">:</span><span class="w"> </span><span class="o">&amp;</span><span class="nc">MyApp</span><span class="o">.</span><span class="n">extract_primary_contact</span><span class="o">/</span><span class="mi">1</span><span class="p">,</span><span class="w">
+    </span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="o">&amp;</span><span class="nc">MyApp</span><span class="o">.</span><span class="n">format_recipient_name</span><span class="o">/</span><span class="mi">1</span><span class="w">
+  </span><span class="p" data-group-id="4316086752-1">]</span></code></pre><pre><code class="makeup elixir" translate="no"><span class="kd">defmodule</span><span class="w"> </span><span class="nc">MyApp</span><span class="w"> </span><span class="k" data-group-id="7919257625-1">do</span><span class="w">
+  </span><span class="kd">def</span><span class="w"> </span><span class="nf">extract_primary_contact</span><span class="p" data-group-id="7919257625-2">(</span><span class="n">recipient</span><span class="p" data-group-id="7919257625-2">)</span><span class="w"> </span><span class="k" data-group-id="7919257625-3">do</span><span class="w">
+    </span><span class="n">recipient</span><span class="o">.</span><span class="n">emails</span><span class="w">
+    </span><span class="o">|&gt;</span><span class="w"> </span><span class="nc">Enum</span><span class="o">.</span><span class="n">find</span><span class="p" data-group-id="7919257625-4">(</span><span class="o">&amp;</span><span class="p" data-group-id="7919257625-5">(</span><span class="ni">&amp;1</span><span class="o">.</span><span class="n">primary</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="no">true</span><span class="p" data-group-id="7919257625-5">)</span><span class="p" data-group-id="7919257625-4">)</span><span class="w">
+    </span><span class="o">|&gt;</span><span class="w"> </span><span class="nc">Map</span><span class="o">.</span><span class="n">get</span><span class="p" data-group-id="7919257625-6">(</span><span class="ss">:address</span><span class="p" data-group-id="7919257625-6">)</span><span class="w">
+  </span><span class="k" data-group-id="7919257625-3">end</span><span class="w">
+
+  </span><span class="kd">def</span><span class="w"> </span><span class="nf">format_recipient_name</span><span class="p" data-group-id="7919257625-7">(</span><span class="n">recipient</span><span class="p" data-group-id="7919257625-7">)</span><span class="w"> </span><span class="k" data-group-id="7919257625-8">do</span><span class="w">
+    </span><span class="s">&quot;</span><span class="si" data-group-id="7919257625-9">#{</span><span class="n">recipient</span><span class="o">.</span><span class="n">first_name</span><span class="si" data-group-id="7919257625-9">}</span><span class="s"> </span><span class="si" data-group-id="7919257625-10">#{</span><span class="n">recipient</span><span class="o">.</span><span class="n">last_name</span><span class="si" data-group-id="7919257625-10">}</span><span class="s">&quot;</span><span class="w">
+  </span><span class="k" data-group-id="7919257625-8">end</span><span class="w">
+</span><span class="k" data-group-id="7919257625-1">end</span></code></pre><h2 id="resolution-order-cascading" class="section-heading"><a href="#resolution-order-cascading" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Resolution Order (Cascading)</span></h2><p>The system checks configurations in this order (most specific to least specific):</p><ol><li><strong>Event DSL override</strong> - Configured in the event definition</li><li><strong>Audience + Transport</strong> - <code class="inline">audiences: [admin: [email: [identifier: :admin_email]]]</code></li><li><strong>Transport</strong> - <code class="inline">sms: [identifier: :mobile_phone]</code></li><li><strong>Generic default</strong> - <code class="inline">identifier: :email</code></li><li><strong>Error</strong> - Clear error message if no config found</li></ol><h2 id="error-messages" class="section-heading"><a href="#error-messages" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Error Messages</span></h2><p>If extraction fails, you'll get a clear error showing the resolution path:</p><pre><code class="makeup elixir" translate="no"><span class="nc">No</span><span class="w"> </span><span class="n">identifier</span><span class="w"> </span><span class="n">field</span><span class="w"> </span><span class="n">configured</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">email</span><span class="w"> </span><span class="n">transport</span><span class="w"> </span><span class="p" data-group-id="9334256190-1">(</span><span class="n">user</span><span class="w"> </span><span class="n">audience</span><span class="p" data-group-id="9334256190-1">)</span><span class="o">.</span><span class="w">
+
+</span><span class="nc">AshDispatch</span><span class="w"> </span><span class="n">doesn</span><span class="err">&#39;</span><span class="n">t</span><span class="w"> </span><span class="n">assume</span><span class="w"> </span><span class="n">field</span><span class="w"> </span><span class="n">names</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">you</span><span class="w"> </span><span class="n">must</span><span class="w"> </span><span class="n">configure</span><span class="w"> </span><span class="n">them</span><span class="o">.</span><span class="w">
+
+</span><span class="nc">Add</span><span class="w"> </span><span class="n">generic</span><span class="w"> </span><span class="n">default</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">config</span><span class="o">/</span><span class="n">config</span><span class="o">.</span><span class="ss">exs</span><span class="p">:</span><span class="w">
+
+    </span><span class="n">config</span><span class="w"> </span><span class="ss">:ash_dispatch</span><span class="p">,</span><span class="w">
+      </span><span class="ss">recipient_fields</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="9334256190-2">[</span><span class="w">
+        </span><span class="ss">identifier</span><span class="p">:</span><span class="w"> </span><span class="ss">:your_field_name</span><span class="w">
+      </span><span class="p" data-group-id="9334256190-2">]</span></code></pre><p>Or if a field is missing from the recipient:</p><pre><code class="makeup elixir" translate="no"><span class="nc">Could</span><span class="w"> </span><span class="ow">not</span><span class="w"> </span><span class="n">extract</span><span class="w"> </span><span class="n">identifier</span><span class="w"> </span><span class="n">from</span><span class="w"> </span><span class="n">recipient</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">email</span><span class="w"> </span><span class="n">transport</span><span class="w"> </span><span class="p" data-group-id="8242567524-1">(</span><span class="n">user</span><span class="w"> </span><span class="n">audience</span><span class="p" data-group-id="8242567524-1">)</span><span class="o">.</span><span class="w">
+
+</span><span class="nc">Expected</span><span class="w"> </span><span class="ss">field</span><span class="p">:</span><span class="w"> </span><span class="ss">:email</span><span class="w">
+</span><span class="nc">Recipient</span><span class="w"> </span><span class="ss">type</span><span class="p">:</span><span class="w"> </span><span class="nc">MyApp.Accounts.Lead</span><span class="w">
+</span><span class="nc">Available</span><span class="w"> </span><span class="ss">keys</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="8242567524-2">[</span><span class="ss">:id</span><span class="p">,</span><span class="w"> </span><span class="ss">:primary_email</span><span class="p">,</span><span class="w"> </span><span class="ss">:company_name</span><span class="p" data-group-id="8242567524-2">]</span><span class="w">
+
+</span><span class="nc">Configuration</span><span class="w"> </span><span class="ss">resolution</span><span class="p">:</span><span class="w">
+</span><span class="mi">1</span><span class="o">.</span><span class="w"> </span><span class="nc">Event</span><span class="w"> </span><span class="ss">DSL</span><span class="p">:</span><span class="w"> </span><span class="ow">not</span><span class="w"> </span><span class="n">set</span><span class="w">
+</span><span class="mi">2</span><span class="o">.</span><span class="w"> </span><span class="nc">Audience</span><span class="w"> </span><span class="p" data-group-id="8242567524-3">(</span><span class="n">lead</span><span class="p" data-group-id="8242567524-3">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nc">Transport</span><span class="w"> </span><span class="p" data-group-id="8242567524-4">(</span><span class="n">email</span><span class="p" data-group-id="8242567524-4">)</span><span class="p">:</span><span class="w"> </span><span class="ow">not</span><span class="w"> </span><span class="n">set</span><span class="w">
+</span><span class="mi">3</span><span class="o">.</span><span class="w"> </span><span class="nc">Transport</span><span class="w"> </span><span class="p" data-group-id="8242567524-5">(</span><span class="n">email</span><span class="p" data-group-id="8242567524-5">)</span><span class="p">:</span><span class="w"> </span><span class="ow">not</span><span class="w"> </span><span class="n">set</span><span class="w">
+</span><span class="mi">4</span><span class="o">.</span><span class="w"> </span><span class="nc">Generic</span><span class="w"> </span><span class="ss">default</span><span class="p">:</span><span class="w"> </span><span class="ss">:email</span><span class="w">
+</span><span class="err">→</span><span class="w"> </span><span class="nc">Resolved</span><span class="w"> </span><span class="ss">to</span><span class="p">:</span><span class="w"> </span><span class="ss">:email</span><span class="w">
+
+</span><span class="nc">Fix</span><span class="w"> </span><span class="ss">options</span><span class="p">:</span><span class="w">
+</span><span class="mi">1</span><span class="o">.</span><span class="w"> </span><span class="nc">Add</span><span class="w"> </span><span class="n">field</span><span class="w"> </span><span class="ss">:email</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">your</span><span class="w"> </span><span class="n">recipient</span><span class="w"> </span><span class="n">struct</span><span class="w">
+</span><span class="mi">2</span><span class="o">.</span><span class="w"> </span><span class="nc">Change</span><span class="w"> </span><span class="n">config</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="kn">use</span><span class="w"> </span><span class="n">an</span><span class="w"> </span><span class="n">existing</span><span class="w"> </span><span class="n">field</span><span class="w"> </span><span class="p" data-group-id="8242567524-6">(</span><span class="ss">:primary_email</span><span class="p" data-group-id="8242567524-6">)</span><span class="w">
+</span><span class="mi">3</span><span class="o">.</span><span class="w"> </span><span class="nc">Use</span><span class="w"> </span><span class="n">custom</span><span class="w"> </span><span class="n">extraction</span><span class="w"> </span><span class="n">function</span></code></pre><h2 id="examples-by-use-case" class="section-heading"><a href="#examples-by-use-case" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Examples by Use Case</span></h2><h3 id="e-commerce-platform" class="section-heading"><a href="#e-commerce-platform" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">E-commerce Platform</span></h3><pre><code class="makeup elixir" translate="no"><span class="n">config</span><span class="w"> </span><span class="ss">:ash_dispatch</span><span class="p">,</span><span class="w">
+  </span><span class="ss">recipient_fields</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="9146761915-1">[</span><span class="w">
+    </span><span class="ss">identifier</span><span class="p">:</span><span class="w"> </span><span class="ss">:email</span><span class="p">,</span><span class="w">
+    </span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="ss">:full_name</span><span class="p">,</span><span class="w">
+
+    </span><span class="c1"># SMS for order updates</span><span class="w">
+    </span><span class="ss">sms</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="9146761915-2">[</span><span class="w">
+      </span><span class="ss">identifier</span><span class="p">:</span><span class="w"> </span><span class="ss">:phone_number</span><span class="w">
+    </span><span class="p" data-group-id="9146761915-2">]</span><span class="w">
+  </span><span class="p" data-group-id="9146761915-1">]</span></code></pre><h3 id="b2b-platform-with-leads" class="section-heading"><a href="#b2b-platform-with-leads" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">B2B Platform with Leads</span></h3><pre><code class="makeup elixir" translate="no"><span class="n">config</span><span class="w"> </span><span class="ss">:ash_dispatch</span><span class="p">,</span><span class="w">
+  </span><span class="ss">recipient_fields</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="4786119668-1">[</span><span class="w">
+    </span><span class="ss">identifier</span><span class="p">:</span><span class="w"> </span><span class="ss">:email</span><span class="p">,</span><span class="w">
+    </span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="ss">:contact_person</span><span class="p">,</span><span class="w">
+
+    </span><span class="ss">audiences</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="4786119668-2">[</span><span class="w">
+      </span><span class="c1"># Leads might use different email field</span><span class="w">
+      </span><span class="ss">lead</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="4786119668-3">[</span><span class="w">
+        </span><span class="ss">identifier</span><span class="p">:</span><span class="w"> </span><span class="ss">:primary_email</span><span class="p">,</span><span class="w">
+        </span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="ss">:company_name</span><span class="w">
+      </span><span class="p" data-group-id="4786119668-3">]</span><span class="p">,</span><span class="w">
+
+      </span><span class="c1"># Partners have dedicated contact info</span><span class="w">
+      </span><span class="ss">partner</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="4786119668-4">[</span><span class="w">
+        </span><span class="ss">identifier</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="4786119668-5">{</span><span class="ss">:field</span><span class="p">,</span><span class="w"> </span><span class="p" data-group-id="4786119668-6">[</span><span class="ss">:primary_contact</span><span class="p">,</span><span class="w"> </span><span class="ss">:email</span><span class="p" data-group-id="4786119668-6">]</span><span class="p" data-group-id="4786119668-5">}</span><span class="p">,</span><span class="w">
+        </span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="4786119668-7">{</span><span class="ss">:field</span><span class="p">,</span><span class="w"> </span><span class="p" data-group-id="4786119668-8">[</span><span class="ss">:primary_contact</span><span class="p">,</span><span class="w"> </span><span class="ss">:name</span><span class="p" data-group-id="4786119668-8">]</span><span class="p" data-group-id="4786119668-7">}</span><span class="w">
+      </span><span class="p" data-group-id="4786119668-4">]</span><span class="w">
+    </span><span class="p" data-group-id="4786119668-2">]</span><span class="w">
+  </span><span class="p" data-group-id="4786119668-1">]</span></code></pre><h3 id="crm-with-external-contacts" class="section-heading"><a href="#crm-with-external-contacts" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">CRM with External Contacts</span></h3><pre><code class="makeup elixir" translate="no"><span class="c1"># For external contacts (not User structs)</span><span class="w">
+</span><span class="n">config</span><span class="w"> </span><span class="ss">:ash_dispatch</span><span class="p">,</span><span class="w">
+  </span><span class="ss">recipient_fields</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="7054688837-1">[</span><span class="w">
+    </span><span class="c1"># Custom function to extract from any contact type</span><span class="w">
+    </span><span class="ss">identifier</span><span class="p">:</span><span class="w"> </span><span class="o">&amp;</span><span class="nc">MyApp.Contacts</span><span class="o">.</span><span class="n">get_email</span><span class="o">/</span><span class="mi">1</span><span class="p">,</span><span class="w">
+    </span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="o">&amp;</span><span class="nc">MyApp.Contacts</span><span class="o">.</span><span class="n">get_display_name</span><span class="o">/</span><span class="mi">1</span><span class="w">
+  </span><span class="p" data-group-id="7054688837-1">]</span><span class="w">
+
+</span><span class="kd">defmodule</span><span class="w"> </span><span class="nc">MyApp.Contacts</span><span class="w"> </span><span class="k" data-group-id="7054688837-2">do</span><span class="w">
+  </span><span class="kd">def</span><span class="w"> </span><span class="nf">get_email</span><span class="p" data-group-id="7054688837-3">(</span><span class="p" data-group-id="7054688837-4">%{</span><span class="ss">email</span><span class="p">:</span><span class="w"> </span><span class="n">email</span><span class="p" data-group-id="7054688837-4">}</span><span class="p" data-group-id="7054688837-3">)</span><span class="p">,</span><span class="w"> </span><span class="ss">do</span><span class="p">:</span><span class="w"> </span><span class="n">email</span><span class="w">
+  </span><span class="kd">def</span><span class="w"> </span><span class="nf">get_email</span><span class="p" data-group-id="7054688837-5">(</span><span class="p" data-group-id="7054688837-6">%{</span><span class="s">&quot;email&quot;</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="n">email</span><span class="p" data-group-id="7054688837-6">}</span><span class="p" data-group-id="7054688837-5">)</span><span class="p">,</span><span class="w"> </span><span class="ss">do</span><span class="p">:</span><span class="w"> </span><span class="n">email</span><span class="w">
+  </span><span class="kd">def</span><span class="w"> </span><span class="nf">get_email</span><span class="p" data-group-id="7054688837-7">(</span><span class="n">contact</span><span class="p" data-group-id="7054688837-7">)</span><span class="w"> </span><span class="ow">when</span><span class="w"> </span><span class="n">is_binary</span><span class="p" data-group-id="7054688837-8">(</span><span class="n">contact</span><span class="p" data-group-id="7054688837-8">)</span><span class="p">,</span><span class="w"> </span><span class="ss">do</span><span class="p">:</span><span class="w"> </span><span class="n">contact</span><span class="w">
+
+  </span><span class="kd">def</span><span class="w"> </span><span class="nf">get_display_name</span><span class="p" data-group-id="7054688837-9">(</span><span class="p" data-group-id="7054688837-10">%{</span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="n">name</span><span class="p" data-group-id="7054688837-10">}</span><span class="p" data-group-id="7054688837-9">)</span><span class="p">,</span><span class="w"> </span><span class="ss">do</span><span class="p">:</span><span class="w"> </span><span class="n">name</span><span class="w">
+  </span><span class="kd">def</span><span class="w"> </span><span class="nf">get_display_name</span><span class="p" data-group-id="7054688837-11">(</span><span class="p" data-group-id="7054688837-12">%{</span><span class="s">&quot;name&quot;</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="n">name</span><span class="p" data-group-id="7054688837-12">}</span><span class="p" data-group-id="7054688837-11">)</span><span class="p">,</span><span class="w"> </span><span class="ss">do</span><span class="p">:</span><span class="w"> </span><span class="n">name</span><span class="w">
+  </span><span class="kd">def</span><span class="w"> </span><span class="nf">get_display_name</span><span class="p" data-group-id="7054688837-13">(</span><span class="bp">_</span><span class="p" data-group-id="7054688837-13">)</span><span class="p">,</span><span class="w"> </span><span class="ss">do</span><span class="p">:</span><span class="w"> </span><span class="no">nil</span><span class="w">
+</span><span class="k" data-group-id="7054688837-2">end</span></code></pre><h2 id="testing" class="section-heading"><a href="#testing" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Testing</span></h2><p>The RecipientExtractor is fully testable:</p><pre><code class="makeup elixir" translate="no"><span class="n">test</span><span class="w"> </span><span class="s">&quot;extracts identifier from custom struct&quot;</span><span class="w"> </span><span class="k" data-group-id="5277686746-1">do</span><span class="w">
+  </span><span class="n">recipient</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p" data-group-id="5277686746-2">%{</span><span class="w">
+    </span><span class="ss">id</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;123&quot;</span><span class="p">,</span><span class="w">
+    </span><span class="ss">primary_email</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;test@example.com&quot;</span><span class="p">,</span><span class="w">
+    </span><span class="ss">full_name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Test User&quot;</span><span class="w">
+  </span><span class="p" data-group-id="5277686746-2">}</span><span class="w">
+
+  </span><span class="c1"># With custom config</span><span class="w">
+  </span><span class="n">config</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p" data-group-id="5277686746-3">%{</span><span class="w">
+    </span><span class="ss">recipient</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="5277686746-4">%{</span><span class="w">
+      </span><span class="ss">email</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="5277686746-5">%{</span><span class="w">
+        </span><span class="ss">identifier</span><span class="p">:</span><span class="w"> </span><span class="ss">:primary_email</span><span class="p">,</span><span class="w">
+        </span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="ss">:full_name</span><span class="w">
+      </span><span class="p" data-group-id="5277686746-5">}</span><span class="w">
+    </span><span class="p" data-group-id="5277686746-4">}</span><span class="w">
+  </span><span class="p" data-group-id="5277686746-3">}</span><span class="w">
+
+  </span><span class="n">identifier</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nc">RecipientExtractor</span><span class="o">.</span><span class="n">extract_identifier</span><span class="p" data-group-id="5277686746-6">(</span><span class="w">
+    </span><span class="n">recipient</span><span class="p">,</span><span class="w">
+    </span><span class="ss">:email</span><span class="p">,</span><span class="w">
+    </span><span class="ss">:user</span><span class="p">,</span><span class="w">
+    </span><span class="n">config</span><span class="p" data-group-id="5277686746-7">[</span><span class="ss">:recipient</span><span class="p" data-group-id="5277686746-7">]</span><span class="w">
+  </span><span class="p" data-group-id="5277686746-6">)</span><span class="w">
+
+  </span><span class="n">assert</span><span class="w"> </span><span class="n">identifier</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s">&quot;test@example.com&quot;</span><span class="w">
+</span><span class="k" data-group-id="5277686746-1">end</span></code></pre><h2 id="migration-from-hardcoded-fields" class="section-heading"><a href="#migration-from-hardcoded-fields" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Migration from Hardcoded Fields</span></h2><p>If you're migrating from a system with hardcoded fields, the transition is simple:</p><p><strong>Before:</strong></p><pre><code class="makeup elixir" translate="no"><span class="c1"># Hardcoded in dispatcher</span><span class="w">
+</span><span class="n">recipient_email</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">recipient</span><span class="o">.</span><span class="n">email</span></code></pre><p><strong>After:</strong></p><pre><code class="makeup elixir" translate="no"><span class="c1"># config/config.exs</span><span class="w">
+</span><span class="n">config</span><span class="w"> </span><span class="ss">:ash_dispatch</span><span class="p">,</span><span class="w">
+  </span><span class="ss">recipient_fields</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="7340383445-1">[</span><span class="w">
+    </span><span class="ss">identifier</span><span class="p">:</span><span class="w"> </span><span class="ss">:email</span><span class="p">,</span><span class="w">  </span><span class="c1"># Same field, now configurable!</span><span class="w">
+    </span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="ss">:contact_person</span><span class="w">
+  </span><span class="p" data-group-id="7340383445-1">]</span></code></pre><p>The system now works with any field name you configure.</p><h2 id="see-also" class="section-heading"><a href="#see-also" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">See Also</span></h2><ul><li><a href="lib/event/recipient_extractor.ex">RecipientExtractor module docs</a> - Full API documentation</li><li><a href="lib/dsl/sections.ex#L285-405">DSL sections</a> - Complete DSL reference</li><li><a href="../magasin/test/ash_dispatch/integration_test.exs">Integration tests</a> - Working examples</li></ul>
+
+</div>
+
+<div class="bottom-actions" id="bottom-actions">
+  <div class="bottom-actions-item">
+
+      <a href="recipient-resolution.html" class="bottom-actions-button" rel="prev">
+        <span class="subheader">
+          ← Previous Page
+        </span>
+        <span class="title">
+Recipient Resolution
+        </span>
+      </a>
+
+  </div>
+  <div class="bottom-actions-item">
+
+      <a href="user-preferences.html" class="bottom-actions-button" rel="next">
+        <span class="subheader">
+          Next Page →
+        </span>
+        <span class="title">
+User Preferences
+        </span>
+      </a>
+
+  </div>
+</div>
+    <footer class="footer">
+      <p>
+
+          <span class="line">
+            <a href="https://hex.pm/packages/ash_dispatch/0.1.0" class="footer-hex-package">Hex Package</a>
+
+            <a href="https://preview.hex.pm/preview/ash_dispatch/0.1.0">Hex Preview</a>
+
+              (<a href="https://preview.hex.pm/preview/ash_dispatch/0.1.0/show/lib/documentation/topics/recipient-extractor.md">current file</a>)
+
+          </span>
+
+        <span class="line">
+          <button class="a-main footer-button display-quick-switch" title="Search HexDocs packages">
+            Search HexDocs
+          </button>
+
+        </span>
+      </p>
+
+      <p class="built-using">
+        Built using
+        <a href="https://github.com/elixir-lang/ex_doc" title="ExDoc" target="_blank" rel="help noopener" translate="no">ExDoc</a> (v0.39.1) for the
+
+          <a href="https://elixir-lang.org" title="Elixir" target="_blank" translate="no">Elixir programming language</a>
+
+      </p>
+
+    </footer>
+  </div>
+</main>
+</div>
+<script>
+  // Add copy buttons to code blocks
+  document.querySelectorAll('pre code').forEach(function(block) {
+    if (!block.parentElement.querySelector('.copy-button')) {
+      const button = document.createElement('button');
+      button.className = 'copy-button';
+      button.textContent = 'Copy';
+      button.onclick = function() {
+        navigator.clipboard.writeText(block.textContent);
+        button.textContent = 'Copied!';
+        setTimeout(() => button.textContent = 'Copy', 2000);
+      };
+      block.parentElement.style.position = 'relative';
+      block.parentElement.appendChild(button);
+    }
+  });
+</script>
+
+  </body>
+</html>

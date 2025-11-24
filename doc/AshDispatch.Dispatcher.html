@@ -12,7 +12,7 @@
 
     <link rel="stylesheet" href="dist/html-elixir-ZFNMEJKT.css" />
 
-    <script defer src="dist/sidebar_items-F03CB3D7.js"></script>
+    <script defer src="dist/sidebar_items-08887088.js"></script>
     <script defer src="docs_config.js"></script>
     <script defer src="dist/html-HBZYRXZS.js"></script>
 <style>
@@ -137,11 +137,21 @@ AshDispatch
 
     <div class="summary-row">
       <div class="summary-signature">
-        <a href="#dispatch/3" data-no-tooltip="" translate="no">dispatch(context, channel, event_config)</a>
+        <a href="#dispatch/3" data-no-tooltip="" translate="no">dispatch(event_id, data, variables \\ %{})</a>
 
       </div>
 
-        <div class="summary-synopsis"><p>Dispatches an event to a specific channel.</p></div>
+        <div class="summary-synopsis"><p>Dispatches an event by ID with data and variables.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#dispatch_channel/3" data-no-tooltip="" translate="no">dispatch_channel(context, channel, event_config)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Low-level dispatch function that dispatches to a specific channel with a pre-built context.</p></div>
 
     </div>
 
@@ -161,15 +171,17 @@ AshDispatch
     <div class="functions-list">
 <section class="detail" id="dispatch/3">
 
+    <span id="dispatch/2"></span>
+
   <div class="detail-header">
     <a href="#dispatch/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
       <i class="ri-link-m" aria-hidden="true"></i>
     </a>
     <div class="heading-with-actions">
-      <h1 class="signature" translate="no">dispatch(context, channel, event_config)</h1>
+      <h1 class="signature" translate="no">dispatch(event_id, data, variables \\ %{})</h1>
 
 
-        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/dispatcher.ex#L65" class="icon-action" rel="help" aria-label="View Source">
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/dispatcher.ex#L88" class="icon-action" rel="help" aria-label="View Source">
           <i class="ri-code-s-slash-line" aria-hidden="true"></i>
         </a>
 
@@ -178,19 +190,49 @@ AshDispatch
 
   <section class="docstring">
 
-<p>Dispatches an event to a specific channel.</p><p>Creates a DeliveryReceipt and routes to the appropriate transport handler.</p><h2 id="dispatch/3-parameters" class="section-heading"><a href="#dispatch/3-parameters" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Parameters</span></h2><ul><li><code class="inline">context</code> - Event context with all data</li><li><code class="inline">channel</code> - Channel configuration (transport, audience, timing, etc.)</li><li><code class="inline">event_config</code> - Event configuration (module, channels, content, metadata)</li></ul><h2 id="dispatch/3-returns" class="section-heading"><a href="#dispatch/3-returns" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Returns</span></h2><ul><li><code class="inline">:ok</code> on success</li><li><code class="inline">{:error, reason}</code> on failure</li></ul><h2 id="dispatch/3-examples" class="section-heading"><a href="#dispatch/3-examples" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Examples</span></h2><pre><code class="makeup elixir" translate="no"><span class="n">context</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p" data-group-id="2350701844-1">%</span><span class="nc" data-group-id="2350701844-1">Context</span><span class="p" data-group-id="2350701844-1">{</span><span class="w">
-  </span><span class="ss">event_id</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;product_order.created&quot;</span><span class="p">,</span><span class="w">
-  </span><span class="ss">data</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="2350701844-2">%{</span><span class="ss">order</span><span class="p">:</span><span class="w"> </span><span class="n">order</span><span class="p" data-group-id="2350701844-2">}</span><span class="p">,</span><span class="w">
-  </span><span class="ss">user</span><span class="p">:</span><span class="w"> </span><span class="n">user</span><span class="w">
-</span><span class="p" data-group-id="2350701844-1">}</span><span class="w">
+<p>Dispatches an event by ID with data and variables.</p><p>This is the high-level dispatch function that applications use.
+It looks up the event module, creates channels, and dispatches to all of them.</p><h2 id="dispatch/3-parameters" class="section-heading"><a href="#dispatch/3-parameters" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Parameters</span></h2><ul><li><code class="inline">event_id</code> - The event identifier (e.g., &quot;requests.new_reseller_request&quot;)</li><li><code class="inline">data</code> - Map of domain data (resources, users, etc.)</li><li><code class="inline">variables</code> - Map of template variables (tokens, simple values, etc.) - defaults to %{}</li></ul><h2 id="dispatch/3-returns" class="section-heading"><a href="#dispatch/3-returns" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Returns</span></h2><ul><li><code class="inline">{:ok, results}</code> - List of delivery receipt results</li><li><code class="inline">{:error, reason}</code> - If event not found or dispatch fails</li></ul><h2 id="dispatch/3-data-vs-variables" class="section-heading"><a href="#dispatch/3-data-vs-variables" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Data vs Variables</span></h2><p>Use <code class="inline">data</code> for:</p><ul><li>Domain resources (User, Order, Ticket, etc.)</li><li>Structured Ash resources</li><li>Objects that need relationship traversal</li></ul><p>Use <code class="inline">variables</code> for:</p><ul><li>Authentication tokens (reset_token, confirmation_token)</li><li>Simple template values</li><li>Computed values that don't need relationships</li></ul><p>This separation prevents naming conflicts and makes the intent clearer.</p><h2 id="dispatch/3-examples" class="section-heading"><a href="#dispatch/3-examples" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Examples</span></h2><pre><code class="makeup elixir" translate="no"><span class="c1"># Dispatch with authentication token</span><span class="w">
+</span><span class="nc">AshDispatch.Dispatcher</span><span class="o">.</span><span class="n">dispatch</span><span class="p" data-group-id="9131717825-1">(</span><span class="w">
+  </span><span class="s">&quot;accounts.password_reset&quot;</span><span class="p">,</span><span class="w">
+  </span><span class="p" data-group-id="9131717825-2">%{</span><span class="ss">user</span><span class="p">:</span><span class="w"> </span><span class="n">user</span><span class="p" data-group-id="9131717825-2">}</span><span class="p">,</span><span class="w">
+  </span><span class="p" data-group-id="9131717825-3">%{</span><span class="ss">reset_token</span><span class="p">:</span><span class="w"> </span><span class="n">token</span><span class="p" data-group-id="9131717825-3">}</span><span class="w">
+</span><span class="p" data-group-id="9131717825-1">)</span><span class="w">
 
-</span><span class="n">channel</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p" data-group-id="2350701844-3">%</span><span class="nc" data-group-id="2350701844-3">Channel</span><span class="p" data-group-id="2350701844-3">{</span><span class="w">
-  </span><span class="ss">transport</span><span class="p">:</span><span class="w"> </span><span class="ss">:email</span><span class="p">,</span><span class="w">
-  </span><span class="ss">audience</span><span class="p">:</span><span class="w"> </span><span class="ss">:user</span><span class="p">,</span><span class="w">
-  </span><span class="ss">time</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="2350701844-4">{</span><span class="ss">:in</span><span class="p">,</span><span class="w"> </span><span class="mi">300</span><span class="p" data-group-id="2350701844-4">}</span><span class="w">
-</span><span class="p" data-group-id="2350701844-3">}</span><span class="w">
+</span><span class="c1"># Dispatch with invitation data</span><span class="w">
+</span><span class="nc">AshDispatch.Dispatcher</span><span class="o">.</span><span class="n">dispatch</span><span class="p" data-group-id="9131717825-4">(</span><span class="w">
+  </span><span class="s">&quot;accounts.invited&quot;</span><span class="p">,</span><span class="w">
+  </span><span class="p" data-group-id="9131717825-5">%{</span><span class="ss">invited_user</span><span class="p">:</span><span class="w"> </span><span class="n">user</span><span class="p">,</span><span class="w"> </span><span class="ss">invited_by</span><span class="p">:</span><span class="w"> </span><span class="n">admin</span><span class="p" data-group-id="9131717825-5">}</span><span class="p">,</span><span class="w">
+  </span><span class="p" data-group-id="9131717825-6">%{</span><span class="ss">invitation_token</span><span class="p">:</span><span class="w"> </span><span class="n">token</span><span class="p">,</span><span class="w"> </span><span class="ss">custom_message</span><span class="p">:</span><span class="w"> </span><span class="n">message</span><span class="p" data-group-id="9131717825-6">}</span><span class="w">
+</span><span class="p" data-group-id="9131717825-4">)</span><span class="w">
 
-</span><span class="nc">Dispatcher</span><span class="o">.</span><span class="n">dispatch</span><span class="p" data-group-id="2350701844-5">(</span><span class="n">context</span><span class="p">,</span><span class="w"> </span><span class="n">channel</span><span class="p">,</span><span class="w"> </span><span class="n">event_config</span><span class="p" data-group-id="2350701844-5">)</span></code></pre>
+</span><span class="c1"># Dispatch an order created event (no variables needed)</span><span class="w">
+</span><span class="nc">AshDispatch.Dispatcher</span><span class="o">.</span><span class="n">dispatch</span><span class="p" data-group-id="9131717825-7">(</span><span class="w">
+  </span><span class="s">&quot;orders.created&quot;</span><span class="p">,</span><span class="w">
+  </span><span class="p" data-group-id="9131717825-8">%{</span><span class="ss">order</span><span class="p">:</span><span class="w"> </span><span class="n">order</span><span class="p">,</span><span class="w"> </span><span class="ss">user</span><span class="p">:</span><span class="w"> </span><span class="n">user</span><span class="p" data-group-id="9131717825-8">}</span><span class="w">
+</span><span class="p" data-group-id="9131717825-7">)</span></code></pre>
+  </section>
+</section>
+<section class="detail" id="dispatch_channel/3">
+
+  <div class="detail-header">
+    <a href="#dispatch_channel/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">dispatch_channel(context, channel, event_config)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/dispatcher.ex#L152" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+<p>Low-level dispatch function that dispatches to a specific channel with a pre-built context.</p><p>This is used internally and by DSL-based events that build their own context.
+Most applications should use the high-level <a href="#dispatch/2"><code class="inline">dispatch/2</code></a> or <a href="#dispatch/3"><code class="inline">dispatch/3</code></a> functions instead.</p><h2 id="dispatch_channel/3-parameters" class="section-heading"><a href="#dispatch_channel/3-parameters" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Parameters</span></h2><ul><li><code class="inline">context</code> - Pre-built AshDispatch.Context struct</li><li><code class="inline">channel</code> - AshDispatch.Channel struct</li><li><code class="inline">event_config</code> - Event configuration map (with :module, :content, etc.)</li></ul><h2 id="dispatch_channel/3-returns" class="section-heading"><a href="#dispatch_channel/3-returns" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Returns</span></h2><ul><li><code class="inline">{:ok, receipt}</code> - DeliveryReceipt if successful</li><li><code class="inline">{:error, reason}</code> - If dispatch fails</li></ul>
   </section>
 </section>
 

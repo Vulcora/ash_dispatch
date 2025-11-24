@@ -357,9 +357,9 @@ AshDispatch uses Swoosh as a transport layer.
 
 ## Next Steps
 
-- [Getting Started Tutorial](../tutorials/getting-started.md)
-- [Understanding Events](events.md)
-- [Delivery Transports](transports.md)
+1. [Getting Started Tutorial](../tutorials/getting-started.md) - Build your first event
+2. [App Integration](app-integration.md) - Set up custom resources, database, and RPC
+3. [Phoenix Integration](phoenix-integration.md) - Real-time channels and frontend
 
 ## Implementation Status
 
@@ -418,6 +418,7 @@ end
 ## Learn More
 
 - [Getting Started Tutorial](../tutorials/getting-started.md) - Build your first event
+- [App Integration](app-integration.md) - Custom resources, database, and RPC
+- [Configuration Reference](configuration.md) - All available options
 - [DSL Reference](../dsls/DSL-AshDispatch-Resource.md) - Complete DSL documentation
-- [Architecture Guide](architecture.md) - Deep dive into internals
 

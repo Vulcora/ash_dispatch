@@ -24,6 +24,8 @@ def deps do
 end
 ```
 
+**Note:** For complete configuration options including standalone event modules, user resources, and custom notification resources, see [Configuration Guide](../topics/configuration.md).
+
 ### 2. Configure Oban
 
 AshDispatch uses Oban for asynchronous email delivery. See [Oban Configuration](../topics/oban-configuration.md) for complete setup.
@@ -70,6 +72,7 @@ Then configure AshDispatch to use your Swoosh mailer:
 ```elixir
 # config/config.exs
 config :ash_dispatch,
+  otp_app: :my_app,  # Required for template layouts
   email_backend: AshDispatch.EmailBackend.Swoosh,
   swoosh_mailer: MyApp.Mailer
 ```
@@ -99,6 +102,16 @@ If you don't configure an email backend, AshDispatch will log emails instead of 
 ## Add Your First Event
 
 Let's add notifications to a `Ticket` resource.
+
+### 0. Initial Setup (first time only)
+
+Before creating your first event, set up the directory structure and layouts:
+
+```bash
+mix ash_dispatch.setup
+```
+
+This creates `priv/ash_dispatch/layouts/` with default email templates. Customize these with your branding. See [Generator Guide](../topics/generator.md) for details.
 
 ### 1. Add the extension
 
@@ -744,8 +757,11 @@ end
 
 ## Next Steps
 
-- [Understanding Events](../topics/events.md) - Deep dive into event concepts
-- [Delivery Transports](../topics/transports.md) - Available transports and configuration
+**Recommended next:** [App Integration](../topics/app-integration.md) - Set up custom resources, database, and RPC
+
+Then explore:
+- [Phoenix Integration](../topics/phoenix-integration.md) - Real-time channels and frontend
+- [Counter Broadcasting](../topics/counter-broadcasting.md) - Live UI counters
 - [User Preferences](../topics/user-preferences.md) - Let users control notifications
 - [DSL Reference](../dsls/DSL-AshDispatch-Resource.md) - Complete DSL documentation
 

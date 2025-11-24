@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="ExDoc v0.39.1">
+    <meta name="project" content="AshDispatch v0.1.0">
+
+
+    <title>AshDispatch.Resources.EmailEvent — AshDispatch v0.1.0</title>
+
+    <link rel="stylesheet" href="dist/html-elixir-ZFNMEJKT.css" />
+
+    <script defer src="dist/sidebar_items-08887088.js"></script>
+    <script defer src="docs_config.js"></script>
+    <script defer src="dist/html-HBZYRXZS.js"></script>
+<style>
+  .sidebar-listNav-list > li > a.sidebar-projectName {
+    font-size: 1.2em;
+    font-weight: 700;
+    color: #2563eb;
+  }
+  .content-inner h1, .content-inner h2, .content-inner h3 {
+    border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 0.3em;
+  }
+</style>
+
+  </head>
+  <body>
+    <script>(()=>{var t="ex_doc:settings",e="dark";var o="dark",s="light";var E="sidebar_state",n="closed";var r="sidebar_width";var a="sidebar-open";var i=new URLSearchParams(window.location.search),S=i.get("theme")||JSON.parse(localStorage.getItem(t)||"{}").theme;(S===o||S!==s&&window.matchMedia("(prefers-color-scheme: dark)").matches)&&document.body.classList.add(e);var d=sessionStorage.getItem(E),A=d!==n&&!window.matchMedia(`screen and (max-width: ${768}px)`).matches;document.body.classList.toggle(a,A);var c=sessionStorage.getItem(r);c&&document.body.style.setProperty("--sidebarWidth",`${c}px`);var p=/(Macintosh|iPhone|iPad|iPod)/.test(window.navigator.userAgent);document.documentElement.classList.toggle("apple-os",p);})();
+</script>
+
+<div class="body-wrapper">
+
+<button id="sidebar-menu" class="sidebar-button sidebar-toggle" aria-label="toggle sidebar" aria-controls="sidebar">
+  <i class="ri-menu-line ri-lg" title="Collapse/expand sidebar"></i>
+</button>
+
+<nav id="sidebar" class="sidebar">
+
+  <div class="sidebar-header">
+    <div class="sidebar-projectInfo">
+
+      <div>
+        <a href="https://github.com/Vulcora/ash_dispatch" class="sidebar-projectName" translate="no">
+AshDispatch
+        </a>
+        <div class="sidebar-projectVersion" translate="no">
+          v0.1.0
+        </div>
+      </div>
+    </div>
+    <ul id="sidebar-list-nav" class="sidebar-list-nav" role="tablist" data-extras=""></ul>
+  </div>
+</nav>
+
+<output role="status" id="toast"></output>
+
+<main class="content page-module" id="main" data-type="modules">
+  <div id="content" class="content-inner">
+    <div class="top-search">
+      <div class="search-settings">
+        <form class="search-bar" action="search.html">
+          <label class="search-label">
+            <span class="sr-only">Search documentation of AshDispatch</span>
+            <div class="search-input-wrapper">
+              <input name="q" type="text" class="search-input" placeholder="Press / to search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+              <button type="button" tabindex="-1" class="search-close-button" aria-hidden="true">
+                <i class="ri-close-line ri-lg" title="Cancel search"></i>
+              </button>
+            </div>
+          </label>
+        </form>
+        <div class="autocomplete">
+        </div>
+        <div class="engine-selector" data-multiple="false">
+          <button type="button" class="engine-button" aria-label="Select search engine" aria-haspopup="true" aria-expanded="false">
+            <i class="ri-search-2-line" aria-hidden="true"></i>
+            <span class="engine-name">Default</span>
+            <i class="ri-arrow-down-s-line" aria-hidden="true"></i>
+          </button>
+          <div class="engine-dropdown" hidden role="menu">
+
+              <button type="button"
+                      class="engine-option"
+                      data-engine-url="search.html?q="
+                      role="menuitemradio"
+                      aria-checked="true">
+                <span class="name">Default</span>
+                <span class="help">In-browser search</span>
+              </button>
+
+          </div>
+        </div>
+        <button class="icon-settings display-settings">
+          <i class="ri-settings-3-line"></i>
+          <span class="sr-only">Settings</span>
+        </button>
+      </div>
+    </div>
+
+<div id="top-content">
+  <div class="heading-with-actions top-heading">
+    <h1>
+      <span translate="no">AshDispatch.Resources.EmailEvent</span> 
+      <small class="app-vsn" translate="no">(AshDispatch v0.1.0)</small>
+
+    </h1>
+
+      <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/resources/email_event.ex#L1" title="View Source" class="icon-action" rel="help">
+        <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        <span class="sr-only">View Source</span>
+      </a>
+
+  </div>
+
+
+    <section id="moduledoc">
+<p>Read-only Ash resource exposing email event metadata via RPC.</p><p>This resource provides structured access to all email events in the system without
+requiring a database table. It reads from the <code class="inline">:ash_dispatch</code> <code class="inline">:event_modules</code> config.</p><h2 id="module-features" class="section-heading"><a href="#module-features" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Features</span></h2><ul><li>Lists all registered email events with metadata</li><li>Provides template previews (HTML/text) in development</li><li>Exposes channel configuration (subject, timing, audience)</li><li>Shows event metadata (domain, category, user preferences)</li></ul><h2 id="module-usage" class="section-heading"><a href="#module-usage" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Usage</span></h2><p>Add this resource to your domain and configure RPC + authorization:</p><pre><code class="makeup elixir" translate="no"><span class="kd">defmodule</span><span class="w"> </span><span class="nc">MyApp.Emails</span><span class="w"> </span><span class="k" data-group-id="6123011725-1">do</span><span class="w">
+  </span><span class="kn">use</span><span class="w"> </span><span class="nc">Ash.Domain</span><span class="p">,</span><span class="w">
+    </span><span class="ss">extensions</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="6123011725-2">[</span><span class="nc">AshTypescript.Rpc</span><span class="p" data-group-id="6123011725-2">]</span><span class="w">
+
+  </span><span class="n">typescript_rpc</span><span class="w"> </span><span class="k" data-group-id="6123011725-3">do</span><span class="w">
+    </span><span class="n">resource</span><span class="w"> </span><span class="nc">AshDispatch.Resources.EmailEvent</span><span class="w"> </span><span class="k" data-group-id="6123011725-4">do</span><span class="w">
+      </span><span class="n">rpc_action</span><span class="w"> </span><span class="ss">:list_email_events</span><span class="p">,</span><span class="w"> </span><span class="ss">:list</span><span class="w">
+      </span><span class="n">rpc_action</span><span class="w"> </span><span class="ss">:get_email_event</span><span class="p">,</span><span class="w"> </span><span class="ss">:get</span><span class="w">
+    </span><span class="k" data-group-id="6123011725-4">end</span><span class="w">
+  </span><span class="k" data-group-id="6123011725-3">end</span><span class="w">
+
+  </span><span class="n">resources</span><span class="w"> </span><span class="k" data-group-id="6123011725-5">do</span><span class="w">
+    </span><span class="n">resource</span><span class="w"> </span><span class="nc">AshDispatch.Resources.EmailEvent</span><span class="w"> </span><span class="k" data-group-id="6123011725-6">do</span><span class="w">
+      </span><span class="n">define</span><span class="w"> </span><span class="ss">:list_email_events</span><span class="p">,</span><span class="w"> </span><span class="ss">action</span><span class="p">:</span><span class="w"> </span><span class="ss">:list</span><span class="w">
+      </span><span class="n">define</span><span class="w"> </span><span class="ss">:get_email_event</span><span class="p">,</span><span class="w"> </span><span class="ss">action</span><span class="p">:</span><span class="w"> </span><span class="ss">:get</span><span class="p">,</span><span class="w"> </span><span class="ss">args</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="6123011725-7">[</span><span class="ss">:id</span><span class="p" data-group-id="6123011725-7">]</span><span class="p">,</span><span class="w"> </span><span class="ss">get?</span><span class="p">:</span><span class="w"> </span><span class="no">true</span><span class="w">
+    </span><span class="k" data-group-id="6123011725-6">end</span><span class="w">
+  </span><span class="k" data-group-id="6123011725-5">end</span><span class="w">
+</span><span class="k" data-group-id="6123011725-1">end</span></code></pre><p><strong>Note:</strong> Add authorization policies in your app's domain configuration.</p>
+    </section>
+
+</div>
+
+  <section id="summary" class="details-list">
+    <h1 class="section-heading">
+      <a class="hover-link" href="#summary">
+        <i class="ri-link-m" aria-hidden="true"></i>
+      </a>
+      <span class="text">Summary</span>
+    </h1>
+<div class="summary-types summary">
+  <h2>
+    <a href="#types">Types</a>
+  </h2>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#t:t/0" data-no-tooltip="" translate="no">t()</a>
+
+      </div>
+
+    </div>
+
+</div>
+<div class="summary-functions summary">
+  <h2>
+    <a href="#functions">Functions</a>
+  </h2>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#can_get/4" data-no-tooltip="" translate="no">can_get(actor, id, params_or_opts \\ %{}, opts \\ [])</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Runs authorization checks for <code class="inline">AshDispatch.Resources.EmailEvent.get</code>
+See <a><code class="inline">Ash.can/3</code></a> for more information</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#can_get?/4" data-no-tooltip="" translate="no">can_get?(actor, id, params_or_opts \\ %{}, opts \\ [])</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Runs authorization checks for <code class="inline">AshDispatch.Resources.EmailEvent.get</code>, returning a boolean.
+See <a><code class="inline">Ash.can?/3</code></a> for more information</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#can_list/3" data-no-tooltip="" translate="no">can_list(actor, params_or_opts \\ %{}, opts \\ [])</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Runs authorization checks for <code class="inline">AshDispatch.Resources.EmailEvent.list</code>
+See <a><code class="inline">Ash.can/3</code></a> for more information</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#can_list?/3" data-no-tooltip="" translate="no">can_list?(actor, params_or_opts \\ %{}, opts \\ [])</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Runs authorization checks for <code class="inline">AshDispatch.Resources.EmailEvent.list</code>, returning a boolean.
+See <a><code class="inline">Ash.can?/3</code></a> for more information</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#default_short_name/0" data-no-tooltip="" translate="no">default_short_name()</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#get/3" data-no-tooltip="" translate="no">get(id, params \\ nil, opts \\ nil)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Get a specific email event by ID</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#get!/3" data-no-tooltip="" translate="no">get!(id, params \\ nil, opts \\ nil)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Get a specific email event by ID
+Raises any errors instead of returning them</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#input/1" data-no-tooltip="" translate="no">input(opts)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Validates that the keys in the provided input are valid for at least one action on the resource.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#input/2" data-no-tooltip="" translate="no">input(opts, action)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Same as <a><code class="inline">input/1</code></a>, except restricts the keys to values accepted by the action provided.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#list/2" data-no-tooltip="" translate="no">list(params \\ nil, opts \\ nil)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>List all email events</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#list!/2" data-no-tooltip="" translate="no">list!(params \\ nil, opts \\ nil)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>List all email events
+Raises any errors instead of returning them</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#primary_key_matches?/2" data-no-tooltip="" translate="no">primary_key_matches?(left, right)</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#query_to_get/3" data-no-tooltip="" translate="no">query_to_get(id, params_or_opts \\ %{}, opts \\ [])</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Returns the query corresponding to the action.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#query_to_list/2" data-no-tooltip="" translate="no">query_to_list(params_or_opts \\ %{}, opts \\ [])</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Returns the query corresponding to the action.</p></div>
+
+    </div>
+
+</div>
+
+  </section>
+
+
+  <section id="types" class="details-list">
+    <h1 class="section-heading">
+      <a class="hover-link" href="#types">
+        <i class="ri-link-m" aria-hidden="true"></i>
+      </a>
+      <span class="text">Types</span>
+    </h1>
+
+    <div class="types-list">
+<section class="detail" id="t:t/0">
+
+  <div class="detail-header">
+    <a href="#t:t/0" class="detail-link" data-no-tooltip="" aria-label="Link to this type">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">t()</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/resources/email_event.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@type</span> t() :: %AshDispatch.Resources.EmailEvent{
+  __lateral_join_source__: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
+  __meta__: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
+  __metadata__: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
+  __order__: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
+  action_required: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
+  aggregates: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
+  calculations: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
+  category: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
+  channel_count: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
+  channels: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
+  domain: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
+  email_channel_count: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
+  id: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
+  module: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
+  notification_type: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>(),
+  user_configurable: <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">term</a>()
+}</pre>
+
+      </div>
+
+
+  </section>
+</section>
+
+    </div>
+  </section>
+
+  <section id="functions" class="details-list">
+    <h1 class="section-heading">
+      <a class="hover-link" href="#functions">
+        <i class="ri-link-m" aria-hidden="true"></i>
+      </a>
+      <span class="text">Functions</span>
+    </h1>
+
+    <div class="functions-list">
+<section class="detail" id="can_get/4">
+
+    <span id="can_get/2"></span>
+
+    <span id="can_get/3"></span>
+
+  <div class="detail-header">
+    <a href="#can_get/4" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">can_get(actor, id, params_or_opts \\ %{}, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/resources/email_event.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+<p>Runs authorization checks for <code class="inline">AshDispatch.Resources.EmailEvent.get</code>
+See <a href="https://hexdocs.pm/ash/3.9.0/Ash.html#can/3"><code class="inline">Ash.can/3</code></a> for more information</p><h2 id="can_get/4-options" class="section-heading"><a href="#can_get/4-options" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Options</span></h2><ul><li><code class="inline">:maybe_is</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - If the actor <em>may</em> be able to perform the action, what value should be returned. The default value is <code class="inline">:maybe</code>.</li><li><code class="inline">:filter_with</code> - If set to <code class="inline">:error</code>, the query will raise an error on a match. If set to <code class="inline">:filter</code> the query will filter out unauthorized access. Valid values are :filter, :error The default value is <code class="inline">:filter</code>.</li><li><code class="inline">:validate?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether or not to treat an invalid action as a non-allowed action. The default value is <code class="inline">false</code>.</li><li><code class="inline">:reuse_values?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether or not loaded data like aggregates, calculations and relationships should be checked in memory if possible, instead of querying. No effect if <code class="inline">pre_flight?</code> is <code class="inline">false</code>. The default value is <code class="inline">false</code>.</li><li><code class="inline">:pre_flight?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether or not this is a pre_flight check (which may perform optimized in-memory checks) or the final proper check. The default value is <code class="inline">true</code>.</li><li><code class="inline">:scope</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - A value that implements the <a href="https://hexdocs.pm/ash/3.9.0/Ash.Scope.ToOpts.html"><code class="inline">Ash.Scope.ToOpts</code></a> protocol. Will overwrite any actor, tenant or context provided. See <a href="https://hexdocs.pm/ash/3.9.0/Ash.Context.html"><code class="inline">Ash.Context</code></a> for more.</li><li><code class="inline">:run_queries?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether or not to run queries. If set to <code class="inline">true</code>, <code class="inline">:maybe</code> will not be returned. The default value is <code class="inline">true</code>.</li><li><code class="inline">:data</code> - The record or records specifically attempting to be acted upon.</li><li><code class="inline">:tenant</code> (value that implements the <a href="https://hexdocs.pm/ash/3.9.0/Ash.ToTenant.html"><code class="inline">Ash.ToTenant</code></a> protocol) - The tenant to use for authorization</li><li><code class="inline">:alter_source?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - If set to <code class="inline">true</code>, the source being authorized is returned so it can be run. The default value is <code class="inline">false</code>.</li><li><code class="inline">:base_query</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - A base query on which to apply an generated filters</li><li><code class="inline">:no_check?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether or not authorization must pass at the strict/filter step, or if post-checks are allowed to be run The default value is <code class="inline">false</code>.</li><li><code class="inline">:on_must_pass_strict_check</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - Override the value returned when <code class="inline">no_check?</code> is <code class="inline">true</code> but a check must be run.</li><li><code class="inline">:atomic_changeset</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - A base query on which to apply an generated filters</li><li><code class="inline">:return_forbidden_error?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether or not to return a forbidden error in cases of not being authorized. The default value is <code class="inline">false</code>.</li><li><code class="inline">:log?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether or not to log the authorization result. The default value is <code class="inline">false</code>.</li></ul>
+  </section>
+</section>
+<section class="detail" id="can_get?/4">
+
+    <span id="can_get?/2"></span>
+
+    <span id="can_get?/3"></span>
+
+  <div class="detail-header">
+    <a href="#can_get?/4" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">can_get?(actor, id, params_or_opts \\ %{}, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/resources/email_event.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+<p>Runs authorization checks for <code class="inline">AshDispatch.Resources.EmailEvent.get</code>, returning a boolean.
+See <a href="https://hexdocs.pm/ash/3.9.0/Ash.html#can?/3"><code class="inline">Ash.can?/3</code></a> for more information</p><h2 id="can_get?/4-options" class="section-heading"><a href="#can_get?/4-options" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Options</span></h2><ul><li><code class="inline">:maybe_is</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - If the actor <em>may</em> be able to perform the action, what value should be returned. The default value is <code class="inline">true</code>.</li><li><code class="inline">:filter_with</code> - If set to <code class="inline">:error</code>, the query will raise an error on a match. If set to <code class="inline">:filter</code> the query will filter out unauthorized access. Valid values are :filter, :error The default value is <code class="inline">:filter</code>.</li><li><code class="inline">:validate?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether or not to treat an invalid action as a non-allowed action. The default value is <code class="inline">false</code>.</li><li><code class="inline">:reuse_values?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether or not loaded data like aggregates, calculations and relationships should be checked in memory if possible, instead of querying. No effect if <code class="inline">pre_flight?</code> is <code class="inline">false</code>. The default value is <code class="inline">false</code>.</li><li><code class="inline">:pre_flight?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether or not this is a pre_flight check (which may perform optimized in-memory checks) or the final proper check. The default value is <code class="inline">true</code>.</li><li><code class="inline">:scope</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - A value that implements the <a href="https://hexdocs.pm/ash/3.9.0/Ash.Scope.ToOpts.html"><code class="inline">Ash.Scope.ToOpts</code></a> protocol. Will overwrite any actor, tenant or context provided. See <a href="https://hexdocs.pm/ash/3.9.0/Ash.Context.html"><code class="inline">Ash.Context</code></a> for more.</li><li><code class="inline">:run_queries?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether or not to run queries. If set to <code class="inline">true</code>, <code class="inline">:maybe</code> will not be returned. The default value is <code class="inline">true</code>.</li><li><code class="inline">:data</code> - The record or records specifically attempting to be acted upon.</li><li><code class="inline">:tenant</code> (value that implements the <a href="https://hexdocs.pm/ash/3.9.0/Ash.ToTenant.html"><code class="inline">Ash.ToTenant</code></a> protocol) - The tenant to use for authorization</li><li><code class="inline">:alter_source?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - If set to <code class="inline">true</code>, the source being authorized is returned so it can be run. The default value is <code class="inline">false</code>.</li><li><code class="inline">:base_query</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - A base query on which to apply an generated filters</li><li><code class="inline">:no_check?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether or not authorization must pass at the strict/filter step, or if post-checks are allowed to be run The default value is <code class="inline">false</code>.</li><li><code class="inline">:on_must_pass_strict_check</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - Override the value returned when <code class="inline">no_check?</code> is <code class="inline">true</code> but a check must be run.</li><li><code class="inline">:atomic_changeset</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - A base query on which to apply an generated filters</li><li><code class="inline">:return_forbidden_error?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether or not to return a forbidden error in cases of not being authorized. The default value is <code class="inline">false</code>.</li><li><code class="inline">:log?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether or not to log the authorization result. The default value is <code class="inline">false</code>.</li></ul>
+  </section>
+</section>
+<section class="detail" id="can_list/3">
+
+    <span id="can_list/1"></span>
+
+    <span id="can_list/2"></span>
+
+  <div class="detail-header">
+    <a href="#can_list/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">can_list(actor, params_or_opts \\ %{}, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/resources/email_event.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+<p>Runs authorization checks for <code class="inline">AshDispatch.Resources.EmailEvent.list</code>
+See <a href="https://hexdocs.pm/ash/3.9.0/Ash.html#can/3"><code class="inline">Ash.can/3</code></a> for more information</p><h2 id="can_list/3-options" class="section-heading"><a href="#can_list/3-options" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Options</span></h2><ul><li><code class="inline">:maybe_is</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - If the actor <em>may</em> be able to perform the action, what value should be returned. The default value is <code class="inline">:maybe</code>.</li><li><code class="inline">:filter_with</code> - If set to <code class="inline">:error</code>, the query will raise an error on a match. If set to <code class="inline">:filter</code> the query will filter out unauthorized access. Valid values are :filter, :error The default value is <code class="inline">:filter</code>.</li><li><code class="inline">:validate?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether or not to treat an invalid action as a non-allowed action. The default value is <code class="inline">false</code>.</li><li><code class="inline">:reuse_values?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether or not loaded data like aggregates, calculations and relationships should be checked in memory if possible, instead of querying. No effect if <code class="inline">pre_flight?</code> is <code class="inline">false</code>. The default value is <code class="inline">false</code>.</li><li><code class="inline">:pre_flight?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether or not this is a pre_flight check (which may perform optimized in-memory checks) or the final proper check. The default value is <code class="inline">true</code>.</li><li><code class="inline">:scope</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - A value that implements the <a href="https://hexdocs.pm/ash/3.9.0/Ash.Scope.ToOpts.html"><code class="inline">Ash.Scope.ToOpts</code></a> protocol. Will overwrite any actor, tenant or context provided. See <a href="https://hexdocs.pm/ash/3.9.0/Ash.Context.html"><code class="inline">Ash.Context</code></a> for more.</li><li><code class="inline">:run_queries?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether or not to run queries. If set to <code class="inline">true</code>, <code class="inline">:maybe</code> will not be returned. The default value is <code class="inline">true</code>.</li><li><code class="inline">:data</code> - The record or records specifically attempting to be acted upon.</li><li><code class="inline">:tenant</code> (value that implements the <a href="https://hexdocs.pm/ash/3.9.0/Ash.ToTenant.html"><code class="inline">Ash.ToTenant</code></a> protocol) - The tenant to use for authorization</li><li><code class="inline">:alter_source?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - If set to <code class="inline">true</code>, the source being authorized is returned so it can be run. The default value is <code class="inline">false</code>.</li><li><code class="inline">:base_query</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - A base query on which to apply an generated filters</li><li><code class="inline">:no_check?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether or not authorization must pass at the strict/filter step, or if post-checks are allowed to be run The default value is <code class="inline">false</code>.</li><li><code class="inline">:on_must_pass_strict_check</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - Override the value returned when <code class="inline">no_check?</code> is <code class="inline">true</code> but a check must be run.</li><li><code class="inline">:atomic_changeset</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - A base query on which to apply an generated filters</li><li><code class="inline">:return_forbidden_error?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether or not to return a forbidden error in cases of not being authorized. The default value is <code class="inline">false</code>.</li><li><code class="inline">:log?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether or not to log the authorization result. The default value is <code class="inline">false</code>.</li></ul>
+  </section>
+</section>
+<section class="detail" id="can_list?/3">
+
+    <span id="can_list?/1"></span>
+
+    <span id="can_list?/2"></span>
+
+  <div class="detail-header">
+    <a href="#can_list?/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">can_list?(actor, params_or_opts \\ %{}, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/resources/email_event.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+<p>Runs authorization checks for <code class="inline">AshDispatch.Resources.EmailEvent.list</code>, returning a boolean.
+See <a href="https://hexdocs.pm/ash/3.9.0/Ash.html#can?/3"><code class="inline">Ash.can?/3</code></a> for more information</p><h2 id="can_list?/3-options" class="section-heading"><a href="#can_list?/3-options" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Options</span></h2><ul><li><code class="inline">:maybe_is</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - If the actor <em>may</em> be able to perform the action, what value should be returned. The default value is <code class="inline">true</code>.</li><li><code class="inline">:filter_with</code> - If set to <code class="inline">:error</code>, the query will raise an error on a match. If set to <code class="inline">:filter</code> the query will filter out unauthorized access. Valid values are :filter, :error The default value is <code class="inline">:filter</code>.</li><li><code class="inline">:validate?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether or not to treat an invalid action as a non-allowed action. The default value is <code class="inline">false</code>.</li><li><code class="inline">:reuse_values?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether or not loaded data like aggregates, calculations and relationships should be checked in memory if possible, instead of querying. No effect if <code class="inline">pre_flight?</code> is <code class="inline">false</code>. The default value is <code class="inline">false</code>.</li><li><code class="inline">:pre_flight?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether or not this is a pre_flight check (which may perform optimized in-memory checks) or the final proper check. The default value is <code class="inline">true</code>.</li><li><code class="inline">:scope</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - A value that implements the <a href="https://hexdocs.pm/ash/3.9.0/Ash.Scope.ToOpts.html"><code class="inline">Ash.Scope.ToOpts</code></a> protocol. Will overwrite any actor, tenant or context provided. See <a href="https://hexdocs.pm/ash/3.9.0/Ash.Context.html"><code class="inline">Ash.Context</code></a> for more.</li><li><code class="inline">:run_queries?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether or not to run queries. If set to <code class="inline">true</code>, <code class="inline">:maybe</code> will not be returned. The default value is <code class="inline">true</code>.</li><li><code class="inline">:data</code> - The record or records specifically attempting to be acted upon.</li><li><code class="inline">:tenant</code> (value that implements the <a href="https://hexdocs.pm/ash/3.9.0/Ash.ToTenant.html"><code class="inline">Ash.ToTenant</code></a> protocol) - The tenant to use for authorization</li><li><code class="inline">:alter_source?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - If set to <code class="inline">true</code>, the source being authorized is returned so it can be run. The default value is <code class="inline">false</code>.</li><li><code class="inline">:base_query</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - A base query on which to apply an generated filters</li><li><code class="inline">:no_check?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether or not authorization must pass at the strict/filter step, or if post-checks are allowed to be run The default value is <code class="inline">false</code>.</li><li><code class="inline">:on_must_pass_strict_check</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - Override the value returned when <code class="inline">no_check?</code> is <code class="inline">true</code> but a check must be run.</li><li><code class="inline">:atomic_changeset</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - A base query on which to apply an generated filters</li><li><code class="inline">:return_forbidden_error?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether or not to return a forbidden error in cases of not being authorized. The default value is <code class="inline">false</code>.</li><li><code class="inline">:log?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether or not to log the authorization result. The default value is <code class="inline">false</code>.</li></ul>
+  </section>
+</section>
+<section class="detail" id="default_short_name/0">
+
+  <div class="detail-header">
+    <a href="#default_short_name/0" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">default_short_name()</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/resources/email_event.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="get/3">
+
+    <span id="get/1"></span>
+
+    <span id="get/2"></span>
+
+  <div class="detail-header">
+    <a href="#get/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">get(id, params \\ nil, opts \\ nil)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/resources/email_event.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+<p>Get a specific email event by ID</p><h1>Arguments</h1><ul><li>id</li></ul><h2 id="get/3-options" class="section-heading"><a href="#get/3-options" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Options</span></h2><ul><li><code class="inline">:page</code> - Pagination options, see <a href="https://hexdocs.pm/ash/3.9.0/Ash.html#read/2"><code class="inline">Ash.read/2</code></a> for more.</li><li><code class="inline">:load</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - A load statement to add onto the query</li><li><code class="inline">:max_concurrency</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#basic-types"><code class="inline">non_neg_integer/0</code></a>) - The maximum number of processes allowed to be started for parallel loading of relationships and calculations. Defaults to <code class="inline">System.schedulers_online() * 2</code></li><li><code class="inline">:lock</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - A lock statement to add onto the query</li><li><code class="inline">:return_query?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - If <code class="inline">true</code>, the query that was ultimately used is returned as a third tuple element.<br/>The query goes through many potential changes during a request, potentially adding
+authorization filters, or replacing relationships for other data layers with their
+corresponding ids. This option can be used to get the true query that was sent to
+the data layer. The default value is <code class="inline">false</code>.</li><li><code class="inline">:skip_unknown_inputs</code> - A list of inputs that, if provided, will be ignored if they are not recognized by the action. Use <code class="inline">:*</code> to indicate all unknown keys.</li><li><code class="inline">:reuse_values?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether calculations are allowed to reuse values that have already been loaded, or must refetch them from the data layer. The default value is <code class="inline">false</code>.</li><li><code class="inline">:strict?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - If set to true, only specified attributes will be loaded when passing
+  a list of fields to fetch on a relationship, which allows for more
+  optimized data-fetching.<br/>  See <a href="https://hexdocs.pm/ash/3.9.0/Ash.Query.html#load/2"><code class="inline">Ash.Query.load/2</code></a>. The default value is <code class="inline">false</code>.</li><li><code class="inline">:authorize_with</code> - If set to <code class="inline">:error</code>, instead of applying authorization filters as a filter, any records not matching the authorization filter will cause an error to be returned. Valid values are :filter, :error The default value is <code class="inline">:filter</code>.</li><li><code class="inline">:timeout</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">timeout/0</code></a>) - A positive integer, or <code class="inline">:infinity</code>. If none is provided, the timeout configured on the domain is used.</li><li><code class="inline">:tracer</code> (one or a list of module that adopts <a href="https://hexdocs.pm/ash/3.9.0/Ash.Tracer.html"><code class="inline">Ash.Tracer</code></a>) - A tracer that implements the <a href="https://hexdocs.pm/ash/3.9.0/Ash.Tracer.html"><code class="inline">Ash.Tracer</code></a> behaviour. See that module for more.</li><li><code class="inline">:action</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - The action to use, either an Action struct or the name of the action</li><li><code class="inline">:authorize?</code> - If an actor option is provided (even if it is <code class="inline">nil</code>), authorization happens automatically. If not, this flag can be used to authorize with no user.</li><li><code class="inline">:context</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#basic-types"><code class="inline">map/0</code></a>) - Context to set on the query, changeset, or input</li><li><code class="inline">:tenant</code> (value that implements the <a href="https://hexdocs.pm/ash/3.9.0/Ash.ToTenant.html"><code class="inline">Ash.ToTenant</code></a> protocol) - A tenant to set on the query or changeset</li><li><code class="inline">:actor</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - If an actor is provided, it will be used in conjunction with the authorizers of a resource to authorize access</li><li><code class="inline">:scope</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - A value that implements the <a href="https://hexdocs.pm/ash/3.9.0/Ash.Scope.ToOpts.html"><code class="inline">Ash.Scope.ToOpts</code></a> protocol, for passing around actor/tenant/context in a single value. See <a href="https://hexdocs.pm/ash/3.9.0/Ash.Scope.ToOpts.html"><code class="inline">Ash.Scope.ToOpts</code></a> for more.</li><li><code class="inline">:query</code> - A query to seed the action with.</li><li><code class="inline">:not_found_error?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether or not to return or raise a <code class="inline">NotFound</code> error or to return <code class="inline">nil</code> when a get? action/interface is called.</li><li><code class="inline">:stream?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - If true, a stream of the results will be returned The default value is <code class="inline">false</code>.</li><li><code class="inline">:stream_options</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">keyword/0</code></a>) - Options passed to <code class="inline">Ash.stream!</code>, if <code class="inline">stream?: true</code> is given<ul><li><code class="inline">:batch_size</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#basic-types"><code class="inline">integer/0</code></a>) - How many records to request in each query run. Defaults to the pagination limits on the resource, or 250.</li><li><code class="inline">:allow_stream_with</code> - The 'worst' strategy allowed to be used to fetch records. See <a href="https://hexdocs.pm/ash/3.9.0/Ash.html#stream!/2"><code class="inline">Ash.stream!/2</code></a> docs for more. The default value is <code class="inline">:keyset</code>.</li><li><code class="inline">:stream_with</code> - The specific strategy to use to fetch records. See <a href="https://hexdocs.pm/ash/3.9.0/Ash.html#stream!/2"><code class="inline">Ash.stream!/2</code></a> docs for more.</li></ul></li></ul>
+  </section>
+</section>
+<section class="detail" id="get!/3">
+
+    <span id="get!/1"></span>
+
+    <span id="get!/2"></span>
+
+  <div class="detail-header">
+    <a href="#get!/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">get!(id, params \\ nil, opts \\ nil)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/resources/email_event.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+<p>Get a specific email event by ID
+Raises any errors instead of returning them</p><h1>Arguments</h1><ul><li>id</li></ul><h2 id="get!/3-options" class="section-heading"><a href="#get!/3-options" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Options</span></h2><ul><li><code class="inline">:page</code> - Pagination options, see <a href="https://hexdocs.pm/ash/3.9.0/Ash.html#read/2"><code class="inline">Ash.read/2</code></a> for more.</li><li><code class="inline">:load</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - A load statement to add onto the query</li><li><code class="inline">:max_concurrency</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#basic-types"><code class="inline">non_neg_integer/0</code></a>) - The maximum number of processes allowed to be started for parallel loading of relationships and calculations. Defaults to <code class="inline">System.schedulers_online() * 2</code></li><li><code class="inline">:lock</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - A lock statement to add onto the query</li><li><code class="inline">:return_query?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - If <code class="inline">true</code>, the query that was ultimately used is returned as a third tuple element.<br/>The query goes through many potential changes during a request, potentially adding
+authorization filters, or replacing relationships for other data layers with their
+corresponding ids. This option can be used to get the true query that was sent to
+the data layer. The default value is <code class="inline">false</code>.</li><li><code class="inline">:skip_unknown_inputs</code> - A list of inputs that, if provided, will be ignored if they are not recognized by the action. Use <code class="inline">:*</code> to indicate all unknown keys.</li><li><code class="inline">:reuse_values?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether calculations are allowed to reuse values that have already been loaded, or must refetch them from the data layer. The default value is <code class="inline">false</code>.</li><li><code class="inline">:strict?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - If set to true, only specified attributes will be loaded when passing
+  a list of fields to fetch on a relationship, which allows for more
+  optimized data-fetching.<br/>  See <a href="https://hexdocs.pm/ash/3.9.0/Ash.Query.html#load/2"><code class="inline">Ash.Query.load/2</code></a>. The default value is <code class="inline">false</code>.</li><li><code class="inline">:authorize_with</code> - If set to <code class="inline">:error</code>, instead of applying authorization filters as a filter, any records not matching the authorization filter will cause an error to be returned. Valid values are :filter, :error The default value is <code class="inline">:filter</code>.</li><li><code class="inline">:timeout</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">timeout/0</code></a>) - A positive integer, or <code class="inline">:infinity</code>. If none is provided, the timeout configured on the domain is used.</li><li><code class="inline">:tracer</code> (one or a list of module that adopts <a href="https://hexdocs.pm/ash/3.9.0/Ash.Tracer.html"><code class="inline">Ash.Tracer</code></a>) - A tracer that implements the <a href="https://hexdocs.pm/ash/3.9.0/Ash.Tracer.html"><code class="inline">Ash.Tracer</code></a> behaviour. See that module for more.</li><li><code class="inline">:action</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - The action to use, either an Action struct or the name of the action</li><li><code class="inline">:authorize?</code> - If an actor option is provided (even if it is <code class="inline">nil</code>), authorization happens automatically. If not, this flag can be used to authorize with no user.</li><li><code class="inline">:context</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#basic-types"><code class="inline">map/0</code></a>) - Context to set on the query, changeset, or input</li><li><code class="inline">:tenant</code> (value that implements the <a href="https://hexdocs.pm/ash/3.9.0/Ash.ToTenant.html"><code class="inline">Ash.ToTenant</code></a> protocol) - A tenant to set on the query or changeset</li><li><code class="inline">:actor</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - If an actor is provided, it will be used in conjunction with the authorizers of a resource to authorize access</li><li><code class="inline">:scope</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - A value that implements the <a href="https://hexdocs.pm/ash/3.9.0/Ash.Scope.ToOpts.html"><code class="inline">Ash.Scope.ToOpts</code></a> protocol, for passing around actor/tenant/context in a single value. See <a href="https://hexdocs.pm/ash/3.9.0/Ash.Scope.ToOpts.html"><code class="inline">Ash.Scope.ToOpts</code></a> for more.</li><li><code class="inline">:query</code> - A query to seed the action with.</li><li><code class="inline">:not_found_error?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether or not to return or raise a <code class="inline">NotFound</code> error or to return <code class="inline">nil</code> when a get? action/interface is called.</li><li><code class="inline">:stream?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - If true, a stream of the results will be returned The default value is <code class="inline">false</code>.</li><li><code class="inline">:stream_options</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">keyword/0</code></a>) - Options passed to <code class="inline">Ash.stream!</code>, if <code class="inline">stream?: true</code> is given<ul><li><code class="inline">:batch_size</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#basic-types"><code class="inline">integer/0</code></a>) - How many records to request in each query run. Defaults to the pagination limits on the resource, or 250.</li><li><code class="inline">:allow_stream_with</code> - The 'worst' strategy allowed to be used to fetch records. See <a href="https://hexdocs.pm/ash/3.9.0/Ash.html#stream!/2"><code class="inline">Ash.stream!/2</code></a> docs for more. The default value is <code class="inline">:keyset</code>.</li><li><code class="inline">:stream_with</code> - The specific strategy to use to fetch records. See <a href="https://hexdocs.pm/ash/3.9.0/Ash.html#stream!/2"><code class="inline">Ash.stream!/2</code></a> docs for more.</li></ul></li></ul>
+  </section>
+</section>
+<section class="detail" id="input/1">
+
+  <div class="detail-header">
+    <a href="#input/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">input(opts)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/resources/email_event.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> input(values :: <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>() | <a href="https://hexdocs.pm/elixir/Keyword.html#t:t/0">Keyword.t</a>()) :: <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">no_return</a>()</pre>
+
+      </div>
+
+<p>Validates that the keys in the provided input are valid for at least one action on the resource.</p><p>Raises a KeyError error at compile time if not. This exists because generally a struct should only ever
+be created by Ash as a result of a successful action. You should not be creating records manually in code,
+e.g <code class="inline">%MyResource{value: 1, value: 2}</code>. Generally that is fine, but often with embedded resources it is nice
+to be able to validate the keys that are being provided, e.g</p><pre><code class="makeup elixir" translate="no"><span class="nc">Resource</span><span class="w">
+</span><span class="o">|&gt;</span><span class="w"> </span><span class="nc">Ash.Changeset</span><span class="o">.</span><span class="n">for_create</span><span class="p" data-group-id="1363670937-1">(</span><span class="ss">:create</span><span class="p">,</span><span class="w"> </span><span class="p" data-group-id="1363670937-2">%{</span><span class="ss">embedded</span><span class="p">:</span><span class="w"> </span><span class="nc">EmbeddedResource</span><span class="o">.</span><span class="n">input</span><span class="p" data-group-id="1363670937-3">(</span><span class="ss">foo</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="ss">bar</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p" data-group-id="1363670937-3">)</span><span class="p" data-group-id="1363670937-2">}</span><span class="p" data-group-id="1363670937-1">)</span><span class="w">
+</span><span class="o">|&gt;</span><span class="w"> </span><span class="nc">Ash</span><span class="o">.</span><span class="n">create</span><span class="p" data-group-id="1363670937-4">(</span><span class="p" data-group-id="1363670937-4">)</span></code></pre>
+  </section>
+</section>
+<section class="detail" id="input/2">
+
+  <div class="detail-header">
+    <a href="#input/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">input(opts, action)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/resources/email_event.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">@spec</span> input(values :: <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>() | <a href="https://hexdocs.pm/elixir/Keyword.html#t:t/0">Keyword.t</a>(), action :: <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">atom</a>()) :: <a href="https://hexdocs.pm/elixir/typespecs.html#basic-types">map</a>() | <a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types">no_return</a>()</pre>
+
+      </div>
+
+<p>Same as <a href="#input/1"><code class="inline">input/1</code></a>, except restricts the keys to values accepted by the action provided.</p>
+  </section>
+</section>
+<section class="detail" id="list/2">
+
+    <span id="list/0"></span>
+
+    <span id="list/1"></span>
+
+  <div class="detail-header">
+    <a href="#list/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">list(params \\ nil, opts \\ nil)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/resources/email_event.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+<p>List all email events</p><h2 id="list/2-options" class="section-heading"><a href="#list/2-options" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Options</span></h2><ul><li><code class="inline">:page</code> - Pagination options, see <a href="https://hexdocs.pm/ash/3.9.0/Ash.html#read/2"><code class="inline">Ash.read/2</code></a> for more.</li><li><code class="inline">:load</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - A load statement to add onto the query</li><li><code class="inline">:max_concurrency</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#basic-types"><code class="inline">non_neg_integer/0</code></a>) - The maximum number of processes allowed to be started for parallel loading of relationships and calculations. Defaults to <code class="inline">System.schedulers_online() * 2</code></li><li><code class="inline">:lock</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - A lock statement to add onto the query</li><li><code class="inline">:return_query?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - If <code class="inline">true</code>, the query that was ultimately used is returned as a third tuple element.<br/>The query goes through many potential changes during a request, potentially adding
+authorization filters, or replacing relationships for other data layers with their
+corresponding ids. This option can be used to get the true query that was sent to
+the data layer. The default value is <code class="inline">false</code>.</li><li><code class="inline">:skip_unknown_inputs</code> - A list of inputs that, if provided, will be ignored if they are not recognized by the action. Use <code class="inline">:*</code> to indicate all unknown keys.</li><li><code class="inline">:reuse_values?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether calculations are allowed to reuse values that have already been loaded, or must refetch them from the data layer. The default value is <code class="inline">false</code>.</li><li><code class="inline">:strict?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - If set to true, only specified attributes will be loaded when passing
+  a list of fields to fetch on a relationship, which allows for more
+  optimized data-fetching.<br/>  See <a href="https://hexdocs.pm/ash/3.9.0/Ash.Query.html#load/2"><code class="inline">Ash.Query.load/2</code></a>. The default value is <code class="inline">false</code>.</li><li><code class="inline">:authorize_with</code> - If set to <code class="inline">:error</code>, instead of applying authorization filters as a filter, any records not matching the authorization filter will cause an error to be returned. Valid values are :filter, :error The default value is <code class="inline">:filter</code>.</li><li><code class="inline">:timeout</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">timeout/0</code></a>) - A positive integer, or <code class="inline">:infinity</code>. If none is provided, the timeout configured on the domain is used.</li><li><code class="inline">:tracer</code> (one or a list of module that adopts <a href="https://hexdocs.pm/ash/3.9.0/Ash.Tracer.html"><code class="inline">Ash.Tracer</code></a>) - A tracer that implements the <a href="https://hexdocs.pm/ash/3.9.0/Ash.Tracer.html"><code class="inline">Ash.Tracer</code></a> behaviour. See that module for more.</li><li><code class="inline">:action</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - The action to use, either an Action struct or the name of the action</li><li><code class="inline">:authorize?</code> - If an actor option is provided (even if it is <code class="inline">nil</code>), authorization happens automatically. If not, this flag can be used to authorize with no user.</li><li><code class="inline">:context</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#basic-types"><code class="inline">map/0</code></a>) - Context to set on the query, changeset, or input</li><li><code class="inline">:tenant</code> (value that implements the <a href="https://hexdocs.pm/ash/3.9.0/Ash.ToTenant.html"><code class="inline">Ash.ToTenant</code></a> protocol) - A tenant to set on the query or changeset</li><li><code class="inline">:actor</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - If an actor is provided, it will be used in conjunction with the authorizers of a resource to authorize access</li><li><code class="inline">:scope</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - A value that implements the <a href="https://hexdocs.pm/ash/3.9.0/Ash.Scope.ToOpts.html"><code class="inline">Ash.Scope.ToOpts</code></a> protocol, for passing around actor/tenant/context in a single value. See <a href="https://hexdocs.pm/ash/3.9.0/Ash.Scope.ToOpts.html"><code class="inline">Ash.Scope.ToOpts</code></a> for more.</li><li><code class="inline">:query</code> - A query to seed the action with.</li><li><code class="inline">:not_found_error?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether or not to return or raise a <code class="inline">NotFound</code> error or to return <code class="inline">nil</code> when a get? action/interface is called.</li><li><code class="inline">:stream?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - If true, a stream of the results will be returned The default value is <code class="inline">false</code>.</li><li><code class="inline">:stream_options</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">keyword/0</code></a>) - Options passed to <code class="inline">Ash.stream!</code>, if <code class="inline">stream?: true</code> is given<ul><li><code class="inline">:batch_size</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#basic-types"><code class="inline">integer/0</code></a>) - How many records to request in each query run. Defaults to the pagination limits on the resource, or 250.</li><li><code class="inline">:allow_stream_with</code> - The 'worst' strategy allowed to be used to fetch records. See <a href="https://hexdocs.pm/ash/3.9.0/Ash.html#stream!/2"><code class="inline">Ash.stream!/2</code></a> docs for more. The default value is <code class="inline">:keyset</code>.</li><li><code class="inline">:stream_with</code> - The specific strategy to use to fetch records. See <a href="https://hexdocs.pm/ash/3.9.0/Ash.html#stream!/2"><code class="inline">Ash.stream!/2</code></a> docs for more.</li></ul></li></ul>
+  </section>
+</section>
+<section class="detail" id="list!/2">
+
+    <span id="list!/0"></span>
+
+    <span id="list!/1"></span>
+
+  <div class="detail-header">
+    <a href="#list!/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">list!(params \\ nil, opts \\ nil)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/resources/email_event.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+<p>List all email events
+Raises any errors instead of returning them</p><h2 id="list!/2-options" class="section-heading"><a href="#list!/2-options" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Options</span></h2><ul><li><code class="inline">:page</code> - Pagination options, see <a href="https://hexdocs.pm/ash/3.9.0/Ash.html#read/2"><code class="inline">Ash.read/2</code></a> for more.</li><li><code class="inline">:load</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - A load statement to add onto the query</li><li><code class="inline">:max_concurrency</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#basic-types"><code class="inline">non_neg_integer/0</code></a>) - The maximum number of processes allowed to be started for parallel loading of relationships and calculations. Defaults to <code class="inline">System.schedulers_online() * 2</code></li><li><code class="inline">:lock</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - A lock statement to add onto the query</li><li><code class="inline">:return_query?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - If <code class="inline">true</code>, the query that was ultimately used is returned as a third tuple element.<br/>The query goes through many potential changes during a request, potentially adding
+authorization filters, or replacing relationships for other data layers with their
+corresponding ids. This option can be used to get the true query that was sent to
+the data layer. The default value is <code class="inline">false</code>.</li><li><code class="inline">:skip_unknown_inputs</code> - A list of inputs that, if provided, will be ignored if they are not recognized by the action. Use <code class="inline">:*</code> to indicate all unknown keys.</li><li><code class="inline">:reuse_values?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether calculations are allowed to reuse values that have already been loaded, or must refetch them from the data layer. The default value is <code class="inline">false</code>.</li><li><code class="inline">:strict?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - If set to true, only specified attributes will be loaded when passing
+  a list of fields to fetch on a relationship, which allows for more
+  optimized data-fetching.<br/>  See <a href="https://hexdocs.pm/ash/3.9.0/Ash.Query.html#load/2"><code class="inline">Ash.Query.load/2</code></a>. The default value is <code class="inline">false</code>.</li><li><code class="inline">:authorize_with</code> - If set to <code class="inline">:error</code>, instead of applying authorization filters as a filter, any records not matching the authorization filter will cause an error to be returned. Valid values are :filter, :error The default value is <code class="inline">:filter</code>.</li><li><code class="inline">:timeout</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">timeout/0</code></a>) - A positive integer, or <code class="inline">:infinity</code>. If none is provided, the timeout configured on the domain is used.</li><li><code class="inline">:tracer</code> (one or a list of module that adopts <a href="https://hexdocs.pm/ash/3.9.0/Ash.Tracer.html"><code class="inline">Ash.Tracer</code></a>) - A tracer that implements the <a href="https://hexdocs.pm/ash/3.9.0/Ash.Tracer.html"><code class="inline">Ash.Tracer</code></a> behaviour. See that module for more.</li><li><code class="inline">:action</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - The action to use, either an Action struct or the name of the action</li><li><code class="inline">:authorize?</code> - If an actor option is provided (even if it is <code class="inline">nil</code>), authorization happens automatically. If not, this flag can be used to authorize with no user.</li><li><code class="inline">:context</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#basic-types"><code class="inline">map/0</code></a>) - Context to set on the query, changeset, or input</li><li><code class="inline">:tenant</code> (value that implements the <a href="https://hexdocs.pm/ash/3.9.0/Ash.ToTenant.html"><code class="inline">Ash.ToTenant</code></a> protocol) - A tenant to set on the query or changeset</li><li><code class="inline">:actor</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - If an actor is provided, it will be used in conjunction with the authorizers of a resource to authorize access</li><li><code class="inline">:scope</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - A value that implements the <a href="https://hexdocs.pm/ash/3.9.0/Ash.Scope.ToOpts.html"><code class="inline">Ash.Scope.ToOpts</code></a> protocol, for passing around actor/tenant/context in a single value. See <a href="https://hexdocs.pm/ash/3.9.0/Ash.Scope.ToOpts.html"><code class="inline">Ash.Scope.ToOpts</code></a> for more.</li><li><code class="inline">:query</code> - A query to seed the action with.</li><li><code class="inline">:not_found_error?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - Whether or not to return or raise a <code class="inline">NotFound</code> error or to return <code class="inline">nil</code> when a get? action/interface is called.</li><li><code class="inline">:stream?</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">boolean/0</code></a>) - If true, a stream of the results will be returned The default value is <code class="inline">false</code>.</li><li><code class="inline">:stream_options</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">keyword/0</code></a>) - Options passed to <code class="inline">Ash.stream!</code>, if <code class="inline">stream?: true</code> is given<ul><li><code class="inline">:batch_size</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#basic-types"><code class="inline">integer/0</code></a>) - How many records to request in each query run. Defaults to the pagination limits on the resource, or 250.</li><li><code class="inline">:allow_stream_with</code> - The 'worst' strategy allowed to be used to fetch records. See <a href="https://hexdocs.pm/ash/3.9.0/Ash.html#stream!/2"><code class="inline">Ash.stream!/2</code></a> docs for more. The default value is <code class="inline">:keyset</code>.</li><li><code class="inline">:stream_with</code> - The specific strategy to use to fetch records. See <a href="https://hexdocs.pm/ash/3.9.0/Ash.html#stream!/2"><code class="inline">Ash.stream!/2</code></a> docs for more.</li></ul></li></ul>
+  </section>
+</section>
+<section class="detail" id="primary_key_matches?/2">
+
+  <div class="detail-header">
+    <a href="#primary_key_matches?/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">primary_key_matches?(left, right)</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/resources/email_event.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="query_to_get/3">
+
+    <span id="query_to_get/1"></span>
+
+    <span id="query_to_get/2"></span>
+
+  <div class="detail-header">
+    <a href="#query_to_get/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">query_to_get(id, params_or_opts \\ %{}, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/resources/email_event.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+<p>Returns the query corresponding to the action.</p><h2 id="query_to_get/3-options" class="section-heading"><a href="#query_to_get/3-options" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Options</span></h2><ul><li><code class="inline">:tracer</code> (one or a list of module that adopts <a href="https://hexdocs.pm/ash/3.9.0/Ash.Tracer.html"><code class="inline">Ash.Tracer</code></a>) - A tracer that implements the <a href="https://hexdocs.pm/ash/3.9.0/Ash.Tracer.html"><code class="inline">Ash.Tracer</code></a> behaviour. See that module for more.</li><li><code class="inline">:authorize?</code> - If an actor option is provided (even if it is <code class="inline">nil</code>), authorization happens automatically. If not, this flag can be used to authorize with no user.</li><li><code class="inline">:tenant</code> (value that implements the <a href="https://hexdocs.pm/ash/3.9.0/Ash.ToTenant.html"><code class="inline">Ash.ToTenant</code></a> protocol) - A tenant to set on the query or changeset</li><li><code class="inline">:actor</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - If an actor is provided, it will be used in conjunction with the authorizers of a resource to authorize access</li><li><code class="inline">:scope</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - A value that implements the <a href="https://hexdocs.pm/ash/3.9.0/Ash.Scope.ToOpts.html"><code class="inline">Ash.Scope.ToOpts</code></a> protocol, for passing around actor/tenant/context in a single value. See <a href="https://hexdocs.pm/ash/3.9.0/Ash.Scope.ToOpts.html"><code class="inline">Ash.Scope.ToOpts</code></a> for more.</li><li><code class="inline">:query</code> - A query to seed the action with.</li></ul>
+  </section>
+</section>
+<section class="detail" id="query_to_list/2">
+
+    <span id="query_to_list/0"></span>
+
+    <span id="query_to_list/1"></span>
+
+  <div class="detail-header">
+    <a href="#query_to_list/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">query_to_list(params_or_opts \\ %{}, opts \\ [])</h1>
+
+
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/resources/email_event.ex#L1" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+<p>Returns the query corresponding to the action.</p><h2 id="query_to_list/2-options" class="section-heading"><a href="#query_to_list/2-options" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Options</span></h2><ul><li><code class="inline">:tracer</code> (one or a list of module that adopts <a href="https://hexdocs.pm/ash/3.9.0/Ash.Tracer.html"><code class="inline">Ash.Tracer</code></a>) - A tracer that implements the <a href="https://hexdocs.pm/ash/3.9.0/Ash.Tracer.html"><code class="inline">Ash.Tracer</code></a> behaviour. See that module for more.</li><li><code class="inline">:authorize?</code> - If an actor option is provided (even if it is <code class="inline">nil</code>), authorization happens automatically. If not, this flag can be used to authorize with no user.</li><li><code class="inline">:tenant</code> (value that implements the <a href="https://hexdocs.pm/ash/3.9.0/Ash.ToTenant.html"><code class="inline">Ash.ToTenant</code></a> protocol) - A tenant to set on the query or changeset</li><li><code class="inline">:actor</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - If an actor is provided, it will be used in conjunction with the authorizers of a resource to authorize access</li><li><code class="inline">:scope</code> (<a href="https://hexdocs.pm/elixir/typespecs.html#built-in-types"><code class="inline">term/0</code></a>) - A value that implements the <a href="https://hexdocs.pm/ash/3.9.0/Ash.Scope.ToOpts.html"><code class="inline">Ash.Scope.ToOpts</code></a> protocol, for passing around actor/tenant/context in a single value. See <a href="https://hexdocs.pm/ash/3.9.0/Ash.Scope.ToOpts.html"><code class="inline">Ash.Scope.ToOpts</code></a> for more.</li><li><code class="inline">:query</code> - A query to seed the action with.</li></ul>
+  </section>
+</section>
+
+    </div>
+  </section>
+
+    <footer class="footer">
+      <p>
+
+          <span class="line">
+            <a href="https://hex.pm/packages/ash_dispatch/0.1.0" class="footer-hex-package">Hex Package</a>
+
+            <a href="https://preview.hex.pm/preview/ash_dispatch/0.1.0">Hex Preview</a>
+
+          </span>
+
+        <span class="line">
+          <button class="a-main footer-button display-quick-switch" title="Search HexDocs packages">
+            Search HexDocs
+          </button>
+
+        </span>
+      </p>
+
+      <p class="built-using">
+        Built using
+        <a href="https://github.com/elixir-lang/ex_doc" title="ExDoc" target="_blank" rel="help noopener" translate="no">ExDoc</a> (v0.39.1) for the
+
+          <a href="https://elixir-lang.org" title="Elixir" target="_blank" translate="no">Elixir programming language</a>
+
+      </p>
+
+    </footer>
+  </div>
+</main>
+</div>
+<script>
+  // Add copy buttons to code blocks
+  document.querySelectorAll('pre code').forEach(function(block) {
+    if (!block.parentElement.querySelector('.copy-button')) {
+      const button = document.createElement('button');
+      button.className = 'copy-button';
+      button.textContent = 'Copy';
+      button.onclick = function() {
+        navigator.clipboard.writeText(block.textContent);
+        button.textContent = 'Copied!';
+        setTimeout(() => button.textContent = 'Copy', 2000);
+      };
+      block.parentElement.style.position = 'relative';
+      block.parentElement.appendChild(button);
+    }
+  });
+</script>
+
+  </body>
+</html>

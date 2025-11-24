@@ -12,7 +12,7 @@
 
     <link rel="stylesheet" href="dist/html-elixir-ZFNMEJKT.css" />
 
-    <script defer src="dist/sidebar_items-F03CB3D7.js"></script>
+    <script defer src="dist/sidebar_items-08887088.js"></script>
     <script defer src="docs_config.js"></script>
     <script defer src="dist/html-HBZYRXZS.js"></script>
 <style>
@@ -120,39 +120,39 @@ AshDispatch
     <section id="moduledoc">
 <p>Discord webhook transport.</p><p>Sends messages to Discord channels via webhooks (async via Oban).</p><h2 id="module-configuration" class="section-heading"><a href="#module-configuration" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Configuration</span></h2><p>Requires <code class="inline">webhook_url</code> in channel metadata or via callback:</p><pre><code class="makeup elixir" translate="no"><span class="c1"># Inline configuration</span><span class="w">
 </span><span class="n">event</span><span class="w"> </span><span class="ss">:order_created</span><span class="p">,</span><span class="w">
-  </span><span class="ss">channels</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="4749972577-1">[</span><span class="w">
-    </span><span class="p" data-group-id="4749972577-2">[</span><span class="w">
+  </span><span class="ss">channels</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="9770071429-1">[</span><span class="w">
+    </span><span class="p" data-group-id="9770071429-2">[</span><span class="w">
       </span><span class="ss">transport</span><span class="p">:</span><span class="w"> </span><span class="ss">:discord</span><span class="p">,</span><span class="w">
       </span><span class="ss">audience</span><span class="p">:</span><span class="w"> </span><span class="ss">:team</span><span class="p">,</span><span class="w">
-      </span><span class="ss">metadata</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="4749972577-3">[</span><span class="w">
+      </span><span class="ss">metadata</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="9770071429-3">[</span><span class="w">
         </span><span class="ss">webhook_url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://discord.com/api/webhooks/...&quot;</span><span class="w">
-      </span><span class="p" data-group-id="4749972577-3">]</span><span class="w">
-    </span><span class="p" data-group-id="4749972577-2">]</span><span class="w">
-  </span><span class="p" data-group-id="4749972577-1">]</span><span class="w">
+      </span><span class="p" data-group-id="9770071429-3">]</span><span class="w">
+    </span><span class="p" data-group-id="9770071429-2">]</span><span class="w">
+  </span><span class="p" data-group-id="9770071429-1">]</span><span class="w">
 
 </span><span class="c1"># Or via callback module</span><span class="w">
-</span><span class="kd">def</span><span class="w"> </span><span class="nf">channels</span><span class="p" data-group-id="4749972577-4">(</span><span class="n">context</span><span class="p" data-group-id="4749972577-4">)</span><span class="w"> </span><span class="k" data-group-id="4749972577-5">do</span><span class="w">
-  </span><span class="p" data-group-id="4749972577-6">[</span><span class="w">
-    </span><span class="p" data-group-id="4749972577-7">%</span><span class="nc" data-group-id="4749972577-7">Channel</span><span class="p" data-group-id="4749972577-7">{</span><span class="w">
+</span><span class="kd">def</span><span class="w"> </span><span class="nf">channels</span><span class="p" data-group-id="9770071429-4">(</span><span class="n">context</span><span class="p" data-group-id="9770071429-4">)</span><span class="w"> </span><span class="k" data-group-id="9770071429-5">do</span><span class="w">
+  </span><span class="p" data-group-id="9770071429-6">[</span><span class="w">
+    </span><span class="p" data-group-id="9770071429-7">%</span><span class="nc" data-group-id="9770071429-7">Channel</span><span class="p" data-group-id="9770071429-7">{</span><span class="w">
       </span><span class="ss">transport</span><span class="p">:</span><span class="w"> </span><span class="ss">:discord</span><span class="p">,</span><span class="w">
       </span><span class="ss">audience</span><span class="p">:</span><span class="w"> </span><span class="ss">:team</span><span class="p">,</span><span class="w">
-      </span><span class="ss">metadata</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="4749972577-8">%{</span><span class="w">
-        </span><span class="ss">webhook_url</span><span class="p">:</span><span class="w"> </span><span class="n">get_discord_webhook_url</span><span class="p" data-group-id="4749972577-9">(</span><span class="ss">:orders</span><span class="p" data-group-id="4749972577-9">)</span><span class="w">
-      </span><span class="p" data-group-id="4749972577-8">}</span><span class="w">
-    </span><span class="p" data-group-id="4749972577-7">}</span><span class="w">
-  </span><span class="p" data-group-id="4749972577-6">]</span><span class="w">
-</span><span class="k" data-group-id="4749972577-5">end</span></code></pre><h2 id="module-content" class="section-heading"><a href="#module-content" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Content</span></h2><p>Discord messages support:</p><ul><li><code class="inline">notification_message</code> - Simple text content</li><li><code class="inline">discord_embed</code> - Rich embed with title, description, color, fields</li><li><code class="inline">discord_username</code> - Override webhook username</li><li><code class="inline">discord_avatar_url</code> - Override webhook avatar</li></ul><p>Example with embed:</p><pre><code class="makeup elixir" translate="no"><span class="ss">content</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="4717525859-1">[</span><span class="w">
+      </span><span class="ss">metadata</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="9770071429-8">%{</span><span class="w">
+        </span><span class="ss">webhook_url</span><span class="p">:</span><span class="w"> </span><span class="n">get_discord_webhook_url</span><span class="p" data-group-id="9770071429-9">(</span><span class="ss">:orders</span><span class="p" data-group-id="9770071429-9">)</span><span class="w">
+      </span><span class="p" data-group-id="9770071429-8">}</span><span class="w">
+    </span><span class="p" data-group-id="9770071429-7">}</span><span class="w">
+  </span><span class="p" data-group-id="9770071429-6">]</span><span class="w">
+</span><span class="k" data-group-id="9770071429-5">end</span></code></pre><h2 id="module-content" class="section-heading"><a href="#module-content" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Content</span></h2><p>Discord messages support:</p><ul><li><code class="inline">notification_message</code> - Simple text content</li><li><code class="inline">discord_embed</code> - Rich embed with title, description, color, fields</li><li><code class="inline">discord_username</code> - Override webhook username</li><li><code class="inline">discord_avatar_url</code> - Override webhook avatar</li></ul><p>Example with embed:</p><pre><code class="makeup elixir" translate="no"><span class="ss">content</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="6216655338-1">[</span><span class="w">
   </span><span class="ss">notification_message</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;New order received!&quot;</span><span class="p">,</span><span class="w">
-  </span><span class="ss">discord_embed</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="4717525859-2">%{</span><span class="w">
+  </span><span class="ss">discord_embed</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="6216655338-2">%{</span><span class="w">
     </span><span class="ss">title</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Order {{id}} Created&quot;</span><span class="p">,</span><span class="w">
     </span><span class="ss">description</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Customer: {{user.name}}&quot;</span><span class="p">,</span><span class="w">
     </span><span class="ss">color</span><span class="p">:</span><span class="w"> </span><span class="mi">5814783</span><span class="p">,</span><span class="w">  </span><span class="c1"># Blue color (hex: 58B9FF)</span><span class="w">
-    </span><span class="ss">fields</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="4717525859-3">[</span><span class="w">
-      </span><span class="p" data-group-id="4717525859-4">%{</span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Total&quot;</span><span class="p">,</span><span class="w"> </span><span class="ss">value</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;${{total}}&quot;</span><span class="p">,</span><span class="w"> </span><span class="ss">inline</span><span class="p">:</span><span class="w"> </span><span class="no">true</span><span class="p" data-group-id="4717525859-4">}</span><span class="p">,</span><span class="w">
-      </span><span class="p" data-group-id="4717525859-5">%{</span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Items&quot;</span><span class="p">,</span><span class="w"> </span><span class="ss">value</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;{{item_count}}&quot;</span><span class="p">,</span><span class="w"> </span><span class="ss">inline</span><span class="p">:</span><span class="w"> </span><span class="no">true</span><span class="p" data-group-id="4717525859-5">}</span><span class="w">
-    </span><span class="p" data-group-id="4717525859-3">]</span><span class="w">
-  </span><span class="p" data-group-id="4717525859-2">}</span><span class="w">
-</span><span class="p" data-group-id="4717525859-1">]</span></code></pre><h2 id="module-discord-embed-colors" class="section-heading"><a href="#module-discord-embed-colors" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Discord Embed Colors</span></h2><ul><li>Success (Green): 5763719 (0x57F287)</li><li>Info (Blue): 5814783 (0x58B9FF)</li><li>Warning (Yellow): 16776960 (0xFFFF00)</li><li>Error (Red): 15548997 (0xED4245)</li></ul>
+    </span><span class="ss">fields</span><span class="p">:</span><span class="w"> </span><span class="p" data-group-id="6216655338-3">[</span><span class="w">
+      </span><span class="p" data-group-id="6216655338-4">%{</span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Total&quot;</span><span class="p">,</span><span class="w"> </span><span class="ss">value</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;${{total}}&quot;</span><span class="p">,</span><span class="w"> </span><span class="ss">inline</span><span class="p">:</span><span class="w"> </span><span class="no">true</span><span class="p" data-group-id="6216655338-4">}</span><span class="p">,</span><span class="w">
+      </span><span class="p" data-group-id="6216655338-5">%{</span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Items&quot;</span><span class="p">,</span><span class="w"> </span><span class="ss">value</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;{{item_count}}&quot;</span><span class="p">,</span><span class="w"> </span><span class="ss">inline</span><span class="p">:</span><span class="w"> </span><span class="no">true</span><span class="p" data-group-id="6216655338-5">}</span><span class="w">
+    </span><span class="p" data-group-id="6216655338-3">]</span><span class="w">
+  </span><span class="p" data-group-id="6216655338-2">}</span><span class="w">
+</span><span class="p" data-group-id="6216655338-1">]</span></code></pre><h2 id="module-discord-embed-colors" class="section-heading"><a href="#module-discord-embed-colors" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Discord Embed Colors</span></h2><ul><li>Success (Green): 5763719 (0x57F287)</li><li>Info (Blue): 5814783 (0x58B9FF)</li><li>Warning (Yellow): 16776960 (0xFFFF00)</li><li>Error (Red): 15548997 (0xED4245)</li></ul>
     </section>
 
 </div>
@@ -203,7 +203,7 @@ AshDispatch
       <h1 class="signature" translate="no">deliver(receipt, context, channel, event_config)</h1>
 
 
-        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/transports/discord.ex#L89" class="icon-action" rel="help" aria-label="View Source">
+        <a href="https://github.com/Vulcora/ash_dispatch/blob/v0.1.0/lib/transports/discord.ex#L88" class="icon-action" rel="help" aria-label="View Source">
           <i class="ri-code-s-slash-line" aria-hidden="true"></i>
         </a>
 

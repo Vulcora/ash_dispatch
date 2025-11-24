@@ -12,7 +12,7 @@
 
     <link rel="stylesheet" href="dist/html-elixir-ZFNMEJKT.css" />
 
-    <script defer src="dist/sidebar_items-F03CB3D7.js"></script>
+    <script defer src="dist/sidebar_items-08887088.js"></script>
     <script defer src="docs_config.js"></script>
     <script defer src="dist/html-HBZYRXZS.js"></script>
 <style>
@@ -119,18 +119,18 @@ AshDispatch
 
     <section id="moduledoc">
 <p>AshDispatch Domain for managing delivery receipts and notification resources.</p><p>This domain contains all resources used by AshDispatch for event tracking
-and delivery management.</p><h2 id="module-resources" class="section-heading"><a href="#module-resources" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Resources</span></h2><ul><li><a href="AshDispatch.Resources.DeliveryReceipt.html"><code class="inline">AshDispatch.Resources.DeliveryReceipt</code></a> - Tracks delivery lifecycle</li></ul><h2 id="module-usage" class="section-heading"><a href="#module-usage" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Usage</span></h2><p>Add to your application's domains if you want to query delivery receipts:</p><pre><code class="makeup elixir" translate="no"><span class="kd">defmodule</span><span class="w"> </span><span class="nc">MyApp.Application</span><span class="w"> </span><span class="k" data-group-id="4822294058-1">do</span><span class="w">
+and delivery management.</p><h2 id="module-resources" class="section-heading"><a href="#module-resources" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Resources</span></h2><ul><li><a href="AshDispatch.Resources.DeliveryReceipt.html"><code class="inline">AshDispatch.Resources.DeliveryReceipt</code></a> - Tracks delivery lifecycle</li><li><a href="AshDispatch.Resources.Notification.html"><code class="inline">AshDispatch.Resources.Notification</code></a> - In-app notifications</li></ul><h2 id="module-embedded-resources" class="section-heading"><a href="#module-embedded-resources" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Embedded Resources</span></h2><p>These resources should be added to consuming application domains, not this library domain:</p><ul><li><a href="AshDispatch.Resources.EmailEvent.html"><code class="inline">AshDispatch.Resources.EmailEvent</code></a> - Event metadata for admin UIs (ETS-backed)</li><li><a href="AshDispatch.Resources.ManualTrigger.html"><code class="inline">AshDispatch.Resources.ManualTrigger</code></a> - Manual event triggering for admin UIs (embedded)</li></ul><h2 id="module-usage" class="section-heading"><a href="#module-usage" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Usage</span></h2><p>Add to your application's domains if you want to query delivery receipts:</p><pre><code class="makeup elixir" translate="no"><span class="kd">defmodule</span><span class="w"> </span><span class="nc">MyApp.Application</span><span class="w"> </span><span class="k" data-group-id="0349952280-1">do</span><span class="w">
   </span><span class="kn">use</span><span class="w"> </span><span class="nc">Application</span><span class="w">
 
-  </span><span class="kd">def</span><span class="w"> </span><span class="nf">start</span><span class="p" data-group-id="4822294058-2">(</span><span class="c">_type</span><span class="p">,</span><span class="w"> </span><span class="c">_args</span><span class="p" data-group-id="4822294058-2">)</span><span class="w"> </span><span class="k" data-group-id="4822294058-3">do</span><span class="w">
-    </span><span class="n">children</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p" data-group-id="4822294058-4">[</span><span class="w">
+  </span><span class="kd">def</span><span class="w"> </span><span class="nf">start</span><span class="p" data-group-id="0349952280-2">(</span><span class="c">_type</span><span class="p">,</span><span class="w"> </span><span class="c">_args</span><span class="p" data-group-id="0349952280-2">)</span><span class="w"> </span><span class="k" data-group-id="0349952280-3">do</span><span class="w">
+    </span><span class="n">children</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p" data-group-id="0349952280-4">[</span><span class="w">
       </span><span class="c1"># ...</span><span class="w">
-    </span><span class="p" data-group-id="4822294058-4">]</span><span class="w">
+    </span><span class="p" data-group-id="0349952280-4">]</span><span class="w">
 
-    </span><span class="n">opts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p" data-group-id="4822294058-5">[</span><span class="ss">strategy</span><span class="p">:</span><span class="w"> </span><span class="ss">:one_for_one</span><span class="p">,</span><span class="w"> </span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="nc">MyApp.Supervisor</span><span class="p" data-group-id="4822294058-5">]</span><span class="w">
-    </span><span class="nc">Supervisor</span><span class="o">.</span><span class="n">start_link</span><span class="p" data-group-id="4822294058-6">(</span><span class="n">children</span><span class="p">,</span><span class="w"> </span><span class="n">opts</span><span class="p" data-group-id="4822294058-6">)</span><span class="w">
-  </span><span class="k" data-group-id="4822294058-3">end</span><span class="w">
-</span><span class="k" data-group-id="4822294058-1">end</span></code></pre>
+    </span><span class="n">opts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p" data-group-id="0349952280-5">[</span><span class="ss">strategy</span><span class="p">:</span><span class="w"> </span><span class="ss">:one_for_one</span><span class="p">,</span><span class="w"> </span><span class="ss">name</span><span class="p">:</span><span class="w"> </span><span class="nc">MyApp.Supervisor</span><span class="p" data-group-id="0349952280-5">]</span><span class="w">
+    </span><span class="nc">Supervisor</span><span class="o">.</span><span class="n">start_link</span><span class="p" data-group-id="0349952280-6">(</span><span class="n">children</span><span class="p">,</span><span class="w"> </span><span class="n">opts</span><span class="p" data-group-id="0349952280-6">)</span><span class="w">
+  </span><span class="k" data-group-id="0349952280-3">end</span><span class="w">
+</span><span class="k" data-group-id="0349952280-1">end</span></code></pre>
     </section>
 
 </div>
