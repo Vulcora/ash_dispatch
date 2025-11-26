@@ -57,13 +57,62 @@ defmodule AshDispatch.Dsl.Sections do
           Whether users can opt-out of this event via email preferences.
           Set to false for critical system emails (auth, password reset).
           """
+        ],
+        manual_trigger_filter: [
+          type: :any,
+          required: false,
+          doc: """
+          Ash filter expression to control visibility in manual trigger UI.
+
+          Filters are applied to the target user (recipient) to determine if this
+          event should be shown as an option in manual trigger interfaces.
+
+          ## Examples
+
+              # Only show if user hasn't confirmed email
+              manual_trigger_filter: [confirmed_at: nil]
+
+              # Only show if user is archived
+              manual_trigger_filter: [archived_at: [not: nil]]
+
+              # Complex filter with multiple conditions
+              manual_trigger_filter: [admin: true, archived: false]
+
+          Defaults to no filter (show for all users). For complex logic, override
+          the `applicable_for_user?/1` callback instead.
+          """
+        ],
+        should_send_filter: [
+          type: :any,
+          required: false,
+          doc: """
+          Ash filter expression to control whether auto-triggered events should send.
+
+          Filters are applied to the target user (recipient) to determine if this
+          auto-triggered event should actually be sent to them.
+
+          ## Examples
+
+              # Only send if user hasn't confirmed email yet
+              should_send_filter: [confirmed_at: nil]
+
+              # Only send to active, non-archived users
+              should_send_filter: [archived_at: nil, active: true]
+
+          Defaults to no filter (always send). For complex logic, override
+          the `should_send?/2` callback instead.
+
+          Note: This filter is only checked for auto-triggered events. Manual
+          triggers always send (assuming applicable_for_user? returns true).
+          """
         ]
       ],
       sections: [
         channels_section(),
         content_section(),
         metadata_section(),
-        counters_section()
+        counters_section(),
+        recipient_section()
       ]
     }
   end
@@ -144,6 +193,14 @@ defmodule AshDispatch.Dsl.Sections do
           type: :map,
           default: %{},
           doc: "Transport-specific options"
+        ],
+        counters: [
+          type: {:list, :atom},
+          default: [],
+          doc: """
+          List of counter names to broadcast when this channel creates a notification.
+          E.g., [:admin_pending_reseller_requests, :user_cart_items]
+          """
         ]
       ]
     }
@@ -276,6 +333,128 @@ defmodule AshDispatch.Dsl.Sections do
           type: {:list, :atom},
           required: false,
           doc: "Only broadcast for these audiences (e.g., [:user])"
+        ]
+      ]
+    }
+  end
+
+  @doc """
+  The `recipient` section for configuring recipient field extraction.
+  """
+  def recipient_section do
+    %Section{
+      name: :recipient,
+      describe: """
+      Configure how to extract recipient identifiers and names from recipient structs.
+
+      This section allows per-transport overrides for the event. The configuration
+      cascades from most specific to least specific:
+
+      1. Event DSL override (this section) - Most specific
+      2. Audience + Transport config (application config)
+      3. Transport config (application config)
+      4. Generic default (application config)
+      5. Error if no config found
+
+      ## Example
+
+          dispatch do
+            # Override identifier field for email transport in this event
+            recipient do
+              email do
+                identifier :primary_email
+                name :full_name
+              end
+
+              sms do
+                identifier :mobile_phone
+              end
+            end
+          end
+
+      ## Application Config
+
+      The global defaults are configured in config/config.exs:
+
+          config :ash_dispatch,
+            recipient_fields: [
+              # Generic defaults (work for all transports)
+              identifier: :email,
+              name: :contact_person,
+
+              # Per-transport overrides (optional)
+              sms: [
+                identifier: :mobile_phone,
+                name: :first_name
+              ],
+
+              # Per-audience overrides (optional)
+              audiences: [
+                admin: [
+                  name: :full_name
+                ],
+                lead: [
+                  identifier: :primary_email,
+                  name: :company_name
+                ]
+              ]
+            ]
+
+      ## Field Extraction Formats
+
+      Field values support multiple formats:
+
+      - `:field_name` - Direct atom field access
+      - `{:field, :field_name}` - Explicit field tuple
+      - `{:field, [:nested, :path]}` - Nested field access via get_in/2
+      - `{:string_field, "key"}` - String key access for JSON data
+      - `&Module.function/1` - Custom extraction function
+      - `nil` - No field (e.g., webhooks don't need names)
+      """,
+      sections: [
+        recipient_transport_section(:email),
+        recipient_transport_section(:in_app),
+        recipient_transport_section(:sms),
+        recipient_transport_section(:discord),
+        recipient_transport_section(:slack),
+        recipient_transport_section(:webhook)
+      ]
+    }
+  end
+
+  @doc """
+  Creates a transport-specific recipient configuration section.
+  """
+  def recipient_transport_section(transport) do
+    %Section{
+      name: transport,
+      describe: """
+      Configure recipient field extraction for #{transport} transport.
+      """,
+      schema: [
+        identifier: [
+          type: :any,
+          required: false,
+          doc: """
+          Field specification for extracting the recipient identifier (email, phone, etc.).
+
+          Formats:
+          - `:field_name` - Direct field access
+          - `{:field, :field_name}` - Explicit field
+          - `{:field, [:nested, :path]}` - Nested path
+          - `{:string_field, "key"}` - String key
+          - `&Module.function/1` - Custom function
+          """
+        ],
+        name: [
+          type: :any,
+          required: false,
+          doc: """
+          Field specification for extracting the recipient display name.
+
+          Formats: Same as identifier.
+          Set to `nil` if name is not needed (e.g., webhooks).
+          """
         ]
       ]
     }

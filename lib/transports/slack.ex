@@ -73,8 +73,7 @@ defmodule AshDispatch.Transports.Slack do
   - `<url|text>` - Hyperlink
   """
 
-  alias AshDispatch.{Context, Channel}
-  alias AshDispatch.Resources.DeliveryReceipt
+  alias AshDispatch.Channel
   alias AshDispatch.Workers.SendWebhook
 
   require Logger

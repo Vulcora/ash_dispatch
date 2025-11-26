@@ -526,6 +526,5 @@ end
 ## See Also
 
 - [Getting Started Tutorial](../tutorials/getting-started.md)
-- [Understanding Events](../topics/events.md)
-- [Delivery Transports](../topics/transports.md)
-- [AshDispatch.Event Behaviour](/lib/ash_dispatch/event.ex)
+- [What is AshDispatch?](../topics/what-is-ash-dispatch.md)
+- [Phoenix Integration](../topics/phoenix-integration.md)
