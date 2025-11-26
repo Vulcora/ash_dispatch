@@ -8,6 +8,14 @@ defmodule AshDispatch.Domain do
   ## Resources
 
   - `AshDispatch.Resources.DeliveryReceipt` - Tracks delivery lifecycle
+  - `AshDispatch.Resources.Notification` - In-app notifications
+
+  ## Embedded Resources
+
+  These resources should be added to consuming application domains, not this library domain:
+
+  - `AshDispatch.Resources.EmailEvent` - Event metadata for admin UIs (ETS-backed)
+  - `AshDispatch.Resources.ManualTrigger` - Manual event triggering for admin UIs (embedded)
 
   ## Usage
 
@@ -28,10 +36,12 @@ defmodule AshDispatch.Domain do
 
   """
 
-  use Ash.Domain
+  use Ash.Domain,
+    validate_config_inclusion?: false
 
   resources do
     resource AshDispatch.Resources.DeliveryReceipt
     resource AshDispatch.Resources.Notification
+    resource AshDispatch.Resources.EmailEvent
   end
 end

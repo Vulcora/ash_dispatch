@@ -292,6 +292,5 @@ end
 
 ## Next Steps
 
-- [Email Backend Configuration](email-backend.md) - Configure email sending
-- [Retry System](retry-system.md) - Automatic retry of failed deliveries
-- [Monitoring Guide](monitoring.md) - Track delivery performance
+- [Getting Started](../tutorials/getting-started.md) - Set up your first event
+- [Configuration](configuration.md) - Complete configuration reference

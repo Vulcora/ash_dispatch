@@ -11,6 +11,7 @@ defmodule AshDispatch.MixProject do
       version: @version,
       elixir: "~> 1.15",
       elixirc_paths: elixirc_paths(Mix.env()),
+      compilers: Mix.compilers() ++ [:ash_dispatch],
       start_permanent: Mix.env() == :prod,
       description: @description,
       package: package(),
@@ -36,15 +37,23 @@ defmodule AshDispatch.MixProject do
     [
       # Core dependencies
       {:ash, "~> 3.0"},
+      {:ash_state_machine, "~> 0.2"},
       {:oban, "~> 2.0"},
+
+      # Data layer (Postgres for persistent storage)
+      {:ash_postgres, "~> 2.0"},
+      # SAT solver for Ash policy validation
+      {:picosat_elixir, "~> 0.2"},
 
       # Optional transport dependencies
       {:swoosh, "~> 1.16", optional: true},
+      {:hackney, "~> 1.9", optional: true},
       {:req, "~> 0.5", optional: true},
+      {:ash_typescript, "~> 0.2", optional: true},
 
       # Development and testing
       {:ex_doc, "~> 0.34", only: [:dev, :test], runtime: false},
-      {:jason, "~> 1.2", only: [:dev, :test]},
+      {:jason, "~> 1.2"},
       {:smokestack, "~> 0.8", only: [:test]},
       {:faker, "~> 0.18", only: [:test]}
     ]
@@ -70,25 +79,39 @@ defmodule AshDispatch.MixProject do
       extras: [
         "README.md",
         "CHANGELOG.md",
-        "documentation/tutorials/getting-started.md",
-        "documentation/topics/what-is-ash-dispatch.md",
-        "documentation/topics/recipient-resolution.md",
-        "documentation/topics/user-preferences.md",
-        "documentation/topics/oban-configuration.md"
+        # Tutorials
+        "lib/documentation/tutorials/getting-started.md",
+        "lib/documentation/tutorials/manual-dispatch-and-events.md",
+        # Topics
+        "lib/documentation/topics/what-is-ash-dispatch.md",
+        "lib/documentation/topics/app-integration.md",
+        "lib/documentation/topics/phoenix-integration.md",
+        "lib/documentation/topics/counter-broadcasting.md",
+        "lib/documentation/topics/configuration.md",
+        "lib/documentation/topics/code-generation.md",
+        "lib/documentation/topics/generator.md",
+        "lib/documentation/topics/recipient-resolution.md",
+        "lib/documentation/topics/recipient-extractor.md",
+        "lib/documentation/topics/user-preferences.md",
+        "lib/documentation/topics/oban-configuration.md",
+        # DSL Reference
+        "lib/documentation/dsls/DSL-AshDispatch-Resource.md"
       ],
       groups_for_extras: [
         Tutorials: ~r/documentation\/tutorials\/.*/,
-        Topics: ~r/documentation\/topics\/.*/
+        Topics: ~r/documentation\/topics\/.*/,
+        "DSL Reference": ~r/documentation\/dsls\/.*/
       ],
       groups_for_modules: [
-        "Core": [
+        Core: [
           AshDispatch,
           AshDispatch.Event,
+          AshDispatch.Event.RecipientExtractor,
           AshDispatch.Dispatcher,
           AshDispatch.Context,
           AshDispatch.Channel
         ],
-        "Transports": [
+        Transports: [
           AshDispatch.Transports,
           AshDispatch.Transports.Email,
           AshDispatch.Transports.InApp,
@@ -102,12 +125,12 @@ defmodule AshDispatch.MixProject do
           AshDispatch.EmailBackend.Mock,
           AshDispatch.EmailBackend.Swoosh
         ],
-        "Workers": [
+        Workers: [
           AshDispatch.Workers.SendEmail,
           AshDispatch.Workers.SendWebhook,
           AshDispatch.Workers.RetryFailedDeliveries
         ],
-        "Resources": [
+        Resources: [
           AshDispatch.Resources.DeliveryReceipt,
           AshDispatch.Resources.Notification
         ],
@@ -121,7 +144,7 @@ defmodule AshDispatch.MixProject do
           AshDispatch.Resource.Dsl,
           AshDispatch.Dsl.Sections
         ],
-        "Testing": [
+        Testing: [
           AshDispatch.Test.RecipientResolver,
           AshDispatch.Test.UserPreference
         ]

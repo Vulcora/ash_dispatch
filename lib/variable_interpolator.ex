@@ -138,11 +138,23 @@ defmodule AshDispatch.VariableInterpolator do
 
         case parts do
           [key, rest] ->
-            # Try as nested first
-            case Map.get(resource, String.to_existing_atom(key)) do
+            # Try as nested first, but catch atom errors
+            nested_value =
+              try do
+                key_atom = String.to_existing_atom(key)
+                Map.get(resource, key_atom)
+              rescue
+                ArgumentError -> nil
+              end
+
+            case nested_value do
               nil ->
                 # Fall back to direct attribute
-                Map.get(resource, String.to_existing_atom(var_name))
+                try do
+                  Map.get(resource, String.to_existing_atom(var_name))
+                rescue
+                  ArgumentError -> nil
+                end
 
               nested when is_map(nested) ->
                 # Recursively resolve rest
@@ -150,7 +162,11 @@ defmodule AshDispatch.VariableInterpolator do
 
               _ ->
                 # Not a map, try direct attribute
-                Map.get(resource, String.to_existing_atom(var_name))
+                try do
+                  Map.get(resource, String.to_existing_atom(var_name))
+                rescue
+                  ArgumentError -> nil
+                end
             end
 
           _ ->
@@ -159,12 +175,12 @@ defmodule AshDispatch.VariableInterpolator do
 
       # Direct attribute: id, status, etc.
       true ->
-        Map.get(resource, String.to_existing_atom(var_name))
+        try do
+          Map.get(resource, String.to_existing_atom(var_name))
+        rescue
+          ArgumentError -> nil
+        end
     end
-  rescue
-    # If atom doesn't exist or any other error, return nil
-    ArgumentError -> nil
-    _ -> nil
   end
 
   defp resolve_variable(_var_name, _resource), do: nil

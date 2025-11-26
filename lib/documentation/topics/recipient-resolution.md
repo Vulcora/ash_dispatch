@@ -1,436 +1,880 @@
 # Recipient Resolution
 
-AshDispatch needs to know how to find recipients for different audience types (admin, team, system). Since AshDispatch doesn't know about your User resource, you provide a resolver module.
+AshDispatch automatically resolves recipients using **DSL-based configuration** - define once in config, works everywhere!
 
-## Quick Start
+## Quick Start (Zero Configuration!)
 
-### 1. Create a Resolver Module
+### 1. Configure Your App Structure
 
-```elixir
-# lib/my_app/recipients/resolver.ex
-defmodule MyApp.Recipients.Resolver do
-  @behaviour AshDispatch.RecipientResolver
-
-  alias MyApp.Accounts.User
-
-  @impl true
-  def resolve_admins(_context) do
-    User
-    |> Ash.Query.filter(admin == true)
-    |> Ash.read!()
-  end
-
-  @impl true
-  def resolve_team(team_name, _context) do
-    case team_name do
-      :support ->
-        User
-        |> Ash.Query.filter(role == :support)
-        |> Ash.read!()
-
-      :engineering ->
-        User
-        |> Ash.Query.filter(department == "Engineering")
-        |> Ash.read!()
-
-      _ ->
-        []
-    end
-  end
-
-  @impl true
-  def resolve_system(_context) do
-    # System notifications go to ops team
-    [
-      %{email: "ops@myapp.com", name: "Operations"}
-    ]
-  end
-end
-```
-
-### 2. Configure the Resolver
+Tell AshDispatch about your User module and audience filters:
 
 ```elixir
 # config/config.exs
 config :ash_dispatch,
-  recipient_resolver: MyApp.Recipients.Resolver
+  user_module: MyApp.Accounts.User,
+  recipient_filters: [
+    audiences: [
+      # Bare atom = extract from relationship with same name
+      :user,                      # Extract from :user relationship
+      :creator,                   # Extract from :creator relationship
+
+      # Relationship path + filter: query users matching filter
+      admin: [:user, admin: true],
+      partner: [:user, role: :partner],
+
+      # Relationship chain: follow multiple relationships
+      sellers: [:user, :associated_seller],
+
+      # Template filters with dynamic values
+      regional_admin: [:user, admin: true, region: {:resource, [:user, :region]}]
+    ]
+  ]
 ```
 
-### 3. Use in Events
+### 2. That's It!
+
+AshDispatch now automatically:
+- ✅ Resolves recipients based on DSL-configured filters
+- ✅ Queries admins/partners/custom audiences using your filters
+- ✅ Extracts emails (even CiString types!)
+- ✅ Handles user preferences automatically
+- ✅ Works with ANY Ash resource structure
+- ✅ Supports custom audiences with zero code changes
+
+## How It Works
+
+### Auto-Inference Pattern
+
+AshDispatch supports **multiple audience configuration formats** with intelligent auto-inference:
+
+#### Format 1: Bare Atom (Auto-Infer)
+
+The simplest pattern - just list the audience, and AshDispatch extracts from the relationship with the same name:
 
 ```elixir
-dispatch do
-  event :critical_error,
-    trigger_on: :fail,
-    channels: [
-      # Notify all admins
-      [transport: :email, audience: :admin],
-
-      # Notify support team
-      [transport: :in_app, audience: :team, team: :support],
-
-      # Notify ops (system)
-      [transport: :discord, audience: :system]
+config :ash_dispatch,
+  recipient_filters: [
+    audiences: [
+      :user,      # Extract from :user relationship
+      :creator,   # Extract from :creator relationship
+      :assignee   # Extract from :assignee relationship
     ]
+  ]
+
+# For an Order with belongs_to :user relationship:
+%{order: %Order{user: %User{}}}
+
+# AshDispatch automatically:
+# 1. Sees :user in bare atom list
+# 2. Looks for :user relationship on Order
+# 3. Extracts the user
+```
+
+**When to use:** Relationship name matches audience name (most common case!)
+
+---
+
+#### Format 2: Relationship Path + Filter
+
+Query users matching a filter via a specified relationship:
+
+```elixir
+config :ash_dispatch,
+  recipient_filters: [
+    audiences: [
+      admin: [:user, admin: true],
+      partner: [:user, role: :partner, active: true],
+      support: [:user, role: :support]
+    ]
+  ]
+
+# AshDispatch queries:
+MyApp.Accounts.User
+|> Ash.Query.filter(admin == true)
+|> Ash.read!()
+```
+
+**When to use:** Notifying groups of users (admins, partners, etc.)
+
+---
+
+#### Format 3: Relationship Chain
+
+Follow multiple relationships to reach recipients:
+
+```elixir
+config :ash_dispatch,
+  recipient_filters: [
+    audiences: [
+      # Follow user.associated_seller
+      sellers: [:user, :associated_seller],
+
+      # Follow user.team.lead
+      team_lead: [:user, :team, :lead]
+    ]
+  ]
+
+# For an Order with user.associated_seller:
+%{order: %Order{user: %User{associated_seller: %Seller{}}}}
+
+# AshDispatch:
+# 1. Extracts user from order
+# 2. Follows associated_seller relationship
+# 3. Returns the seller as recipient
+```
+
+**When to use:** Recipients accessed via relationship chains
+
+---
+
+#### Format 4: Template Filters (Dynamic Values)
+
+Filters with values extracted from event context:
+
+```elixir
+config :ash_dispatch,
+  recipient_filters: [
+    audiences: [
+      # Admins in the same region as the event's user
+      regional_admin: [:user, admin: true, region: {:resource, [:user, :region]}]
+    ]
+  ]
+
+# For event with user in region "EU":
+%{order: %Order{user: %User{region: "EU"}}}
+
+# AshDispatch resolves:
+# 1. Extracts [:user, :region] from context → "EU"
+# 2. Queries: User |> filter(admin == true and region == "EU")
+# 3. Returns all EU admins
+```
+
+**When to use:** Dynamic filters based on event context (regional routing, team assignment)
+
+---
+
+#### Format 5: Function/MFA (Full Dynamic Logic)
+
+Call a function for complex recipient resolution:
+
+```elixir
+config :ash_dispatch,
+  recipient_filters: [
+    audiences: [
+      on_duty_admin: {MyApp.AdminResolver, :get_on_duty, [:region]}
+    ]
+  ]
+
+# Your resolver module:
+defmodule MyApp.AdminResolver do
+  def get_on_duty(region) do
+    # Complex logic: check rotation schedule, time zones, etc.
+    [admin: true, on_duty: true, region: region]
+  end
 end
 ```
 
-## Audience Types
+**When to use:** Complex logic like on-call rotations, escalation chains
 
-### `:user` - Current User
+---
 
-The `:user` audience automatically resolves to `context.user`:
+#### Format 6: System Audience (Static Recipients)
+
+Static email addresses for system notifications:
 
 ```elixir
-channels: [
-  [transport: :email, audience: :user]
-]
-
-# AshDispatch will send to context.user
-# No resolver callback needed
+config :ash_dispatch,
+  system_recipients: [
+    %{email: "ops@myapp.com", name: "Operations"},
+    %{email: "monitoring@pagerduty.com", name: "PagerDuty"}
+  ]
 ```
+
+**When to use:** External services, ops team emails
+
+### Future-Proof Design
+
+Adding new resources? **Zero code changes needed!**
+
+```elixir
+# Add a new Invoice resource
+defmodule MyApp.Invoices.Invoice do
+  # ...
+  belongs_to :user, MyApp.Accounts.User
+end
+
+# Dispatch event with invoice
+AshDispatch.Dispatcher.dispatch(
+  "invoices.created",
+  %{invoice: invoice}  # <-- User auto-extracted via relationship!
+)
+```
+
+AshDispatch introspects the `Invoice` resource, finds the `:user` relationship, and extracts the user automatically.
+
+## Real-World Example
+
+Here's a complete event from production (Magasin):
+
+```elixir
+defmodule MyApp.Events.NewResellerRequest do
+  use AshDispatch.Event
+
+  @impl true
+  def id, do: "requests.new_reseller_request"
+
+  @impl true
+  def channels(_context) do
+    [
+      # Send in-app notification to all admins
+      %Channel{transport: :in_app, audience: :admin, time: {:in, 0}},
+
+      # Send email to all admins
+      %Channel{transport: :email, audience: :admin, time: {:in, 0}}
+    ]
+  end
+
+  # NO recipients/2 override needed!
+  # AshDispatch automatically:
+  # 1. Queries MyApp.Accounts.User
+  # 2. Filters by [super_admin: true]
+  # 3. Extracts emails (handles CiString!)
+  # 4. Sends to all admins
+end
+```
+
+**Configuration:**
+```elixir
+config :ash_dispatch,
+  user_module: MyApp.Accounts.User,
+  admin_filter: [super_admin: true]
+```
+
+**That's it!** No resolver module, no hardcoded patterns, no maintenance.
+
+## Audience Types
+
+### `:user` - Extracted Automatically
+
+AshDispatch finds the user via Ash introspection:
+
+```elixir
+# Works with direct user
+%{user: %User{}}
+
+# Works with nested user in any resource
+%{order: %Order{user: %User{}}}
+%{ticket: %Ticket{user: %User{}}}
+%{invoice: %Invoice{user: %User{}}}
+# ... any resource with a user relationship!
+```
+
+**How it works:**
+1. Check if any data value IS the configured `user_module`
+2. Use `Ash.Resource.Info.relationships/1` to find relationships to `user_module`
+3. Extract user from that relationship
 
 **Use when:**
 - Notifying the person who triggered the action
 - User-specific notifications
+- Order confirmations, ticket updates, etc.
 
-### `:admin` - Admin Users
+### `:admin` - Queried Automatically
 
-The `:admin` audience calls `resolve_admins/1`:
+AshDispatch queries admins using your configured filter:
 
 ```elixir
-channels: [
-  [transport: :email, audience: :admin]
-]
+config :ash_dispatch,
+  user_module: MyApp.Accounts.User,
+  admin_filter: [super_admin: true]  # Your admin logic
+```
 
-# Calls: MyApp.Recipients.Resolver.resolve_admins(context)
+**Examples:**
+```elixir
+# Simple boolean flag
+admin_filter: [admin: true]
+
+# Role-based
+admin_filter: [role: :admin]
+
+# Multiple conditions (keyword list becomes AND filter)
+admin_filter: [active: true, role: :admin]
 ```
 
 **Use when:**
 - High-priority notifications
 - Security alerts
+- New user registrations
 - System-wide announcements
 
-### `:team` - Team Members
+### `:system` - Configured Recipients
 
-The `:team` audience calls `resolve_team/2` with team name:
-
-```elixir
-channels: [
-  [transport: :in_app, audience: :team, team: :support]
-]
-
-# Calls: MyApp.Recipients.Resolver.resolve_team(:support, context)
-```
-
-**Use when:**
-- Department-specific notifications
-- Role-based alerts
-- Cross-functional team updates
-
-### `:system` - Operations/Monitoring
-
-The `:system` audience calls `resolve_system/1`:
+Optional static recipients for system notifications:
 
 ```elixir
-channels: [
-  [transport: :webhook, audience: :system]
-]
-
-# Calls: MyApp.Recipients.Resolver.resolve_system(context)
+config :ash_dispatch,
+  system_recipients: [
+    %{email: "ops@myapp.com", name: "Operations"},
+    %{email: "monitoring@pagerduty.com", name: "PagerDuty"}
+  ]
 ```
 
 **Use when:**
 - Internal monitoring
 - Ops team alerts
-- System health notifications
+- External service integrations
 
-## Context-Aware Resolution
+## CiString Email Handling
 
-The `context` parameter contains event data for dynamic resolution:
-
-```elixir
-@impl true
-def resolve_admins(context) do
-  # Only notify admins in the same organization
-  case context.data.order do
-    %{organization_id: org_id} when not is_nil(org_id) ->
-      User
-      |> Ash.Query.filter(admin == true and organization_id == ^org_id)
-      |> Ash.read!()
-
-    _ ->
-      # Global admins
-      User
-      |> Ash.Query.filter(admin == true)
-      |> Ash.read!()
-  end
-end
-```
-
-**Context fields:**
-- `event_id` - Event identifier ("orders.created")
-- `data` - Event data (resource record, etc.)
-- `user` - Current user (if available)
-- `metadata` - Additional context
-- `base_url` - Application base URL
-- `locale` - User locale
-
-## Advanced Patterns
-
-### Organization-Scoped Teams
+AshDispatch automatically handles case-insensitive email types:
 
 ```elixir
-@impl true
-def resolve_team(:support, context) do
-  org_id = context.data.ticket.organization_id
+# Your User resource
+attribute :email, :ci_string  # or Ash.CiString, or CiString
 
-  User
-  |> Ash.Query.filter(
-    role == :support and
-    organization_id == ^org_id
-  )
-  |> Ash.read!()
-end
+# AshDispatch introspects attributes and handles:
+%{string: "user@example.com"}  # CiString struct
+%{data: "user@example.com"}    # Cldr.LanguageTag.CiString
+"user@example.com"             # Plain string
+
+# Zero configuration needed!
 ```
 
-### On-Call Rotations
+Uses `Ash.Resource.Info.attributes/1` to detect email type and extract correctly.
+
+## Advanced: Custom Recipients
+
+For the rare cases where you need custom logic (< 1% of events):
 
 ```elixir
-@impl true
-def resolve_team(:on_call, context) do
-  # Get current on-call engineer from schedule
-  schedule = OnCallSchedule.current()
-
-  User
-  |> Ash.get!(schedule.engineer_id)
-  |> then(&[&1])
-end
-```
-
-### Escalation Chains
-
-```elixir
-@impl true
-def resolve_admins(context) do
-  severity = context.metadata[:severity]
-
-  case severity do
-    :critical ->
-      # All admins + CTO
-      User
-      |> Ash.Query.filter(admin == true or role == :cto)
-      |> Ash.read!()
-
-    :high ->
-      # Just admins
-      User
-      |> Ash.Query.filter(admin == true)
-      |> Ash.read!()
-
-    _ ->
-      # Support leads only
-      User
-      |> Ash.Query.filter(role == :support_lead)
-      |> Ash.read!()
-  end
-end
-```
-
-### External Recipients
-
-You don't need to return Ash records - any map with `:email` works:
-
-```elixir
-@impl true
-def resolve_system(_context) do
-  [
-    %{email: "ops@myapp.com", name: "Ops Team"},
-    %{email: "monitoring@pagerduty.com", name: "PagerDuty"}
-  ]
-end
-```
-
-## Multiple Recipients
-
-All resolver callbacks should return lists. AshDispatch will send to each recipient:
-
-```elixir
-@impl true
-def resolve_admins(_context) do
-  User
-  |> Ash.Query.filter(admin == true)
-  |> Ash.read!()
-  # Returns [user1, user2, user3, ...]
-  # Each will receive the notification
-end
-```
-
-## Default Behavior (No Resolver)
-
-If you don't configure a resolver, AshDispatch uses `AshDispatch.RecipientResolver.Default` which:
-
-1. Returns `[]` for admin/team/system audiences
-2. Logs warnings to help you realize you need a resolver
-3. Doesn't break your app
-
-**Example warning:**
-
-```
-[warning] Admin recipient resolution not implemented!
-
-To enable admin notifications, configure a recipient resolver:
-
-    # config/config.exs
-    config :ash_dispatch,
-      recipient_resolver: MyApp.Recipients.Resolver
-```
-
-## Testing
-
-### Test Resolver
-
-Create a test-only resolver that returns mock data:
-
-```elixir
-# test/support/test_recipient_resolver.ex
-defmodule MyApp.Test.RecipientResolver do
-  @behaviour AshDispatch.RecipientResolver
+defmodule MyApp.Events.EscalationAlert do
+  use AshDispatch.Event
 
   @impl true
-  def resolve_admins(_context) do
-    [
-      %{id: 1, email: "admin@test.com", name: "Test Admin"}
-    ]
+  def recipients(context, %Channel{audience: :admin}) do
+    severity = context.data.alert.severity
+
+    case severity do
+      :critical ->
+        # Critical: All admins + CTO
+        MyApp.Accounts.User
+        |> Ash.Query.filter_input(admin: true)
+        |> Ash.Query.filter(role == :cto)
+        |> Ash.read!()
+        |> Enum.map(&normalize_user/1)
+
+      _ ->
+        # Default: Use smart defaults
+        AshDispatch.Event.Helpers.resolve_recipients_for_audience(context, channel)
+    end
   end
 
-  @impl true
-  def resolve_team(:support, _context) do
-    [
-      %{id: 2, email: "support@test.com", name: "Test Support"}
-    ]
-  end
-
-  @impl true
-  def resolve_system(_context) do
-    [%{email: "ops@test.com"}]
+  defp normalize_user(user) do
+    %{
+      id: user.id,
+      email: extract_email(user),
+      display_name: user.display_name || user.email
+    }
   end
 end
 ```
 
-Configure in `config/test.exs`:
+**When to override:**
+- Escalation chains based on severity
+- Organization-scoped recipients
+- On-call rotations
+- Dynamic team assignment
+
+**Otherwise:** Trust the smart defaults!
+
+## Configuration Reference
+
+### Complete Example
 
 ```elixir
 config :ash_dispatch,
-  recipient_resolver: MyApp.Test.RecipientResolver
+  # REQUIRED for user extraction and queries
+  user_module: MyApp.Accounts.User,
+
+  # Audience configuration supports multiple formats:
+  recipient_filters: [
+    audiences: [
+      # Format 1: Bare atoms (extract from relationship with same name)
+      :user,                      # Extract from :user relationship
+      :creator,                   # Extract from :creator relationship
+
+      # Format 2: Relationship path + filter (query users matching filter)
+      admin: [:user, admin: true],
+      partner: [:user, role: :partner, active: true],
+
+      # Format 3: Relationship chain (follow multiple relationships)
+      sellers: [:user, :associated_seller],
+      team_lead: [:user, :team, :lead],
+
+      # Format 4: Template filters (dynamic values from context)
+      regional_admin: [:user, admin: true, region: {:resource, [:user, :region]}],
+
+      # Format 5: Function/MFA (complex logic)
+      on_duty: {MyApp.AdminResolver, :get_on_duty, []}
+
+      # Format 6: System audience (configured separately below)
+    ]
+  ],
+
+  # Static recipients for :system audience
+  system_recipients: [
+    %{email: "ops@example.com", name: "Operations"},
+    %{email: "monitoring@pagerduty.com", name: "PagerDuty"}
+  ]
 ```
 
-### Testing with Factories
+### Format Quick Reference
 
-Use factories to build realistic test users:
+| Format | Example | Use Case |
+|--------|---------|----------|
+| **Bare Atom** | `:user` | Extract from relationship with same name |
+| **Relationship + Filter** | `admin: [:user, admin: true]` | Query users by attributes |
+| **Relationship Chain** | `sellers: [:user, :associated_seller]` | Follow multiple relationships |
+| **Template Filter** | `regional_admin: [:user, admin: true, region: {:resource, [...]}]` | Dynamic filters from context |
+| **Function/MFA** | `on_duty: {Mod, :fun, []}` | Complex resolution logic |
+| **System** | `system_recipients: [...]` | Static email addresses |
+
+### Filter Query Examples
 
 ```elixir
-defmodule MyApp.Recipients.Resolver do
-  @impl true
-  def resolve_admins(_context) do
-    if Mix.env() == :test do
-      # Use factory in tests
-      [build(:user, %{admin: true})]
-    else
-      # Real query in dev/prod
-      User
-      |> Ash.Query.filter(admin == true)
-      |> Ash.read!()
+# Simple boolean
+admin: [:user, admin: true]
+
+# Role-based
+partner: [:user, role: :partner]
+
+# Multiple conditions (AND)
+active_admin: [:user, admin: true, active: true]
+
+# Multiple values (OR - uses list)
+manager: [:user, role: [:admin, :manager]]
+```
+
+### Template Filter Examples
+
+```elixir
+# Regional routing - admins in same region as user
+regional_admin: [:user, admin: true, region: {:resource, [:user, :region]}]
+
+# Team-based - users in same team
+team_lead: [:user, role: :lead, team_id: {:resource, [:order, :team_id]}]
+
+# Nested extraction
+sales_manager: [:user, role: :manager, department: {:resource, [:user, :profile, :department]}]
+```
+
+## Extending DeliveryReceipt with User Relationship
+
+AshDispatch provides a **Base module pattern** for creating DeliveryReceipt resources in your app with proper user relationships and TypeScript integration.
+
+### Pattern 1: Base Module with Manual Relationship (Recommended)
+
+The cleanest approach - use the Base module for all DSL, add your own relationships:
+
+```elixir
+defmodule MyApp.Deliveries.DeliveryReceipt do
+  @moduledoc """
+  Delivery receipt tracking - extends base from ash_dispatch with user relationship.
+  """
+
+  # Use base from ash_dispatch with ALL the DSL (attributes, actions, etc.)
+  use AshDispatch.Resources.DeliveryReceipt.Base,
+    repo: MyApp.Repo,
+    domain: MyApp.Deliveries
+
+  # TypeScript configuration (helps verifier detect AshTypescript.Resource extension)
+  typescript do
+    type_name("DeliveryReceipt")
+  end
+
+  # Add user relationship (only thing you need to define!)
+  relationships do
+    belongs_to :user, MyApp.Accounts.User do
+      source_attribute :user_id
+      destination_attribute :id
+      allow_nil? true
+      public? true
     end
   end
 end
 ```
 
-## Performance Considerations
+**What you get:**
+- ✅ All attributes, actions, state machine from Base
+- ✅ Explicit user relationship (clear ownership)
+- ✅ TypeScript types with nested user support
+- ✅ Full control over customization
+- ✅ No magic - just clear module extension
 
-### Caching
+---
 
-For frequently-accessed recipients (e.g., all admins), consider caching:
+### Pattern 2: Base Module with Auto Relationship
+
+If you want the Base to create the relationship automatically:
 
 ```elixir
-@impl true
-def resolve_admins(_context) do
-  ConCache.get_or_store(:recipients, :admins, fn ->
-    User
-    |> Ash.Query.filter(admin == true)
-    |> Ash.read!()
-  end)
+defmodule MyApp.Deliveries.DeliveryReceipt do
+  use AshDispatch.Resources.DeliveryReceipt.Base,
+    repo: MyApp.Repo,
+    domain: MyApp.Deliveries,
+    user_resource: MyApp.Accounts.User  # ← Auto-creates belongs_to :user
+
+  # TypeScript types are automatically configured
+  # User relationship is automatically added
 end
 ```
 
-Invalidate cache when admins change:
+**What happens:**
+1. Base module injects all DSL (attributes, actions, policies, state machine)
+2. If `user_resource` is provided, adds `belongs_to :user` relationship
+3. Includes TypeScript extension automatically
+
+---
+
+### Base Module Benefits
+
+**Compared to manual resource definition:**
+- ❌ Manual: ~500 lines of duplicated DSL
+- ✅ Base: ~20 lines for extension + relationships
+
+**Compared to direct `use AshDispatch.Resources.DeliveryReceipt`:**
+- ❌ Direct: No user relationship (library can't reference app modules)
+- ✅ Base: Proper `belongs_to` relationship with your User module
+
+**Features inherited from Base:**
+- All attributes (event_id, transport, status, provider_response, etc.)
+- State machine (pending → scheduled → sending → sent/failed)
+- All actions (create, mark_sent, mark_failed, retry, etc.)
+- Policies (workers bypass, admins can read)
+- Calculations (oban_job)
+
+---
+
+### Usage in Your App
+
+Once extended, use like any Ash resource:
 
 ```elixir
+# Query receipts with user loaded
+receipts = MyApp.Deliveries.DeliveryReceipt
+|> Ash.Query.load(:user)
+|> Ash.Query.filter(status == :sent)
+|> Ash.read!()
+
+# Create receipts (usually done by AshDispatch internally)
+MyApp.Deliveries.DeliveryReceipt
+|> Ash.Changeset.for_create(:create, %{
+  event_id: "orders.created",
+  transport: :email,
+  user_id: user.id,
+  recipient: user.email,
+  status: :pending
+})
+|> Ash.create!()
+```
+
+---
+
+### TypeScript Integration
+
+With Pattern 1 (manual relationship), TypeScript types include the user:
+
+```typescript
+// Auto-generated from AshTypescript
+interface DeliveryReceipt {
+  id: string;
+  event_id: string;
+  transport: "email" | "in_app" | "discord";
+  status: "pending" | "scheduled" | "sending" | "sent" | "failed";
+  user_id: string;
+  user?: User;  // ← Available for nested loading!
+  recipient: string;
+  subject?: string;
+  body_html?: string;
+  // ... all other fields
+}
+
+// Query with nested user
+const receipts = await ashClient.query(DeliveryReceipt, {
+  load: ["user"]
+});
+// receipts[0].user.email is available!
+```
+
+---
+
+### Customization Examples
+
+**Add custom policies:**
+
+```elixir
+defmodule MyApp.Deliveries.DeliveryReceipt do
+  use AshDispatch.Resources.DeliveryReceipt.Base,
+    repo: MyApp.Repo,
+    domain: MyApp.Deliveries
+
+  relationships do
+    belongs_to :user, MyApp.Accounts.User do
+      source_attribute :user_id
+      destination_attribute :id
+      allow_nil? true
+      public? true
+    end
+  end
+
+  # Add custom policies
+  policies do
+    # Users can read their own receipts
+    policy action(:list_for_user) do
+      authorize_if actor_attribute_equals(:id, arg(:user_id))
+    end
+  end
+end
+```
+
+**Add custom actions:**
+
+```elixir
+defmodule MyApp.Deliveries.DeliveryReceipt do
+  use AshDispatch.Resources.DeliveryReceipt.Base,
+    repo: MyApp.Repo,
+    domain: MyApp.Deliveries
+
+  relationships do
+    belongs_to :user, MyApp.Accounts.User do
+      source_attribute :user_id
+      destination_attribute :id
+      allow_nil? true
+      public? true
+    end
+  end
+
+  # Add custom action
+  actions do
+    read :list_failed_for_retry do
+      description "Find failed receipts ready for retry"
+
+      filter expr(
+        status == :failed and
+        retry_count < 5 and
+        (is_nil(last_retry_at) or last_retry_at < ago(15, :minute))
+      )
+    end
+  end
+end
+```
+
+---
+
+### Migration from Direct Usage
+
+**Before (if you were using the library resource directly):**
+```elixir
+# You couldn't - library doesn't know your User module
+alias AshDispatch.Resources.DeliveryReceipt
+```
+
+**After (with Base pattern):**
+```elixir
+# In your app:
+defmodule MyApp.Deliveries.DeliveryReceipt do
+  use AshDispatch.Resources.DeliveryReceipt.Base,
+    repo: MyApp.Repo,
+    domain: MyApp.Deliveries
+
+  relationships do
+    belongs_to :user, MyApp.Accounts.User do
+      source_attribute :user_id
+      destination_attribute :id
+      allow_nil? true
+      public? true
+    end
+  end
+end
+
+# Now use your resource:
+alias MyApp.Deliveries.DeliveryReceipt
+```
+
+This pattern allows AshDispatch to be **library-friendly** while providing **first-class relationships** in consuming apps!
+
+---
+
+## Migration from RecipientResolver
+
+If you're migrating from the old `RecipientResolver` behaviour:
+
+**Before (old pattern):**
+```elixir
+# lib/my_app/recipient_resolver.ex (130 lines of cond chains!)
+defmodule MyApp.RecipientResolver do
+  @behaviour AshDispatch.RecipientResolver
+
+  def extract_user_id(%{data: data}) do
+    cond do
+      user = Map.get(data, :user) -> get_id(user)
+      order = Map.get(data, :order) ->
+        case Map.get(order, :user) do
+          nil -> :error
+          user -> get_id(user)
+        end
+      # ... 40+ more lines
+    end
+  end
+
+  def resolve_admins(_context) do
+    # Custom query logic
+  end
+end
+```
+
+**After (DSL-based pattern):**
+```elixir
+# config/config.exs (just configuration!)
+config :ash_dispatch,
+  user_module: MyApp.Accounts.User,
+  recipient_filters: [
+    audiences: [
+      :user,
+      admin: [:user, admin: true],
+      partner: [:user, role: :partner]
+    ]
+  ]
+
+# Delete lib/my_app/recipient_resolver.ex entirely
+```
+
+**Benefits:**
+- ❌ Delete 130+ lines of brittle code
+- ✅ Future-proof for new resources and audiences
+- ✅ Zero maintenance - just update config
+- ✅ Automatic CiString handling
+- ✅ Works with ANY Ash resource structure
+- ✅ Add new audiences without code changes
+
+## Troubleshooting
+
+### "No :user_module configured"
+
+**Problem:** Warning logged when dispatching events.
+
+**Cause:** Missing `user_module` configuration.
+
+**Solution:**
+```elixir
+config :ash_dispatch,
+  user_module: MyApp.Accounts.User
+```
+
+### "Failed to query admin recipients"
+
+**Problem:** Error when dispatching to `:admin` audience.
+
+**Cause:** Invalid `admin_filter` or User resource not queryable.
+
+**Solution:**
+1. Check `admin_filter` syntax matches your User attributes
+2. Verify User resource has matching attribute
+3. Check Ash read action is accessible
+
+### "No user found in context"
+
+**Problem:** Warning for `:user` audience events.
+
+**Cause:** Event data doesn't contain user or resource with user relationship.
+
+**Solution:**
+1. Ensure event data includes user or related resource
+2. Check resource has `belongs_to :user, YourUserModule`
+3. Verify relationship is loaded if using nested extraction
+
+### User Preferences Not Working
+
+**Problem:** Users still receiving notifications they opted out of.
+
+**Cause:** Preference checking requires additional setup.
+
+**Solution:** See [User Preferences](user-preferences.md) guide.
+
+## Performance Considerations
+
+### Admin Query Caching
+
+For frequently-dispatched admin events, consider caching:
+
+```elixir
+defmodule MyApp.AdminCache do
+  use GenServer
+
+  # Cache admin list, invalidate on user changes
+  def get_admins do
+    GenServer.call(__MODULE__, :get_admins)
+  end
+
+  def invalidate do
+    GenServer.cast(__MODULE__, :invalidate)
+  end
+end
+
 # In User resource
 change fn changeset, _context ->
   if Ash.Changeset.changing_attribute?(changeset, :admin) do
-    ConCache.delete(:recipients, :admins)
+    MyApp.AdminCache.invalidate()
   end
   changeset
 end
 ```
 
-### Preloading
+### Relationship Preloading
 
-If your notifications need user relationships, preload them:
-
-```elixir
-@impl true
-def resolve_admins(_context) do
-  User
-  |> Ash.Query.filter(admin == true)
-  |> Ash.Query.load([:profile, :preferences])
-  |> Ash.read!()
-end
-```
-
-Then access in event modules:
-
-```elixir
-def notification_message(context, _channel) do
-  admin = context.user  # Already preloaded
-  "Hello #{admin.profile.display_name}!"
-end
-```
-
-## Troubleshooting
-
-### "No recipients after filtering"
-
-**Problem:** Resolver returns users, but no notifications sent.
-
-**Cause:** Likely user preference filtering (coming soon).
-
-**Solution:** Check event configuration and user preferences.
-
-### "Unknown audience type"
-
-**Problem:** Warning about unknown audience.
-
-**Cause:** Typo in channel configuration.
-
-**Solution:** Check spelling - must be `:user`, `:admin`, `:team`, or `:system`.
-
-### "resolve_team/2 is undefined"
-
-**Problem:** Configured resolver doesn't implement `resolve_team/2`.
-
-**Cause:** Missing callback implementation.
-
-**Solution:** Implement all three callbacks even if some return `[]`:
+If recipient resolution needs related data, preload in events:
 
 ```elixir
 @impl true
-def resolve_team(_team_name, _context), do: []
+def recipients(context, channel) do
+  # Load relationships before normalizing
+  AshDispatch.Event.Helpers.resolve_recipients_for_audience(context, channel)
+  |> Ash.load!([:profile, :preferences])
+end
+```
+
+## Testing
+
+### Test Configuration
+
+Use simpler filters in test environment:
+
+```elixir
+# config/test.exs
+config :ash_dispatch,
+  user_module: MyApp.Accounts.User,
+  admin_filter: [test_admin: true]  # Use test-specific flag
+```
+
+### Factory Integration
+
+Works seamlessly with test factories:
+
+```elixir
+test "dispatches to admins" do
+  admin = build(:user, %{admin: true})
+  insert!(admin)
+
+  AshDispatch.Dispatcher.dispatch("events.admin_alert", %{data: %{}})
+
+  # Verify admin received notification
+  assert_email_sent(to: admin.email)
+end
 ```
 
 ## Next Steps
 
-- [Channel Configuration](channels.md) - Configure delivery channels
-- [Event Modules](events.md) - Custom recipient logic in event modules
+- [Getting Started](../tutorials/getting-started.md) - Define your first events
 - [User Preferences](user-preferences.md) - Let users control notifications
+- [Counter Broadcasting](counter-broadcasting.md) - Real-time updates
+- [Phoenix Integration](phoenix-integration.md) - Channel and frontend setup

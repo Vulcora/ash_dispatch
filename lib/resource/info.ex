@@ -257,4 +257,48 @@ defmodule AshDispatch.Resource.Info do
     |> events()
     |> length()
   end
+
+  @doc """
+  Get all counters defined in a resource.
+
+  ## Parameters
+
+  - `resource` - The resource module
+
+  ## Returns
+
+  List of `%AshDispatch.Resource.Dsl.Counter{}` structs
+
+  ## Examples
+
+      iex> AshDispatch.Resource.Info.counters(ProductOrder)
+      [%AshDispatch.Resource.Dsl.Counter{name: :pending_orders_counter, ...}]
+  """
+  def counters(resource) do
+    Spark.Dsl.Extension.get_entities(resource, [:counters])
+  end
+
+  @doc """
+  Get a specific counter by name.
+
+  ## Parameters
+
+  - `resource` - The resource module
+  - `name` - The counter name (atom)
+
+  ## Returns
+
+  - `%AshDispatch.Resource.Dsl.Counter{}` if found
+  - `nil` if not found
+
+  ## Examples
+
+      iex> AshDispatch.Resource.Info.counter(ProductOrder, :pending_orders_counter)
+      %AshDispatch.Resource.Dsl.Counter{name: :pending_orders_counter, ...}
+  """
+  def counter(resource, name) do
+    resource
+    |> counters()
+    |> Enum.find(&(&1.name == name))
+  end
 end

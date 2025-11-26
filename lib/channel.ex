@@ -43,7 +43,10 @@ defmodule AshDispatch.Channel do
           policy: policy(),
           variant: variant(),
           webhook_url: String.t() | nil,
-          opts: map()
+          content: map(),
+          metadata: map(),
+          opts: map(),
+          load: [atom() | {atom(), any()}]
         }
 
   @enforce_keys [:transport, :audience]
@@ -54,7 +57,10 @@ defmodule AshDispatch.Channel do
     :webhook_url,
     time: {:in, 0},
     policy: :always,
-    opts: %{}
+    content: %{},
+    metadata: %{},
+    opts: %{},
+    load: []
   ]
 
   @doc """

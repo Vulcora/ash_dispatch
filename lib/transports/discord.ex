@@ -64,8 +64,7 @@ defmodule AshDispatch.Transports.Discord do
   - Error (Red): 15548997 (0xED4245)
   """
 
-  alias AshDispatch.{Context, Channel}
-  alias AshDispatch.Resources.DeliveryReceipt
+  alias AshDispatch.Channel
   alias AshDispatch.Workers.SendWebhook
 
   require Logger

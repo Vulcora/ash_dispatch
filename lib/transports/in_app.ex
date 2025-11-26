@@ -35,9 +35,6 @@ defmodule AshDispatch.Transports.InApp do
       # -> Returns {:ok, updated_receipt}
   """
 
-  alias AshDispatch.{Context, Channel}
-  alias AshDispatch.Resources.{DeliveryReceipt, Notification}
-
   require Logger
 
   @doc """
@@ -67,17 +64,12 @@ defmodule AshDispatch.Transports.InApp do
 
       {:ok, updated_receipt}
     else
-      # Resolve recipients
-      recipients = resolve_recipients(context, channel, event_config)
+      # Receipt now corresponds to a single recipient (user_id in receipt)
+      # Create one notification for this recipient
+      result = create_notification_for_receipt(receipt, context, channel)
 
-      # Create notifications for each recipient
-      results =
-        Enum.map(recipients, fn recipient ->
-          create_notification_for_recipient(recipient, receipt, context)
-        end)
-
-      # Update receipt status based on results
-      updated_receipt = update_receipt_status(receipt, results)
+      # Update receipt status and link notification_id
+      updated_receipt = update_receipt_with_notification(receipt, result)
 
       {:ok, updated_receipt}
     end
@@ -94,99 +86,159 @@ defmodule AshDispatch.Transports.InApp do
 
   # Private functions
 
-  defp resolve_recipients(context, channel, event_config) do
-    case event_config[:module] do
-      nil ->
-        # Inline config - resolve from context based on audience
-        resolve_inline_recipients(context, channel)
+  # Create notification for the receipt (one receipt = one recipient now)
+  defp create_notification_for_receipt(receipt, context, channel) do
+    # Receipt now has the user_id of the recipient
+    user_id = receipt.user_id
 
-      module ->
-        # Use callback module
-        module.recipients(context, channel)
+    # Skip in-app notifications if no user_id (external recipients, webhooks, etc.)
+    cond do
+      is_nil(user_id) ->
+        Logger.warning("""
+        Skipping in-app notification creation: no user_id
+        Event: #{context.event_id}
+        Recipient: #{receipt.recipient}
+
+        In-app notifications require a valid user_id. This receipt will be skipped.
+        """)
+
+        # Skip the receipt since in-app notifications require user_id
+        {:error, :no_user_id}
+
+      true ->
+        # Generate idempotency key to prevent duplicates when user receives
+        # notifications from multiple audiences (e.g., user who is also admin)
+        # Format: "event_id:resource_id:audience:user_id" or "event_id:audience:user_id" if no resource_id
+        idempotency_key =
+          case extract_resource_id(context) do
+            nil -> "#{context.event_id}:#{channel.audience}:#{user_id}"
+            resource_id -> "#{context.event_id}:#{resource_id}:#{channel.audience}:#{user_id}"
+          end
+
+        notification_attrs = %{
+          user_id: user_id,
+          title: get_content(receipt.content, :title),
+          message: get_content(receipt.content, :message),
+          action_url: get_content(receipt.content, :action_url),
+          action_label: get_content(receipt.content, :action_label),
+          event_id: context.event_id,
+          source: context.event_id,
+          type: get_notification_type(receipt.content),
+          idempotency_key: idempotency_key
+        }
+
+        # Create Notification record via Ash
+        notification_resource =
+          Application.get_env(
+            :ash_dispatch,
+            :notification_resource,
+            AshDispatch.Resources.Notification
+          )
+
+        case notification_resource
+             |> Ash.Changeset.for_create(:create, notification_attrs)
+             |> Ash.create() do
+          {:ok, notification} ->
+            Logger.debug("""
+            Created in-app notification:
+            User: #{notification.user_id}
+            Title: #{notification.title}
+            Message: #{notification.message}
+            """)
+
+            # Broadcast to user's channel
+            broadcast_notification(notification)
+
+            {:ok, notification}
+
+          {:error, error} ->
+            Logger.error("""
+            Failed to create in-app notification:
+            User: #{notification_attrs.user_id}
+            Error: #{inspect(error)}
+            """)
+
+            {:error, error}
+        end
     end
   end
 
-  defp resolve_inline_recipients(context, channel) do
-    # Delegate to RecipientResolver
-    opts = build_resolver_opts(channel)
-    AshDispatch.RecipientResolver.resolve(channel.audience, context, opts)
-  end
-
-  defp build_resolver_opts(channel) do
-    # Extract team name from channel if present
-    case Map.get(channel, :team) do
-      nil -> []
-      team -> [team: team]
-    end
-  end
-
-  defp create_notification_for_recipient(recipient, receipt, context) do
-    # TODO: Check user preferences
-    # For now, always create notification
-
-    notification_attrs = %{
-      user_id: get_user_id(recipient),
-      title: receipt.content[:title],
-      message: receipt.content[:message],
-      action_url: receipt.content[:action_url],
-      notification_type: receipt.content[:notification_type] || :info,
-      event_id: context.event_id
-    }
-
-    # Create Notification record via Ash
-    case Notification
-         |> Ash.Changeset.for_create(:create, notification_attrs)
-         |> Ash.create() do
+  # Update receipt with notification_id and mark as sent
+  defp update_receipt_with_notification(receipt, result) do
+    case result do
       {:ok, notification} ->
-        Logger.debug("""
-        Created in-app notification:
-        User: #{notification.user_id}
-        Title: #{notification.title}
-        Message: #{notification.message}
-        """)
+        receipt
+        |> Ash.Changeset.for_update(:mark_sent, %{notification_id: notification.id})
+        |> Ash.update!()
 
-        {:ok, notification}
+      {:error, :no_user_id} ->
+        # Skip receipts for external recipients without user_ids
+        receipt
+        |> Ash.Changeset.for_update(:skip, %{
+          error_message: "In-app notifications require user_id (external recipient)"
+        })
+        |> Ash.update!()
 
-      {:error, error} ->
-        Logger.error("""
-        Failed to create in-app notification:
-        User: #{notification_attrs.user_id}
-        Error: #{inspect(error)}
-        """)
-
-        {:error, error}
+      {:error, reason} ->
+        receipt
+        |> Ash.Changeset.for_update(:mark_failed, %{error_message: inspect(reason)})
+        |> Ash.update!()
     end
   end
 
-  defp get_user_id(recipient) when is_binary(recipient), do: recipient
-  defp get_user_id(%{id: id}), do: id
-  defp get_user_id(recipient), do: to_string(recipient)
+  # Extract the primary resource ID from context data
+  # Used for idempotency keys to prevent duplicate notifications
+  defp extract_resource_id(%{data: data}) when is_map(data) do
+    # Find the first value in data map that has an :id field
+    data
+    |> Map.values()
+    |> Enum.find_value(fn
+      %{id: id} when is_binary(id) -> id
+      _ -> nil
+    end)
+  end
 
-  defp update_receipt_status(receipt, results) do
-    # Check if all notifications succeeded
-    all_succeeded =
-      Enum.all?(results, fn
-        {:ok, _} -> true
-        _ -> false
-      end)
+  defp extract_resource_id(_), do: nil
 
-    # Update receipt via Ash
-    if all_succeeded do
-      receipt
-      |> Ash.Changeset.for_update(:mark_sent, %{})
-      |> Ash.update!()
-    else
-      # Find first error
-      error_message =
-        results
-        |> Enum.find_value(fn
-          {:error, reason} -> inspect(reason)
-          _ -> nil
-        end)
+  # Get content value, handling both atom and string keys (Postgres returns string keys)
+  defp get_content(content, key) when is_atom(key) do
+    content[key] || content[Atom.to_string(key)]
+  end
 
-      receipt
-      |> Ash.Changeset.for_update(:mark_failed, %{error_message: error_message})
-      |> Ash.update!()
+  # Get notification type, converting string values to atoms and defaulting to :info
+  defp get_notification_type(content) do
+    case get_content(content, :notification_type) do
+      type when is_atom(type) -> type
+      "success" -> :success
+      "info" -> :info
+      "warning" -> :warning
+      "error" -> :error
+      _ -> :info
+    end
+  end
+
+  # Broadcast notification to user's channel in JSON-serializable format
+  defp broadcast_notification(notification) do
+    pubsub_module = Application.get_env(:ash_dispatch, :pubsub_module)
+
+    if pubsub_module do
+      serialized = %{
+        id: notification.id,
+        type: notification.type,
+        title: notification.title,
+        message: notification.message,
+        read: notification.read,
+        timestamp: notification.inserted_at,
+        metadata: notification.metadata || %{},
+        actionLabel: notification.action_label,
+        actionUrl: notification.action_url
+      }
+
+      pubsub_module.broadcast(
+        "user:#{notification.user_id}",
+        "new_notification",
+        serialized
+      )
     end
   end
 end

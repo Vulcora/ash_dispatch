@@ -48,8 +48,7 @@ defmodule AshDispatch.Transports.Email do
       # -> Returns {:ok, updated_receipt}
   """
 
-  alias AshDispatch.{Context, Channel}
-  alias AshDispatch.Resources.DeliveryReceipt
+  alias AshDispatch.Channel
 
   require Logger
 
@@ -80,36 +79,19 @@ defmodule AshDispatch.Transports.Email do
 
       {:ok, updated_receipt}
     else
-      # Resolve recipients
-      recipients = resolve_recipients(context, channel, event_config)
+      # Receipt now corresponds to a single recipient (user_id and recipient in receipt)
+      # Enqueue one Oban job for this receipt
+      result = enqueue_email_job_for_receipt(receipt, context, channel)
 
-      # Check if any recipients
-      if Enum.empty?(recipients) do
-        Logger.info("No recipients for email, skipping")
+      # Update receipt status with oban_job_id
+      updated_receipt = update_receipt_with_job(receipt, result, channel)
 
-        updated_receipt =
-          receipt
-          |> Ash.Changeset.for_update(:skip, %{error_message: "no_recipients"})
-          |> Ash.update!()
-
-        {:ok, updated_receipt}
-      else
-        # Enqueue Oban jobs for each recipient
-        results =
-          Enum.map(recipients, fn recipient ->
-            enqueue_email_job(recipient, receipt, context, channel)
-          end)
-
-        # Update receipt status
-        updated_receipt = update_receipt_status(receipt, results, channel)
-
-        {:ok, updated_receipt}
-      end
+      {:ok, updated_receipt}
     end
   rescue
     error ->
       Logger.error("""
-      Email transport failed to enqueue jobs
+      Email transport failed to enqueue job
       Event: #{context.event_id}
       Error: #{inspect(error)}
       """)
@@ -119,47 +101,20 @@ defmodule AshDispatch.Transports.Email do
 
   # Private functions
 
-  defp resolve_recipients(context, channel, event_config) do
-    base_recipients =
-      case event_config[:module] do
-        nil ->
-          # Use RecipientResolver for inline events
-          resolve_inline_recipients(context, channel)
+  # Enqueue Oban job for the receipt (one receipt = one recipient now)
+  defp enqueue_email_job_for_receipt(receipt, context, channel) do
+    # Build job args from receipt (which now has all recipient info)
+    from = get_from_field(receipt)
 
-        module ->
-          # Custom event module handles recipients
-          module.recipients(context, channel)
-      end
-
-    # TODO: Filter by user preferences
-    # For now, return all recipients
-    base_recipients
-  end
-
-  defp resolve_inline_recipients(context, channel) do
-    # Delegate to RecipientResolver
-    opts = build_resolver_opts(channel)
-    AshDispatch.RecipientResolver.resolve(channel.audience, context, opts)
-  end
-
-  defp build_resolver_opts(channel) do
-    # Extract team name from channel if present
-    case Map.get(channel, :team) do
-      nil -> []
-      team -> [team: team]
-    end
-  end
-
-  defp enqueue_email_job(recipient, receipt, context, channel) do
-    # Build job args
     args = %{
       "receipt_id" => receipt.id,
-      "recipient_email" => get_recipient_email(recipient),
+      # Receipt already has recipient email
+      "recipient_email" => receipt.recipient,
       "event_id" => context.event_id,
-      "subject" => receipt.content[:subject],
-      "from" => receipt.content[:from],
-      "html_body" => receipt.content[:html_body],
-      "text_body" => receipt.content[:text_body]
+      "subject" => receipt.subject,
+      "from" => from,
+      "html_body" => receipt.body_html,
+      "text_body" => receipt.body_text
     }
 
     # Calculate schedule time
@@ -180,38 +135,40 @@ defmodule AshDispatch.Transports.Email do
     end
   end
 
-  defp get_recipient_email(recipient) when is_binary(recipient), do: recipient
-  defp get_recipient_email(%{email: email}), do: email
-  defp get_recipient_email(recipient), do: to_string(recipient)
+  # Update receipt with oban_job_id and mark as scheduled
+  defp update_receipt_with_job(receipt, result, _channel) do
+    case result do
+      {:ok, job} ->
+        receipt
+        |> Ash.Changeset.for_update(:schedule, %{oban_job_id: job.id})
+        |> Ash.update!()
+
+      {:error, reason} ->
+        receipt
+        |> Ash.Changeset.for_update(:mark_failed, %{error_message: inspect(reason)})
+        |> Ash.update!()
+    end
+  end
+
+  defp get_from_field(receipt) do
+    cond do
+      # From field stored as map with name/email (from event module)
+      is_map(receipt.content[:from]) ->
+        receipt.content[:from]
+
+      # From field might be in content as a tuple or string
+      receipt.content[:from] ->
+        receipt.content[:from]
+
+      # Fallback to configured default
+      true ->
+        default_from =
+          Application.get_env(:ash_dispatch, :default_from_email, "noreply@example.com")
+
+        %{"name" => "System", "email" => default_from}
+    end
+  end
 
   defp schedule_seconds(%Channel{time: {:in, seconds}}), do: seconds
   defp schedule_seconds(_), do: 0
-
-  defp update_receipt_status(receipt, results, _channel) do
-    # Check if all jobs enqueued successfully
-    all_succeeded =
-      Enum.all?(results, fn
-        {:ok, _} -> true
-        _ -> false
-      end)
-
-    # Update receipt via Ash
-    if all_succeeded do
-      receipt
-      |> Ash.Changeset.for_update(:schedule, %{})
-      |> Ash.update!()
-    else
-      # Find first error
-      error_message =
-        results
-        |> Enum.find_value(fn
-          {:error, reason} -> inspect(reason)
-          _ -> nil
-        end)
-
-      receipt
-      |> Ash.Changeset.for_update(:mark_failed, %{error_message: error_message})
-      |> Ash.update!()
-    end
-  end
 end

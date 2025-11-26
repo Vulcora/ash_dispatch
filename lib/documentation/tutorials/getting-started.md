@@ -1,6 +1,8 @@
 # Getting Started with AshDispatch
 
-This tutorial will walk you through adding event-driven notifications to an Ash resource.
+This tutorial will walk you through adding event-driven notifications to an Ash resource using **inline events** (defined directly in the `dispatch` DSL).
+
+**Looking for standalone event modules, manual triggers, or preview functionality?** See [Manual Dispatch and Event Modules](./manual-dispatch-and-events.md) for the complete guide on event modules, the two-path pattern, and admin-triggered events.
 
 ## Prerequisites
 
@@ -23,6 +25,8 @@ def deps do
   ]
 end
 ```
+
+**Note:** For complete configuration options including standalone event modules, user resources, and custom notification resources, see [Configuration Guide](../topics/configuration.md).
 
 ### 2. Configure Oban
 
@@ -70,6 +74,7 @@ Then configure AshDispatch to use your Swoosh mailer:
 ```elixir
 # config/config.exs
 config :ash_dispatch,
+  otp_app: :my_app,  # Required for template layouts
   email_backend: AshDispatch.EmailBackend.Swoosh,
   swoosh_mailer: MyApp.Mailer
 ```
@@ -96,9 +101,153 @@ config :ash_dispatch,
 
 If you don't configure an email backend, AshDispatch will log emails instead of sending them (useful for development).
 
+### 4. Configure URL Builder (optional)
+
+For automatic source URL generation on delivery receipts (linking receipts back to their source resources), configure a URL builder module:
+
+```elixir
+# config/config.exs
+config :ash_dispatch,
+  url_builder: MyApp.UrlBuilder
+```
+
+The URL builder should implement two functions:
+
+```elixir
+defmodule MyApp.UrlBuilder do
+  @moduledoc """
+  URL builder for AshDispatch source URLs and labels.
+
+  Builds audience-specific URLs for resources and provides human-readable labels.
+  """
+
+  # Load paths at compile time
+  @app_paths Application.compile_env(:my_app, :app_paths, %{})
+
+  @doc """
+  Returns a human-readable label for a resource type.
+
+  Used by the `source_label` calculation on DeliveryReceipt to provide
+  friendly labels for admin UIs.
+
+  ## Examples
+
+      resource_label(:order)  #=> "Order"
+      resource_label(:ticket) #=> "Support Ticket"
+  """
+  def resource_label(:order), do: "Order"
+  def resource_label(:ticket), do: "Support Ticket"
+  def resource_label(:user), do: "Customer"
+  def resource_label(_), do: nil
+
+  @doc """
+  Builds a URL for a resource with audience-specific routing.
+
+  ## Parameters
+  - `resource_type` - Atom like :order, :ticket (matches event's data_key)
+  - `resource` - Map/struct with :id field
+  - `opts` - Keyword list with :audience (required), :path_only (optional)
+
+  ## Examples
+
+      build_resource_url(:order, %{id: "abc"}, audience: :user, path_only: true)
+      #=> "/orders/abc"
+
+      build_resource_url(:order, %{id: "abc"}, audience: :admin)
+      #=> "https://myapp.com/admin/orders/abc"
+  """
+  def build_resource_url(resource_type, resource, opts) do
+    audience = Keyword.fetch!(opts, :audience)
+    path_only = Keyword.get(opts, :path_only, false)
+
+    path_template = get_in(@app_paths, [audience, resource_type])
+
+    if is_nil(path_template) do
+      raise ArgumentError,
+        "No path configured for audience #{inspect(audience)}, " <>
+        "resource #{inspect(resource_type)}"
+    end
+
+    path = String.replace(path_template, ":id", to_string(resource.id))
+
+    if path_only do
+      path
+    else
+      get_base_url() <> path
+    end
+  end
+
+  defp get_base_url do
+    # Implement based on your endpoint configuration
+    "https://myapp.com"
+  end
+end
+```
+
+Configure your path templates:
+
+```elixir
+# config/config.exs
+config :my_app, :app_paths,
+  user: %{
+    order: "/orders/:id",
+    ticket: "/support/:id"
+  },
+  admin: %{
+    order: "/admin/orders/:id",
+    ticket: "/admin/tickets/:id"
+  }
+```
+
+With this configured, events with `data_key` defined will automatically generate source URLs. The `data_key` (e.g., `:order`) maps directly to the `resource_type` in your path config.
+
+**How it works:**
+1. Event defines `data_key: :order`
+2. Default `source_url/2` calls `url_builder.build_resource_url(:order, order, audience: channel.audience)`
+3. URL builder looks up path template for `:user` or `:admin` audience
+4. Returns audience-specific path like `/orders/abc` or `/admin/orders/abc`
+
+Events without `data_key` or with paths not configured will return `nil` for source URL (graceful fallback).
+
+### DeliveryReceipt Calculated Fields
+
+With the URL builder configured, `DeliveryReceipt` provides three calculated fields:
+
+| Field | Description |
+|-------|-------------|
+| `source_url` | URL using the receipt's audience (`:user` → portal, `:admin` → admin) |
+| `source_label` | Human-readable label from `resource_label/1` (e.g., "Order", "Ticket") |
+| `admin_url` | Always returns admin URL, regardless of receipt audience |
+
+**Frontend usage example (TypeScript):**
+
+```typescript
+// In your admin dashboard, always use adminUrl for links
+<Link href={receipt.adminUrl}>
+  View {receipt.sourceLabel}
+</Link>
+
+// In user portal, use sourceUrl (audience-aware)
+<Link href={receipt.sourceUrl}>
+  View {receipt.sourceLabel}
+</Link>
+```
+
+**Why `admin_url`?** When viewing receipts in an admin dashboard, you want admin links even for receipts that were sent to users (which have `audience: :user`). The `admin_url` calculation always uses `audience: :admin` when building the URL.
+
 ## Add Your First Event
 
 Let's add notifications to a `Ticket` resource.
+
+### 0. Initial Setup (first time only)
+
+Before creating your first event, set up the directory structure and layouts:
+
+```bash
+mix ash_dispatch.setup
+```
+
+This creates `priv/ash_dispatch/layouts/` with default email templates. Customize these with your branding. See [Generator Guide](../topics/generator.md) for details.
 
 ### 1. Add the extension
 
@@ -744,8 +893,11 @@ end
 
 ## Next Steps
 
-- [Understanding Events](../topics/events.md) - Deep dive into event concepts
-- [Delivery Transports](../topics/transports.md) - Available transports and configuration
+**Recommended next:** [App Integration](../topics/app-integration.md) - Set up custom resources, database, and RPC
+
+Then explore:
+- [Phoenix Integration](../topics/phoenix-integration.md) - Real-time channels and frontend
+- [Counter Broadcasting](../topics/counter-broadcasting.md) - Live UI counters
 - [User Preferences](../topics/user-preferences.md) - Let users control notifications
 - [DSL Reference](../dsls/DSL-AshDispatch-Resource.md) - Complete DSL documentation
 
