@@ -1,6 +1,6 @@
 # Generators & Setup
 
-AshDispatch provides several generators to integrate with your application. Use `mix ash_dispatch.setup` once for initial setup, then `mix ash_dispatch.gen.event` for each new event.
+AshDispatch provides generators to integrate with your application. Use `mix ash_dispatch.setup` once for initial setup, then define events in your resource DSL and run `mix ash_dispatch.gen` to generate missing files.
 
 ## Quick Start
 
@@ -8,11 +8,11 @@ AshDispatch provides several generators to integrate with your application. Use 
 # Initial setup (creates layouts and directory structure)
 mix ash_dispatch.setup
 
-# Generate a new event with content-only templates
-mix ash_dispatch.gen.event order created --subject "Order skapad"
-
-# Generate TypeScript SDK and counter types
+# Generate missing templates, event modules, and TypeScript types
 mix ash_dispatch.gen
+
+# Or use the unified Ash codegen command
+mix ash.codegen
 ```
 
 ---
@@ -66,79 +66,95 @@ All event templates will automatically use this layout.
 
 ---
 
-## Event Generator
+## Defining Events in DSL
 
-Generate events with content-only templates:
-
-```bash
-mix ash_dispatch.gen.event RESOURCE EVENT [options]
-```
-
-### Options
-
-- `--subject` - Email subject line (required)
-- `--trigger` - Action that triggers the event (default: event name)
-- `--audience` - `user`, `admin`, or `both` (default: `user`)
-- `--channels` - Comma-separated: `in_app,email` (default: `in_app,email`)
-- `--title` - In-app notification title
-- `--message` - In-app notification message
-
-### Examples
-
-```bash
-# User-facing order notification
-mix ash_dispatch.gen.event order created \
-  --subject "Din order har skapats" \
-  --title "Order skapad" \
-  --message "Order {{order_number}} har registrerats"
-
-# Admin notification for new tickets
-mix ash_dispatch.gen.event ticket created \
-  --subject "Nytt supportärende" \
-  --audience both \
-  --title "Nytt ärende" \
-  --message "Ärende från {{user_email}}"
-
-# Event with custom trigger action
-mix ash_dispatch.gen.event reseller_request accepted \
-  --trigger accept \
-  --subject "Välkommen!"
-```
-
-### Output
-
-The generator creates:
-
-1. **Content-only templates** in `priv/ash_dispatch/templates/{resource}/{event}/`
-2. **Inline DSL code** to paste into your resource
-
-```
-priv/ash_dispatch/templates/order/created/
-├── email.html.heex      # Just the content (no HTML/body/header)
-└── email.text.eex       # Plain text content
-```
-
-And prints inline DSL:
+Events are defined directly in your resource using the `dispatch do` block:
 
 ```elixir
-# Add this to your resource's dispatch block:
-dispatch do
-  event :created,
-    trigger_on: :created,
-    data_key: :order,
-    channels: [
-      [transport: :in_app, audience: :user, ...],
-      [transport: :email, audience: :user, ...]
-    ]
+defmodule MyApp.Orders.ProductOrder do
+  use Ash.Resource,
+    extensions: [AshDispatch.Resource]
+
+  dispatch do
+    event :created do
+      module MyApp.Orders.Events.Created.Event
+      trigger_on [:create]
+      data_key :order
+
+      channels do
+        channel :in_app, :user,
+          title: "Order skapad",
+          message: "Din order har registrerats"
+        channel :email, :user,
+          subject: "Din order har skapats"
+        channel :email, :admin,
+          variant: :admin,
+          subject: "Ny order inkommit"
+      end
+    end
+  end
 end
+```
+
+### DSL Options
+
+| Option | Description |
+|--------|-------------|
+| `module` | Event module that handles template assigns and recipients |
+| `trigger_on` | Actions that trigger this event (`:create`, `:update`, etc.) |
+| `data_key` | Key used for the resource in template assigns |
+| `channels` | List of delivery channels (in-app, email, SMS, etc.) |
+
+### Channel Options
+
+| Option | Description |
+|--------|-------------|
+| `:in_app` | Creates a notification in the database |
+| `:email` | Sends an email using templates |
+| `audience` | `:user`, `:admin`, or `:system` |
+| `variant` | Template variant (e.g., `:admin` uses `email.admin.html.heex`) |
+| `title` | In-app notification title |
+| `message` | In-app notification message |
+| `subject` | Email subject line |
+
+## Generating Missing Files
+
+After defining events in DSL, run the generator to create missing templates and event modules:
+
+```bash
+# Generate all missing files
+mix ash_dispatch.gen
+
+# Or via unified Ash codegen
+mix ash.codegen
+
+# Preview what would be generated
+mix ash_dispatch.gen --dry-run
+
+# CI check - fail if files need generation
+mix ash_dispatch.gen --check
+```
+
+### What Gets Generated
+
+For each event with an `:email` channel, the generator creates:
+
+```
+lib/my_app/orders/events/created/
+├── event.ex                 # Event module (if module option specified but file missing)
+└── templates/
+    ├── email.html.heex      # HTML email content
+    ├── email.text.eex       # Plain text email content
+    ├── email.admin.html.heex  # If variant: :admin channel exists
+    └── email.admin.text.eex
 ```
 
 ### Content-Only Templates
 
-Templates only contain event-specific content. The layout handles structure:
+Templates only contain event-specific content. The layout (from `priv/ash_dispatch/layouts/`) handles structure:
 
 ```heex
-<!-- priv/ash_dispatch/templates/order/created/email.html.heex -->
+<!-- lib/my_app/orders/events/created/templates/email.html.heex -->
 <p>Hej <strong><%= @display_name %></strong>,</p>
 
 <p>Tack för din beställning!</p>
@@ -148,7 +164,7 @@ Templates only contain event-specific content. The layout handles structure:
   <p>Ordernummer: <%= @order_number %></p>
 </div>
 
-<a href={@order_url}>Visa order →</a>
+<a href={@source_url}>Visa order →</a>
 ```
 
 No DOCTYPE, html, head, body, header, or footer needed - the layout provides all that.
@@ -271,30 +287,32 @@ The `layout` option is a subdirectory prefix. It tries `layouts/urgent/email.htm
 
 ---
 
-## Unified Generator
+## TypeScript SDK Generation
 
-The `mix ash_dispatch.gen` command generates TypeScript SDK and counter types:
+The `mix ash_dispatch.gen` command generates a complete TypeScript SDK based on your DSL definitions:
 
 ```bash
-# Generate everything
+# Generate all missing files (templates, event modules, SDK)
 mix ash_dispatch.gen
 
-# Generate specific parts
-mix ash_dispatch.gen --only sdk
-mix ash_dispatch.gen --only counters
-mix ash_dispatch.gen --only events
+# Preview what would be generated
+mix ash_dispatch.gen --dry-run
+
+# CI check - fail if files need generation
+mix ash_dispatch.gen --check
 ```
 
 ## What Gets Generated
 
-### TypeScript SDK (7 files)
+### TypeScript SDK (8 files)
 
 The generator creates a complete TypeScript SDK for real-time updates:
 
 ```
 lib/ash-dispatch/
 ├── index.ts              # Re-exports everything
-├── types.ts              # Counter type definitions
+├── types.ts              # Counter types, defaults, metadata, accessors
+├── events.ts             # Event ID types and metadata
 ├── store.ts              # Zustand store for counters
 ├── channel.ts            # Phoenix channel utilities
 └── hooks/
@@ -303,39 +321,60 @@ lib/ash-dispatch/
     └── use-notifications.ts  # Notification management
 ```
 
-### Counter Types
+### Counter Types (types.ts)
 
 Type-safe counter definitions for your frontend:
 
 ```typescript
-// Generated counters.ts
+// Generated types.ts
 export type CounterName =
   | "pending_orders"
   | "cart_items"
   | "unread_notifications"
   | "admin_pending_requests"
 
-export const ALL_COUNTERS: CounterName[] = [...]
 export const DEFAULT_COUNTERS: AllCounters = {...}
+export const COUNTER_METADATA = {...}
+
+export function isValidCounter(name: string): name is CounterName
+export function getCounterAccessors(counters: AllCounters): CounterAccessors
 ```
 
-### Event Module Stubs (Optional)
+### Event Types (events.ts)
 
-If configured, generates event.ex files with the AshDispatch.Event behaviour:
+Type-safe event definitions for frontend event handling:
+
+```typescript
+// Generated events.ts
+export type EventId =
+  | "orders.created"
+  | "orders.completed"
+  | "tickets.created"
+
+export const EVENT_METADATA = {
+  "orders.created": {
+    domain: "orders",
+    channels: [{ transport: "email", audience: "user" }],
+  },
+  // ...
+} as const;
+
+export function isValidEventId(id: string): id is EventId
+```
+
+### Event Module Stubs
+
+If an event specifies a `module` option but the file doesn't exist, the generator creates a stub:
 
 ```elixir
-defmodule MyApp.Events.Orders.Created.Event do
+defmodule MyApp.Orders.Events.Created.Event do
   use AshDispatch.Event
 
-  @impl true
-  def channels(_context) do
-    [
-      %{transport: :in_app, audience: :user},
-      %{transport: :email, audience: :user}
-    ]
-  end
-
-  # ... more callbacks with TODOs
+  # Override callbacks to customize behavior:
+  # @impl true
+  # def prepare_template_assigns(context, channel) do
+  #   %{order_number: context.data.order.order_number}
+  # end
 end
 ```
 
@@ -359,15 +398,11 @@ config :ash_typescript,
 
 ```elixir
 config :ash_dispatch,
-  # Enable/disable SDK generation
-  generate_sdk: true,                    # default: true
+  # Override SDK output path
+  sdk_output_path: "apps/frontend/src/lib/ash-dispatch",
 
-  # Folder name for SDK (next to ash_rpc.ts)
-  sdk_folder: "ash-dispatch",            # default: "ash-dispatch"
-
-  # Event module generation
-  events_namespace: MyApp.Events,        # Module prefix for events
-  templates_path: "lib/my_app/events"    # Where events go
+  # Domains to scan for counters/events
+  domains: [MyApp.Orders, MyApp.Tickets, MyApp.Notifications]
 ```
 
 ---
@@ -384,60 +419,31 @@ mix ash_dispatch.gen
 
 Output:
 ```
-📊 Generating counter types...
-  ✓ apps/frontend/src/lib/counters.ts (13 counters)
+* creating apps/frontend/src/lib/ash-dispatch/types.ts
+* creating apps/frontend/src/lib/ash-dispatch/events.ts
+* creating apps/frontend/src/lib/ash-dispatch/store.ts
+* creating apps/frontend/src/lib/ash-dispatch/channel.ts
+* creating apps/frontend/src/lib/ash-dispatch/index.ts
+* creating apps/frontend/src/lib/ash-dispatch/hooks/use-channel.ts
+* creating apps/frontend/src/lib/ash-dispatch/hooks/use-counter.ts
+* creating apps/frontend/src/lib/ash-dispatch/hooks/use-notifications.ts
 
-🔧 Generating TypeScript SDK...
-  ✓ Generated 7 SDK files
-
-📝 Generating event module stubs...
-  No events found in resources
-
-📄 Extracting templates...
-  Template extraction not yet implemented
-
-──────────────────────────────────────────────────
-Generation Summary
-──────────────────────────────────────────────────
-✓ counters: apps/frontend/src/lib/counters.ts
-✓ sdk: apps/frontend/src/lib/ash-dispatch
-✓ events: 0 event modules
-✓ templates: 0 templates
+Generated 8 file(s)
 ```
 
-### Partial Generation
+### Incremental Updates
 
-Generate only what you need:
-
-```bash
-# Just counter types (fastest)
-mix ash_dispatch.gen --only counters
-
-# Just TypeScript SDK
-mix ash_dispatch.gen --only sdk
-
-# Just event stubs
-mix ash_dispatch.gen --only events
-```
-
-### Custom Output Paths
-
-Override default paths:
+The generator only creates missing files. When you add new counters or events to your DSL,
+run `mix ash_dispatch.gen` again to update `types.ts` and `events.ts`:
 
 ```bash
-# Custom counters location
-mix ash_dispatch.gen --counters-output lib/frontend/types/counters.ts
+# After adding new counters/events
+mix ash_dispatch.gen
 
-# Custom SDK location
-mix ash_dispatch.gen --sdk-output lib/frontend/ash-dispatch
-```
+# Output shows only changed files:
+* creating apps/frontend/src/lib/ash-dispatch/types.ts
 
-### Force Regeneration
-
-Overwrite existing event stubs:
-
-```bash
-mix ash_dispatch.gen --only events --force
+Generated 1 file(s)
 ```
 
 ---
@@ -574,16 +580,10 @@ Add to your build pipeline:
 
 ```yaml
 - name: Generate AshDispatch SDK
-  run: mix ash_dispatch.gen --only counters --only sdk
+  run: mix ash_dispatch.gen --check
 ```
 
-### Compile Hook (Coming Soon)
-
-Future version will warn when SDK is stale:
-
-```
-warning: AshDispatch SDK is stale. Run `mix ash_dispatch.gen`
-```
+The `--check` flag exits with error if any files need generation, ensuring your SDK stays in sync with DSL definitions.
 
 ---
 
@@ -595,11 +595,16 @@ warning: AshDispatch SDK is stale. Run `mix ash_dispatch.gen`
 
 **Solution:** Ensure domains are configured:
 ```elixir
+# config/config.exs
+config :my_app,
+  ash_domains: [MyApp.Orders, MyApp.Tickets]
+
+# Or explicitly in ash_dispatch
 config :ash_dispatch,
   domains: [MyApp.Orders, MyApp.Tickets]
 ```
 
-### SDK path incorrect
+### SDK path incorrect / not generating
 
 **Cause:** `ash_typescript.output_file` not configured.
 
@@ -609,28 +614,22 @@ config :ash_typescript,
   output_file: "apps/frontend/src/lib/ash_rpc.ts"
 ```
 
-### Event stubs not generating
+The SDK will generate to `apps/frontend/src/lib/ash-dispatch/`.
 
-**Cause:** `events_namespace` not configured.
+### Templates not generating
 
-**Solution:**
+**Cause:** Events don't have `:email` channels defined, or the templates already exist.
+
+**Solution:** Ensure your event DSL includes email channels:
 ```elixir
-config :ash_dispatch,
-  events_namespace: MyApp.Events,
-  templates_path: "lib/my_app/events"
+dispatch do
+  event :created do
+    channels do
+      channel :email, :user, subject: "Order created"
+    end
+  end
+end
 ```
-
----
-
-## Replaces
-
-The unified generator replaces these older commands:
-
-| Old Command | Now Part Of |
-|-------------|-------------|
-| `mix ash_dispatch.gen.counter_types` | `mix ash_dispatch.gen --only counters` |
-| `mix ash_dispatch.extract_templates` | `mix ash_dispatch.gen --only templates` |
-| Manual event.ex creation | `mix ash_dispatch.gen --only events` |
 
 ---
 

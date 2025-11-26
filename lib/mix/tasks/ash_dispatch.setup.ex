@@ -48,7 +48,8 @@ defmodule Mix.Tasks.AshDispatch.Setup do
     Next steps:
     1. Edit #{layouts_dir}/email.html.heex with your brand styling
     2. Edit #{layouts_dir}/email.text.eex with your brand text
-    3. Generate events with: mix ash_dispatch.gen.event <resource> <event>
+    3. Define events in your resource DSL (dispatch do ... end)
+    4. Run: mix ash_dispatch.gen  (or mix ash.codegen)
     """)
   end
 

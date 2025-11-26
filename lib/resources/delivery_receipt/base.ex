@@ -102,7 +102,7 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
         attribute :transport, :atom,
           allow_nil?: false,
           public?: true,
-          constraints: [one_of: [:email, :in_app, :discord, :sms, :webhook]]
+          constraints: [one_of: [:email, :in_app, :discord, :sms, :webhook, :slack]]
 
         attribute :user_id, :uuid, allow_nil?: true, public?: true
         attribute :notification_id, :uuid, allow_nil?: true, public?: true
