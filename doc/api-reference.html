@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="ExDoc v0.39.1">
+    <meta name="project" content="AshDispatch v0.1.0">
+
+
+    <title>API Reference — AshDispatch v0.1.0</title>
+
+    <link rel="stylesheet" href="dist/html-elixir-ZFNMEJKT.css" />
+
+    <script defer src="dist/sidebar_items-F03CB3D7.js"></script>
+    <script defer src="docs_config.js"></script>
+    <script defer src="dist/html-HBZYRXZS.js"></script>
+<style>
+  .sidebar-listNav-list > li > a.sidebar-projectName {
+    font-size: 1.2em;
+    font-weight: 700;
+    color: #2563eb;
+  }
+  .content-inner h1, .content-inner h2, .content-inner h3 {
+    border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 0.3em;
+  }
+</style>
+
+  </head>
+  <body>
+    <script>(()=>{var t="ex_doc:settings",e="dark";var o="dark",s="light";var E="sidebar_state",n="closed";var r="sidebar_width";var a="sidebar-open";var i=new URLSearchParams(window.location.search),S=i.get("theme")||JSON.parse(localStorage.getItem(t)||"{}").theme;(S===o||S!==s&&window.matchMedia("(prefers-color-scheme: dark)").matches)&&document.body.classList.add(e);var d=sessionStorage.getItem(E),A=d!==n&&!window.matchMedia(`screen and (max-width: ${768}px)`).matches;document.body.classList.toggle(a,A);var c=sessionStorage.getItem(r);c&&document.body.style.setProperty("--sidebarWidth",`${c}px`);var p=/(Macintosh|iPhone|iPad|iPod)/.test(window.navigator.userAgent);document.documentElement.classList.toggle("apple-os",p);})();
+</script>
+
+<div class="body-wrapper">
+
+<button id="sidebar-menu" class="sidebar-button sidebar-toggle" aria-label="toggle sidebar" aria-controls="sidebar">
+  <i class="ri-menu-line ri-lg" title="Collapse/expand sidebar"></i>
+</button>
+
+<nav id="sidebar" class="sidebar">
+
+  <div class="sidebar-header">
+    <div class="sidebar-projectInfo">
+
+      <div>
+        <a href="https://github.com/Vulcora/ash_dispatch" class="sidebar-projectName" translate="no">
+AshDispatch
+        </a>
+        <div class="sidebar-projectVersion" translate="no">
+          v0.1.0
+        </div>
+      </div>
+    </div>
+    <ul id="sidebar-list-nav" class="sidebar-list-nav" role="tablist" data-extras=""></ul>
+  </div>
+</nav>
+
+<output role="status" id="toast"></output>
+
+<main class="content page-extra" id="main" data-type="extras">
+  <div id="content" class="content-inner">
+    <div class="top-search">
+      <div class="search-settings">
+        <form class="search-bar" action="search.html">
+          <label class="search-label">
+            <span class="sr-only">Search documentation of AshDispatch</span>
+            <div class="search-input-wrapper">
+              <input name="q" type="text" class="search-input" placeholder="Press / to search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+              <button type="button" tabindex="-1" class="search-close-button" aria-hidden="true">
+                <i class="ri-close-line ri-lg" title="Cancel search"></i>
+              </button>
+            </div>
+          </label>
+        </form>
+        <div class="autocomplete">
+        </div>
+        <div class="engine-selector" data-multiple="false">
+          <button type="button" class="engine-button" aria-label="Select search engine" aria-haspopup="true" aria-expanded="false">
+            <i class="ri-search-2-line" aria-hidden="true"></i>
+            <span class="engine-name">Default</span>
+            <i class="ri-arrow-down-s-line" aria-hidden="true"></i>
+          </button>
+          <div class="engine-dropdown" hidden role="menu">
+
+              <button type="button"
+                      class="engine-option"
+                      data-engine-url="search.html?q="
+                      role="menuitemradio"
+                      aria-checked="true">
+                <span class="name">Default</span>
+                <span class="help">In-browser search</span>
+              </button>
+
+          </div>
+        </div>
+        <button class="icon-settings display-settings">
+          <i class="ri-settings-3-line"></i>
+          <span class="sr-only">Settings</span>
+        </button>
+      </div>
+    </div>
+
+<div id="top-content">
+  <div class="heading-with-actions top-heading">
+    <h1>API Reference <small class="app-vsn">AshDispatch v#0.1.0</small></h1>
+
+      <a href="https://github.com/Vulcora/ash_dispatch" title="View Source" class="icon-action" rel="help">
+        <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        <span class="sr-only">View Source</span>
+      </a>
+
+  </div>
+
+    <section class="details-list">
+      <h2 id="modules" class="section-heading">Modules</h2>
+      <div class="summary">
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Changes.DispatchEvent.html" translate="no">AshDispatch.Changes.DispatchEvent</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Ash.Resource.Change that dispatches an event after an action succeeds.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Channel.html" translate="no">AshDispatch.Channel</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Represents a delivery channel for an event.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Context.html" translate="no">AshDispatch.Context</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Event context passed to all event callbacks and transports.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Dispatcher.html" translate="no">AshDispatch.Dispatcher</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Core dispatcher that handles event delivery across all transports.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Domain.html" translate="no">AshDispatch.Domain</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>AshDispatch Domain for managing delivery receipts and notification resources.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Dsl.Channel.html" translate="no">AshDispatch.Dsl.Channel</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>DSL entity struct for channel definitions.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Dsl.CounterBroadcast.html" translate="no">AshDispatch.Dsl.CounterBroadcast</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>DSL entity struct for counter broadcast configurations.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Dsl.Sections.html" translate="no">AshDispatch.Dsl.Sections</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Defines the DSL sections for AshDispatch events.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Dsl.Transformers.InferEventId.html" translate="no">AshDispatch.Dsl.Transformers.InferEventId</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Transformer that infers the event ID from the module name if not explicitly set.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Dsl.Transformers.SetDefaults.html" translate="no">AshDispatch.Dsl.Transformers.SetDefaults</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Transformer that sets default values for event configuration.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Dsl.Transformers.ValidateChannels.html" translate="no">AshDispatch.Dsl.Transformers.ValidateChannels</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Transformer that validates channel configurations.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.EmailBackend.Swoosh.html" translate="no">AshDispatch.EmailBackend.Swoosh</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Swoosh-based email backend for AshDispatch.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Event.html" translate="no">AshDispatch.Event</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Behaviour and DSL for defining events.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Event.Interpolation.html" translate="no">AshDispatch.Event.Interpolation</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Handles variable interpolation in DSL content strings.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Info.html" translate="no">AshDispatch.Info</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Introspection helpers for AshDispatch events.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.RecipientResolver.html" translate="no">AshDispatch.RecipientResolver</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Behaviour for resolving recipients from audience types.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.RecipientResolver.Default.html" translate="no">AshDispatch.RecipientResolver.Default</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Default recipient resolver that logs warnings.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Resource.html" translate="no">AshDispatch.Resource</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Ash.Resource extension for defining event dispatching.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Resource.Dsl.html" translate="no">AshDispatch.Resource.Dsl</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>DSL sections for AshDispatch.Resource extension.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Resource.Dsl.Event.html" translate="no">AshDispatch.Resource.Dsl.Event</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>DSL entity struct for event definitions in resources.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Resource.Info.html" translate="no">AshDispatch.Resource.Info</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Introspection helpers for AshDispatch.Resource.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Resource.Transformers.InjectDispatchChanges.html" translate="no">AshDispatch.Resource.Transformers.InjectDispatchChanges</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Transformer that automatically injects DispatchEvent changes into actions.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Resource.Transformers.ValidateEvents.html" translate="no">AshDispatch.Resource.Transformers.ValidateEvents</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Transformer that validates event configurations.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Resources.DeliveryReceipt.html" translate="no">AshDispatch.Resources.DeliveryReceipt</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Tracks the delivery lifecycle of events across all transports.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Resources.Notification.html" translate="no">AshDispatch.Resources.Notification</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>In-app notification resource for AshDispatch.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Transports.Discord.html" translate="no">AshDispatch.Transports.Discord</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Discord webhook transport.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Transports.Email.html" translate="no">AshDispatch.Transports.Email</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Email transport via Oban jobs.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Transports.InApp.html" translate="no">AshDispatch.Transports.InApp</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>In-app notification transport.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Transports.SMS.html" translate="no">AshDispatch.Transports.SMS</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>SMS transport.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Transports.Slack.html" translate="no">AshDispatch.Transports.Slack</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Slack webhook transport.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Transports.Webhook.html" translate="no">AshDispatch.Transports.Webhook</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Generic webhook transport.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.UserPreference.html" translate="no">AshDispatch.UserPreference</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Behaviour for checking user notification preferences.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.UserPreference.Default.html" translate="no">AshDispatch.UserPreference.Default</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Default user preference checker that allows all notifications.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.VariableInterpolator.html" translate="no">AshDispatch.VariableInterpolator</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Interpolates variables in template strings.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Workers.RetryFailedDeliveries.html" translate="no">AshDispatch.Workers.RetryFailedDeliveries</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Cron worker that automatically retries failed delivery receipts.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Workers.SendEmail.html" translate="no">AshDispatch.Workers.SendEmail</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Oban worker for sending emails asynchronously.</p></div>
+
+</div>
+<div class="summary-row">
+  <div class="summary-signature">
+    <a href="AshDispatch.Workers.SendWebhook.html" translate="no">AshDispatch.Workers.SendWebhook</a>
+
+  </div>
+
+    <div class="summary-synopsis"><p>Oban worker for sending webhooks asynchronously.</p></div>
+
+</div>
+
+      </div>
+    </section>
+
+
+</div>
+    <footer class="footer">
+      <p>
+
+          <span class="line">
+            <a href="https://hex.pm/packages/ash_dispatch/0.1.0" class="footer-hex-package">Hex Package</a>
+
+            <a href="https://preview.hex.pm/preview/ash_dispatch/0.1.0">Hex Preview</a>
+
+          </span>
+
+        <span class="line">
+          <button class="a-main footer-button display-quick-switch" title="Search HexDocs packages">
+            Search HexDocs
+          </button>
+
+        </span>
+      </p>
+
+      <p class="built-using">
+        Built using
+        <a href="https://github.com/elixir-lang/ex_doc" title="ExDoc" target="_blank" rel="help noopener" translate="no">ExDoc</a> (v0.39.1) for the
+
+          <a href="https://elixir-lang.org" title="Elixir" target="_blank" translate="no">Elixir programming language</a>
+
+      </p>
+
+    </footer>
+  </div>
+</main>
+</div>
+<script>
+  // Add copy buttons to code blocks
+  document.querySelectorAll('pre code').forEach(function(block) {
+    if (!block.parentElement.querySelector('.copy-button')) {
+      const button = document.createElement('button');
+      button.className = 'copy-button';
+      button.textContent = 'Copy';
+      button.onclick = function() {
+        navigator.clipboard.writeText(block.textContent);
+        button.textContent = 'Copied!';
+        setTimeout(() => button.textContent = 'Copy', 2000);
+      };
+      block.parentElement.style.position = 'relative';
+      block.parentElement.appendChild(button);
+    }
+  });
+</script>
+
+  </body>
+</html>
