@@ -218,17 +218,40 @@ Edit `priv/ash_dispatch/layouts/email.html.heex` with your branding:
 
 All event templates will automatically use this layout - they only need event-specific content.
 
-### 4.3 Generate Events
+### 4.3 Define Events in Resource DSL
 
-```bash
-# Generate a new event
-mix ash_dispatch.gen.event order created \
-  --subject "Order skapad" \
-  --title "Order skapad" \
-  --message "Din order har skapats"
+Events are defined in your resource using the `dispatch do` block:
+
+```elixir
+# lib/my_app/orders/product_order.ex
+defmodule MyApp.Orders.ProductOrder do
+  use Ash.Resource,
+    extensions: [AshDispatch.Resource]
+
+  dispatch do
+    event :created do
+      module MyApp.Orders.Events.Created.Event
+      trigger_on [:create]
+      data_key :order
+
+      channels do
+        channel :in_app, :user,
+          title: "Order skapad",
+          message: "Din order har registrerats"
+        channel :email, :user,
+          subject: "Din order har skapats"
+      end
+    end
+  end
+end
 ```
 
-This creates content-only templates and prints DSL code to paste into your resource.
+Then generate missing templates and event modules:
+
+```bash
+mix ash_dispatch.gen
+# Or: mix ash.codegen
+```
 
 See [Generator](generator.md) for full documentation.
 

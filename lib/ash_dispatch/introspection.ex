@@ -296,44 +296,42 @@ defmodule AshDispatch.Introspection do
   defp normalize_channels(_), do: []
 
   defp templates_for_channel(%{transport: transport, variant: variant}) do
-    base_templates =
-      case transport do
-        :email ->
-          [
-            %{transport: :email, format: :html, filename: "email.html.heex", variant: nil},
-            %{transport: :email, format: :text, filename: "email.text.eex", variant: nil}
-          ]
+    # Templates are determined by transport type and variant presence:
+    # - If variant is set: ONLY variant-specific templates (e.g., email.admin.html.heex)
+    # - If no variant: base templates (e.g., email.html.heex)
+    case {transport, variant} do
+      {:email, nil} ->
+        # No variant - need base templates
+        [
+          %{transport: :email, format: :html, filename: "email.html.heex", variant: nil},
+          %{transport: :email, format: :text, filename: "email.text.eex", variant: nil}
+        ]
 
-        :sms ->
-          [%{transport: :sms, format: :text, filename: "sms.text.eex", variant: nil}]
+      {:email, variant} when not is_nil(variant) ->
+        # Has variant - only need variant-specific templates
+        variant_str = to_string(variant)
 
-        # in_app, webhook, discord, slack don't require templates
-        _ ->
-          []
-      end
+        [
+          %{
+            transport: :email,
+            format: :html,
+            filename: "email.#{variant_str}.html.heex",
+            variant: variant
+          },
+          %{
+            transport: :email,
+            format: :text,
+            filename: "email.#{variant_str}.text.eex",
+            variant: variant
+          }
+        ]
 
-    # Add variant-specific templates if variant is defined
-    if variant && transport == :email do
-      variant_str = to_string(variant)
+      {:sms, _} ->
+        [%{transport: :sms, format: :text, filename: "sms.text.eex", variant: nil}]
 
-      variant_templates = [
-        %{
-          transport: :email,
-          format: :html,
-          filename: "email.#{variant_str}.html.heex",
-          variant: variant
-        },
-        %{
-          transport: :email,
-          format: :text,
-          filename: "email.#{variant_str}.text.eex",
-          variant: variant
-        }
-      ]
-
-      base_templates ++ variant_templates
-    else
-      base_templates
+      # in_app, webhook, discord, slack don't require templates
+      _ ->
+        []
     end
   end
 

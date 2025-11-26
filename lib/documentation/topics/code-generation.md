@@ -55,18 +55,53 @@ lib/my_app/orders/events/created/
     └── email.admin.text.eex
 ```
 
-### TypeScript Types
+### TypeScript SDK
 
-When `ash_typescript` is configured, generates `events.ts` with:
+When `ash_typescript` is configured, generates a complete SDK in `ash-dispatch/`:
 
-- `EventId` - Union type of all event IDs
-- `EVENT_METADATA` - Constant with event metadata (domain, channels)
-- `Transport` and `Audience` types
-- `isValidEventId()` - Type guard function
+| File | Description |
+|------|-------------|
+| `types.ts` | Counter types, defaults, metadata, and camelCase accessors |
+| `events.ts` | Event ID types and metadata |
+| `store.ts` | Zustand store for counter state |
+| `channel.ts` | Phoenix channel utilities |
+| `index.ts` | Re-exports all SDK modules |
+| `hooks/use-channel.ts` | Channel connection hook |
+| `hooks/use-counter.ts` | Single counter access hook |
+| `hooks/use-notifications.ts` | Notification actions hook |
+
+#### Counter Types (`types.ts`)
 
 ```typescript
-// Auto-generated - apps/frontend/src/lib/ash-dispatch/events.ts
+// Grouped by counter group
+export type OrdersCounters = {
+  pending_orders: number;
+  admin_pending_orders: number;
+};
 
+// Combined type
+export type AllCounters = OrdersCounters & TicketsCounters & ...;
+
+// Default values for store initialization
+export const DEFAULT_COUNTERS: AllCounters = {
+  pending_orders: 0,
+  admin_pending_orders: 0,
+  // ...
+};
+
+// Type-safe counter name
+export type CounterName = "pending_orders" | "admin_pending_orders" | ...;
+
+// Type guard for WebSocket payloads
+export function isValidCounter(name: string): name is CounterName;
+
+// CamelCase accessors for ergonomic usage
+export function getCounterAccessors(counters: AllCounters): CounterAccessors;
+```
+
+#### Event Types (`events.ts`)
+
+```typescript
 export type EventId =
   | "orders.created"
   | "orders.completed"
@@ -83,13 +118,13 @@ export const EVENT_METADATA = {
   // ...
 } as const;
 
-export function isValidEventId(id: string): id is EventId {
-  return id in EVENT_METADATA;
-}
+export function isValidEventId(id: string): id is EventId;
 
 export type Transport = "email" | "in_app" | "sms" | "webhook" | "discord" | "slack";
 export type Audience = "user" | "admin" | "system";
 ```
+
+For detailed SDK usage, see [TypeScript SDK](typescript-sdk.md).
 
 ---
 
@@ -353,6 +388,7 @@ lib/my_app/{domain}/events/{event_name}/templates/
 
 ## Next Steps
 
+- [TypeScript SDK](typescript-sdk.md) - Using the generated SDK in your frontend
 - [Phoenix Integration](phoenix-integration.md) - Set up real-time channels
 - [Counter Broadcasting](counter-broadcasting.md) - Define real-time counters
 - [User Preferences](user-preferences.md) - Configure notification preferences
