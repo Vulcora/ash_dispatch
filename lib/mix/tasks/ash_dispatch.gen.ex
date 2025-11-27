@@ -78,6 +78,13 @@ defmodule Mix.Tasks.AshDispatch.Gen do
 
   @impl Mix.Task
   def run(args) do
+    # Guard: prevent running from ash_dispatch library itself
+    if Mix.Project.config()[:app] == :ash_dispatch do
+      Mix.shell().error("This task cannot be run from the ash_dispatch library itself.")
+      Mix.shell().info("Run this task from your consuming application instead.")
+      exit({:shutdown, 1})
+    end
+
     Mix.Task.run("compile")
 
     {opts, _, _} =

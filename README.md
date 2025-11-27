@@ -116,23 +116,38 @@ defmodule MyApp.Tickets.Ticket do
 
   # 2. Define events
   dispatch do
-    # Simple inline event
+    # Inline-complete event (no module needed!)
+    # Works out of the box with just DSL configuration
     event :created,
       trigger_on: :create,
       channels: [
-        [transport: :in_app, audience: :user],
-        [transport: :email, audience: :admin]
+        [transport: :in_app, audience: :user]
       ],
       content: [
-        subject: "New ticket: {{title}}",
         notification_title: "Ticket Created",
-        notification_message: "{{user_name}} created a new ticket"
+        notification_message: "{{user_name}} created ticket #{{id}}"
+      ],
+      metadata: [
+        notification_type: :success
       ]
 
-    # Complex event with callback module
-    event :status_changed,
-      trigger_on: [:resolve, :close, :reopen],
-      module: MyApp.Events.Tickets.StatusChanged
+    # Event with email requires templates
+    # Run `mix ash.codegen` to generate template stubs
+    event :assigned,
+      trigger_on: :assign,
+      channels: [
+        [transport: :in_app, audience: :user],
+        [transport: :email, audience: :user]
+      ],
+      content: [
+        subject: "Ticket #{{id}} assigned to you",
+        notification_title: "Ticket Assigned"
+      ]
+
+    # Complex event with custom module (your override)
+    event :escalated,
+      trigger_on: :escalate,
+      module: MyApp.Events.Tickets.Escalated
   end
 end
 
@@ -141,9 +156,20 @@ Ticket
 |> Ash.Changeset.for_create(:create, %{title: "Bug report"})
 |> Ash.create!()
 # -> Automatically dispatches :created event
-# -> Creates in-app notification for user
-# -> Sends email to admin
+# -> Creates in-app notification for user (no templates needed!)
 ```
+
+### Hybrid Architecture
+
+AshDispatch uses a **hybrid approach** where DSL configuration takes precedence, and generated modules provide fallbacks:
+
+1. **Define events in DSL** - Configure channels, content, and metadata directly in your resource
+
+2. **Run `mix ash.codegen`** - Generates event modules with templates for each event (unless you provide `module:` override)
+
+3. **Hybrid dispatch** - At runtime, DSL content is used first; module callbacks fill in gaps (templates, recipients, etc.)
+
+**Override with custom modules:** Set `module:` to provide your own implementation for complex events (custom recipients, conditional sending, etc.)
 
 ## Real-Time Counter Broadcasting
 

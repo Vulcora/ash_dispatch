@@ -164,6 +164,10 @@ defmodule AshDispatch.Introspection do
   @doc """
   Returns the template directory path for an event.
 
+  For module-based events, uses the module's directory + /templates/.
+  For pure inline events, uses convention-based path:
+    lib/{otp_app}/{domain}/templates/{resource_name}/{event_name}
+
   ## Parameters
 
   - `event_info` - Event info map
@@ -174,17 +178,26 @@ defmodule AshDispatch.Introspection do
   Path string to the template directory
   """
   @spec template_directory(event_info(), atom()) :: String.t()
-  def template_directory(event_info, _otp_app) do
-    # If the inline event has a module reference, use its path
-    # Templates are always relative to the event module: {module_dir}/templates/
+  def template_directory(event_info, otp_app) do
     case event_info.module do
       nil ->
-        # No module - this shouldn't happen for proper events
-        # Fall back to a derived path
-        "lib/unknown/templates"
+        # Pure inline event - use convention-based path
+        # lib/{otp_app}/{domain}/templates/{resource_name}/{event_name}
+        domain = event_info.domain |> to_string()
+        resource_name = event_info.resource_name || event_info.name |> to_string()
+        event_name = event_info.name |> to_string()
+
+        Path.join([
+          "lib",
+          to_string(otp_app),
+          domain,
+          "templates",
+          resource_name,
+          event_name
+        ])
 
       module ->
-        # Use module's directory + /templates/
+        # Module-based event - use module's directory + /templates/
         module_path(module) |> Path.dirname() |> Path.join("templates")
     end
   end
@@ -196,8 +209,14 @@ defmodule AshDispatch.Introspection do
   @doc """
   Finds missing event modules for inline DSL events.
 
-  For inline events that don't have a corresponding event module,
-  this returns information about what module should be generated.
+  Returns modules for ALL events that don't have a user-provided `module:` option.
+  Generated modules provide:
+  - Template directory for email/sms transports
+  - Fallback callbacks (recipients, content, etc.)
+  - A place to add custom logic later
+
+  The system uses a **hybrid approach**: DSL configuration takes precedence,
+  but the generated module provides fallbacks for anything not specified in DSL.
 
   ## Parameters
 
@@ -212,6 +231,8 @@ defmodule AshDispatch.Introspection do
     otp_app
     |> all_events()
     |> Enum.filter(&(&1.source == :inline))
+    # Skip events that already have a user-provided module (override)
+    |> Enum.reject(&(&1.module != nil))
     |> Enum.map(fn event_info ->
       module_name = derive_module_name(event_info, otp_app)
       module_path = module_path_from_name(module_name, otp_app)
@@ -225,6 +246,30 @@ defmodule AshDispatch.Introspection do
       }
     end)
     |> Enum.reject(& &1.exists)
+  end
+
+  @doc """
+  Derives the expected module name for an event.
+
+  Used by both the generator (to create modules) and the transformer
+  (to auto-connect generated modules).
+
+  ## Parameters
+
+  - `event_info` - Event info map or struct with :domain and :name keys
+  - `otp_app` - The OTP application name
+
+  ## Returns
+
+  Module name atom (e.g., MyApp.Orders.Events.Created.Event)
+  """
+  @spec derive_module_name(map(), atom()) :: module()
+  def derive_module_name(event_info, otp_app) do
+    app_module = otp_app |> to_string() |> Macro.camelize()
+    domain_module = event_info.domain |> to_string() |> Macro.camelize()
+    event_module = event_info.name |> to_string() |> Macro.camelize()
+
+    Module.concat([app_module, domain_module, "Events", event_module, "Event"])
   end
 
   # ============================================================================
@@ -342,14 +387,6 @@ defmodule AshDispatch.Introspection do
     |> Module.split()
     |> Enum.map(&Macro.underscore/1)
     |> then(fn parts -> Path.join(["lib" | parts]) <> ".ex" end)
-  end
-
-  defp derive_module_name(event_info, otp_app) do
-    app_module = otp_app |> to_string() |> Macro.camelize()
-    domain_module = event_info.domain |> to_string() |> Macro.camelize()
-    event_module = event_info.name |> to_string() |> Macro.camelize()
-
-    Module.concat([app_module, domain_module, "Events", event_module, "Event"])
   end
 
   defp module_path_from_name(module_name, otp_app) do

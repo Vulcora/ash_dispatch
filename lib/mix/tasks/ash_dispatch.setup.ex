@@ -28,6 +28,13 @@ defmodule Mix.Tasks.AshDispatch.Setup do
 
   @impl Mix.Task
   def run(_args) do
+    # Guard: prevent running from ash_dispatch library itself
+    if Mix.Project.config()[:app] == :ash_dispatch do
+      Mix.shell().error("This task cannot be run from the ash_dispatch library itself.")
+      Mix.shell().info("Run this task from your consuming application instead.")
+      exit({:shutdown, 1})
+    end
+
     # Create directory structure
     layouts_dir = "priv/ash_dispatch/layouts"
     templates_dir = "priv/ash_dispatch/templates"
