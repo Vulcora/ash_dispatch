@@ -1,7 +1,7 @@
 defmodule AshDispatch.MixProject do
   use Mix.Project
 
-  @version "0.1.0"
+  @version "0.1.4"
   @description "Event-driven notification system for Ash Framework with multiple transport types"
   @source_url "https://github.com/Vulcora/ash_dispatch"
 
@@ -89,6 +89,7 @@ defmodule AshDispatch.MixProject do
         "lib/documentation/topics/counter-broadcasting.md",
         "lib/documentation/topics/configuration.md",
         "lib/documentation/topics/code-generation.md",
+        "lib/documentation/topics/typescript-sdk.md",
         "lib/documentation/topics/generator.md",
         "lib/documentation/topics/recipient-resolution.md",
         "lib/documentation/topics/recipient-extractor.md",

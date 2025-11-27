@@ -322,49 +322,48 @@ defmodule AshDispatch.Resources.EmailEvent do
     assigns_with_subject = Map.merge(additional_assigns, %{subject: subject})
     enhanced_context = %{context | data: Map.merge(context.data, assigns_with_subject)}
 
-    # Render template previews (only in development to avoid performance issues)
+    # Render template previews
+    # In dev: uses file-based templates from lib/ via event_dir
+    # In prod: uses priv manifest (event_dir will be nil, triggering fallback)
     # Wrapped in try/rescue to handle incomplete sample data gracefully
     {html_preview, text_preview} =
-      if Mix.env() == :dev do
-        try do
-          # Get event_dir from module source location for template resolution
-          event_dir = get_event_dir(event_module)
-          otp_app = Application.get_env(:ash_dispatch, :otp_app)
+      try do
+        # Get event_dir from module source location for template resolution
+        # In production, this returns nil (source not available), triggering priv manifest fallback
+        event_dir = get_event_dir(event_module)
+        otp_app = Application.get_env(:ash_dispatch, :otp_app)
 
-          html =
-            case AshDispatch.TemplateResolver.render(
-                   event_module: event_module,
-                   event_dir: event_dir,
-                   otp_app: otp_app,
-                   format: :html,
-                   transport: channel.transport,
-                   variant: variant,
-                   assigns: enhanced_context.data
-                 ) do
-              {:ok, html} -> html
-              {:error, _} -> nil
-            end
+        html =
+          case AshDispatch.TemplateResolver.render(
+                 event_module: event_module,
+                 event_dir: event_dir,
+                 otp_app: otp_app,
+                 format: :html,
+                 transport: channel.transport,
+                 variant: variant,
+                 assigns: enhanced_context.data
+               ) do
+            {:ok, html} -> html
+            {:error, _} -> nil
+          end
 
-          text =
-            case AshDispatch.TemplateResolver.render(
-                   event_module: event_module,
-                   event_dir: event_dir,
-                   otp_app: otp_app,
-                   format: :text,
-                   transport: channel.transport,
-                   variant: variant,
-                   assigns: enhanced_context.data
-                 ) do
-              {:ok, text} -> text
-              {:error, _} -> nil
-            end
+        text =
+          case AshDispatch.TemplateResolver.render(
+                 event_module: event_module,
+                 event_dir: event_dir,
+                 otp_app: otp_app,
+                 format: :text,
+                 transport: channel.transport,
+                 variant: variant,
+                 assigns: enhanced_context.data
+               ) do
+            {:ok, text} -> text
+            {:error, _} -> nil
+          end
 
-          {html, text}
-        rescue
-          _ -> {nil, nil}
-        end
-      else
-        {nil, nil}
+        {html, text}
+      rescue
+        _ -> {nil, nil}
       end
 
     %{
