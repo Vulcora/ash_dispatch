@@ -9,7 +9,13 @@ defmodule AshDispatch.Resources.ManualTrigger.Base do
 
       defmodule MyApp.Deliveries.ManualTrigger do
         use AshDispatch.Resources.ManualTrigger.Base,
-          domain: MyApp.Deliveries
+          domain: MyApp.Deliveries,
+          extensions: [AshTypescript.Resource]
+
+        # Optional: TypeScript type configuration
+        typescript do
+          type_name("ManualTrigger")
+        end
       end
 
   Then add to your domain:
@@ -21,26 +27,28 @@ defmodule AshDispatch.Resources.ManualTrigger.Base do
           define :trigger_manual_event, action: :trigger
         end
       end
+
+  ## Options
+
+  - `:domain` - (required) Ash domain
+  - `:extensions` - Additional Ash extensions (e.g., `[AshTypescript.Resource]`)
   """
 
   defmacro __using__(opts) do
     domain = Keyword.fetch!(opts, :domain)
+    extra_extensions = Keyword.get(opts, :extensions, [])
 
     quote do
       use Ash.Resource,
         domain: unquote(domain),
         data_layer: Ash.DataLayer.Simple,
-        extensions: [AshTypescript.Resource],
+        extensions: unquote(extra_extensions),
         validate_domain_inclusion?: false
 
       alias AshDispatch.Resources.ManualTrigger.Helpers
 
       resource do
         require_primary_key? false
-      end
-
-      typescript do
-        type_name("ManualTrigger")
       end
 
       actions do

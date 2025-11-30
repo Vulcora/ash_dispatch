@@ -1,18 +1,12 @@
 defmodule AshDispatch.Resource.Transformers.InjectDispatchChangesTest do
-  use ExUnit.Case, async: true
+  # Disable async because tests depend on Application config set in test_helper.exs
+  use ExUnit.Case, async: false
 
   alias AshDispatch.Changes.DispatchEvent
 
   describe "event module resolution" do
-    setup do
-      Application.put_env(:ash_dispatch_test, :ash_domains, [AshDispatch.Test.Domain])
-
-      on_exit(fn ->
-        Application.delete_env(:ash_dispatch_test, :ash_domains)
-      end)
-
-      :ok
-    end
+    # Config is set in test_helper.exs:
+    # Application.put_env(:ash_dispatch_test, :ash_domains, [AshDispatch.Test.Domain])
 
     test "explicit module in DSL is used (override)" do
       # AshDispatch.Test.Order has explicit module: AshDispatch.Test.Events.OrderCreated
@@ -104,12 +98,13 @@ defmodule AshDispatch.Resource.Transformers.InjectDispatchChangesTest do
       # assigned event has 2 channels: in_app and email
       assert length(event_config.channels) == 2
 
-      transports = Enum.map(event_config.channels, fn channel ->
-        cond do
-          is_map(channel) -> Map.get(channel, :transport)
-          is_list(channel) -> Keyword.get(channel, :transport)
-        end
-      end)
+      transports =
+        Enum.map(event_config.channels, fn channel ->
+          cond do
+            is_map(channel) -> Map.get(channel, :transport)
+            is_list(channel) -> Keyword.get(channel, :transport)
+          end
+        end)
 
       assert :in_app in transports
       assert :email in transports
@@ -154,7 +149,13 @@ defmodule AshDispatch.Resource.Transformers.InjectDispatchChangesTest do
       expected_module = AshDispatch.Test.Events.Created.Event
 
       # The module should follow this pattern
-      assert Module.split(expected_module) == ["AshDispatch", "Test", "Events", "Created", "Event"]
+      assert Module.split(expected_module) == [
+               "AshDispatch",
+               "Test",
+               "Events",
+               "Created",
+               "Event"
+             ]
     end
   end
 end

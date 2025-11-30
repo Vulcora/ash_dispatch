@@ -38,6 +38,8 @@ defmodule AshDispatch.Context do
           opts: map()
         }
 
+  alias AshDispatch.Config
+
   defstruct [
     :event_id,
     :data,
@@ -172,7 +174,7 @@ defmodule AshDispatch.Context do
     # 3. Explicit base_url config (deprecated)
     # 4. Fallback to localhost
     cond do
-      endpoint = Application.get_env(:ash_dispatch, :endpoint) ->
+      endpoint = Config.endpoint() ->
         endpoint.url()
 
       host = System.get_env("PHX_HOST") ->
@@ -185,7 +187,7 @@ defmodule AshDispatch.Context do
           _ -> "#{scheme}://#{host}:#{port}"
         end
 
-      base_url = Application.get_env(:ash_dispatch, :base_url) ->
+      base_url = Config.base_url() ->
         base_url
 
       true ->

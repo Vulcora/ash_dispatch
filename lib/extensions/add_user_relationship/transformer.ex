@@ -10,11 +10,13 @@ defmodule AshDispatch.Extensions.AddUserRelationship.Transformer do
   """
 
   use Spark.Dsl.Transformer
+
+  alias AshDispatch.Config
   alias Spark.Dsl.Transformer
 
   def transform(dsl) do
     # Get user_resource from config
-    user_resource = Application.get_env(:ash_dispatch, :user_resource)
+    user_resource = Config.user_resource()
 
     if user_resource do
       # Try to compile the user_resource module

@@ -6,18 +6,20 @@ defmodule AshDispatch.Calculations.SourceLabel do
 
   use Ash.Resource.Calculation
 
+  alias AshDispatch.{Config, EventResolver}
+
   @impl true
   def load(_query, _opts, _context), do: [:event_id, :source_type]
 
   @impl true
   def calculate(records, _opts, _context) do
-    event_modules = Application.get_env(:ash_dispatch, :event_modules, [])
-    url_builder = Application.get_env(:ash_dispatch, :url_builder)
-    Enum.map(records, &compute_source_label(&1, event_modules, url_builder))
+    url_builder = Config.url_builder()
+    Enum.map(records, &compute_source_label(&1, url_builder))
   end
 
-  defp compute_source_label(record, event_modules, url_builder) do
-    case get_data_key_from_event(record.event_id, event_modules) do
+  defp compute_source_label(record, url_builder) do
+    # Use EventResolver for consistent event lookup and callback execution
+    case get_data_key_from_event(record.event_id) do
       {:ok, data_key} ->
         get_label_from_url_builder(data_key, url_builder) ||
           derive_from_source_type(record.source_type)
@@ -27,19 +29,16 @@ defmodule AshDispatch.Calculations.SourceLabel do
     end
   end
 
-  defp get_data_key_from_event(event_id, event_modules) do
-    case Enum.find(event_modules, fn {id, _} -> id == event_id end) do
-      {_, module} ->
-        if function_exported?(module, :data_key, 0) do
-          case module.data_key() do
-            key when is_atom(key) and not is_nil(key) -> {:ok, key}
-            _ -> :error
-          end
-        else
-          :error
+  # Use EventResolver for safe data_key callback execution
+  defp get_data_key_from_event(event_id) do
+    case EventResolver.find_module(event_id) do
+      {:ok, module} ->
+        case EventResolver.data_key(module) do
+          key when is_atom(key) and not is_nil(key) -> {:ok, key}
+          _ -> :error
         end
 
-      nil ->
+      {:error, :not_found} ->
         :error
     end
   end
@@ -47,7 +46,9 @@ defmodule AshDispatch.Calculations.SourceLabel do
   defp get_label_from_url_builder(_data_key, nil), do: nil
 
   defp get_label_from_url_builder(data_key, url_builder) do
-    if function_exported?(url_builder, :resource_label, 1) do
+    # url_builder is an app-specific module, not an event module
+    # Keep using function_exported? for external modules
+    if Code.ensure_loaded?(url_builder) && function_exported?(url_builder, :resource_label, 1) do
       try do
         url_builder.resource_label(data_key)
       rescue

@@ -18,6 +18,8 @@ defmodule AshDispatch.PolicyChecks.HasPermission do
 
   use Ash.Policy.SimpleCheck
 
+  alias AshDispatch.Config
+
   @impl true
   def describe(opts) do
     "has permission #{inspect(opts[:permission])}"
@@ -29,7 +31,7 @@ defmodule AshDispatch.PolicyChecks.HasPermission do
   def match?(nil, _context, _opts), do: false
 
   def match?(actor, context, opts) do
-    permission_checker = Application.get_env(:ash_dispatch, :permission_checker)
+    permission_checker = Config.permission_checker()
 
     if permission_checker do
       # Delegate to the configured permission checker

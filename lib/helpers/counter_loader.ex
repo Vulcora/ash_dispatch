@@ -79,6 +79,9 @@ defmodule AshDispatch.Helpers.CounterLoader do
   The CounterLoader automatically discovers and uses these definitions!
   """
 
+  alias AshDispatch.Config
+  alias AshDispatch.Helpers.ResourceIntrospection
+
   require Logger
   require Ash.Query
 
@@ -132,37 +135,6 @@ defmodule AshDispatch.Helpers.CounterLoader do
     end)
   end
 
-  @doc """
-  Load counters for admin users only.
-
-  Discovers all counters with `:admin` audience and executes their queries.
-
-  ## Examples
-
-      CounterLoader.load_admin_counters()
-      #=> %{admin_pending_reseller_requests: 3, admin_pending_orders: 12}
-  """
-  def load_admin_counters(opts \\ []) do
-    domains = Keyword.get(opts, :domains, get_all_domains())
-
-    # Discover all counter definitions
-    counter_definitions = discover_counter_definitions(domains)
-
-    # Filter admin-only counters
-    admin_counters =
-      Enum.filter(counter_definitions, fn counter ->
-        counter.audience == :admin
-      end)
-
-    # Execute queries (no user_id needed for admin counters)
-    Enum.reduce(admin_counters, %{}, fn counter, acc ->
-      count = execute_counter_query(counter, nil)
-      # Use counter_name if set, otherwise fall back to the DSL name
-      name = counter.counter_name || counter.name
-      Map.put(acc, name, count)
-    end)
-  end
-
   # Private helpers
 
   defp discover_counter_definitions(domains) do
@@ -197,11 +169,11 @@ defmodule AshDispatch.Helpers.CounterLoader do
   end
 
   defp get_all_domains do
-    Application.get_env(:ash_dispatch, :domains, [])
+    Config.domains()
   end
 
   defp load_user(user_id) do
-    user_module = Application.get_env(:ash_dispatch, :user_module)
+    user_module = Config.user_module()
 
     if user_module do
       user_module
@@ -224,7 +196,7 @@ defmodule AshDispatch.Helpers.CounterLoader do
 
   defp user_matches_audience?(user, audience) do
     # Get the filter for this audience from config
-    audiences_config = Application.get_env(:ash_dispatch, :audiences, [])
+    audiences_config = Config.audiences()
 
     # Check if audience is a bare atom in the list (e.g., :user)
     audience_config =
@@ -235,10 +207,10 @@ defmodule AshDispatch.Helpers.CounterLoader do
         Keyword.get(audiences_config, audience, [])
       end
 
-    # Extract the actual filter from the config
+    # Extract the actual filter from the config using consolidated helper
     # New format: [:user, admin: true] -> extract [admin: true]
     # Old format: [admin: true] -> use as-is
-    audience_filter = extract_filter_from_config(audience_config)
+    audience_filter = ResourceIntrospection.extract_audience_filter(audience_config)
 
     # Empty filter means "all users" (e.g., :user audience)
     if audience_filter == [] do
@@ -246,7 +218,7 @@ defmodule AshDispatch.Helpers.CounterLoader do
     else
       # Use Ash query engine to check if user matches the filter
       # This works with any Ash filter expression, not just simple equality
-      user_module = Application.get_env(:ash_dispatch, :user_module)
+      user_module = Config.user_module()
 
       user_module
       |> Ash.Query.new()
@@ -261,41 +233,30 @@ defmodule AshDispatch.Helpers.CounterLoader do
       false
   end
 
-  # Extract the actual filter from audience config
-  # Handles both new format [:user, admin: true] and old format [admin: true]
-  defp extract_filter_from_config(config) when is_list(config) do
-    # Split into relationship path (bare atoms) and filter (keyword pairs)
-    {_relationship_path, filter} =
-      Enum.split_while(config, fn
-        item when is_atom(item) -> true
-        {_key, _value} -> false
-      end)
-
-    filter
-  end
-
-  defp extract_filter_from_config(_), do: []
-
   # Generic counter query execution
-  # - For :user audience: scope query to specific user_id
-  # - For all other audiences (:admin, :partner, :system, etc): execute global query
-  # - For global? counters: bypass authorization
-  # - For aggregate counters: use Ash aggregate instead of query_filter
-  defp execute_counter_query(counter, user_id, actor \\ nil) do
+  # - authorize?: true → use Ash authorization with actor
+  # - authorize?: false → bypass authorization (system-wide totals)
+  # - scope: expr(...) → apply Ash expression with actor context
+  # - user_id_path: [...] → legacy sugar for simple scoping
+  # - aggregate: :name → use Ash aggregate instead of query_filter
+  defp execute_counter_query(counter, user_id, actor) do
     # Use specified resource or fall back to the resource that defined the counter
     resource = counter.resource
 
     # Determine authorization settings
-    # global? counters bypass authorization, others use actor
-    is_global = Map.get(counter, :global?, false)
-    authorize? = not is_global
-    query_actor = if is_global, do: nil, else: actor
+    # authorize?: false bypasses authorization, others use actor
+    authorize? = Map.get(counter, :authorize?, true)
+
+    # When authorize? is false, pass nil as actor for query execution
+    # But keep the original actor for scope expression evaluation
+    query_actor = if authorize?, do: actor, else: nil
 
     # Check if using aggregate instead of query_filter
     if counter.aggregate do
       execute_aggregate_counter(resource, counter.aggregate, query_actor, authorize?)
     else
-      execute_query_filter_counter(counter, user_id, query_actor, authorize?)
+      # Pass both actor (for scope) and query_actor (for authorization)
+      execute_query_filter_counter(counter, user_id, actor, query_actor, authorize?)
     end
   rescue
     error ->
@@ -324,58 +285,74 @@ defmodule AshDispatch.Helpers.CounterLoader do
   end
 
   # Execute counter using query_filter
-  defp execute_query_filter_counter(counter, user_id, actor, authorize?) do
+  #
+  # Scoping logic (priority order):
+  # 1. scope: expr(...) → apply Ash expression with actor context
+  # 2. user_id_path: [...] → legacy sugar for simple scoping
+  # 3. No scoping → count all matching records (authorize? still applies)
+  #
+  # Parameters:
+  # - counter: The counter struct from DSL
+  # - user_id: The user ID for user_id_path filtering
+  # - actor: The actual actor (for scope expression evaluation)
+  # - query_actor: The actor for Ash query (nil when authorize? is false)
+  # - authorize?: Whether to use Ash authorization
+  #
+  # Note: audience is about WHO receives the broadcast, not about query scoping.
+  # A :partner audience might still want user-scoped data if scope/user_id_path is set.
+  defp execute_query_filter_counter(counter, user_id, actor, query_actor, authorize?) do
     resource = counter.resource
+    scope = Map.get(counter, :scope)
 
     query =
       resource
       |> Ash.Query.new()
       |> Ash.Query.filter(^counter.query_filter)
 
-    # Only scope to user_id if audience is :user and not global
-    # Skip if filter_by_record is set - these counters need record context and should use
-    # a user_id_path that goes through relationships (e.g., [:cart, :user_id] for CartItem)
-    query =
-      if counter.audience == :user && user_id && not Map.get(counter, :global?, false) do
-        # If filter_by_record is set, the counter is designed for action context
-        # and the user_id_path may not work for initial loading
-        # Skip user filter if filter_by_record is set - will be handled differently
-        if counter.filter_by_record do
-          # For counters with filter_by_record, we need to use the relationship path
-          # to find user's items. Use user_id_path if it goes through relationships.
-          user_id_path = counter.user_id_path || [:user_id]
+    # Use consolidated helper for user_id_path resolution
+    user_id_path =
+      ResourceIntrospection.resolve_user_id_path_for_scoping(resource,
+        authorize?: authorize?,
+        scope: scope,
+        user_id_path: counter.user_id_path,
+        audience: counter.audience
+      )
 
-          # Only apply if path goes through relationships (length > 1)
-          # e.g., [:cart, :user_id] works, but [:user_id] alone doesn't for CartItem
-          if length(user_id_path) > 1 do
-            user_filter = build_user_filter(user_id_path, user_id)
-            Ash.Query.filter(query, ^user_filter)
-          else
-            # Skip this counter - can't properly scope without record context
-            # Return empty query that will return 0
-            Ash.Query.filter(query, false)
-          end
-        else
-          # Standard case: use user_id_path directly
-          user_id_path = counter.user_id_path || [:user_id]
-          user_filter = build_user_filter(user_id_path, user_id)
+    query =
+      cond do
+        # Explicit scope expression takes precedence
+        # Use the actual actor (not query_actor) for scope evaluation
+        scope && actor ->
+          apply_scope_expression(query, scope, actor)
+
+        # Legacy user_id_path support
+        user_id && user_id_path && !counter.filter_by_record ->
+          user_filter = ResourceIntrospection.build_user_filter(user_id_path, user_id)
           Ash.Query.filter(query, ^user_filter)
-        end
-      else
-        query
+
+        # Special case: filter_by_record with nested user_id_path
+        user_id && user_id_path && counter.filter_by_record && length(user_id_path) > 1 ->
+          user_filter = ResourceIntrospection.build_user_filter(user_id_path, user_id)
+          Ash.Query.filter(query, ^user_filter)
+
+        # No scoping (global counter or filter_by_record handles it)
+        true ->
+          query
       end
 
-    Ash.count!(query, actor: actor, authorize?: authorize?)
+    Ash.count!(query, actor: query_actor, authorize?: authorize?)
   end
 
-  # Build a filter expression for user_id based on the path
-  defp build_user_filter([field], user_id) do
-    [{field, user_id}]
-  end
-
-  defp build_user_filter([relationship | rest], user_id) do
-    # For nested paths like [:cart, :user_id], build nested filter
-    nested_filter = build_user_filter(rest, user_id)
-    [{relationship, nested_filter}]
+  # Apply scope expression with actor context.
+  #
+  # Scope expressions can use ^actor(:field) templates to reference
+  # the actor's attributes. For example:
+  #   scope: expr(user_id == ^actor(:id))
+  #   scope: expr(region == ^actor(:region))
+  #   scope: expr(assigned_support.team_id == ^actor(:team_id))
+  defp apply_scope_expression(query, scope_expr, actor) do
+    query
+    |> Ash.Query.set_context(%{actor: actor})
+    |> Ash.Query.filter(^scope_expr)
   end
 end

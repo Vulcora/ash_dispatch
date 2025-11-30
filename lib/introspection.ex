@@ -17,6 +17,7 @@ defmodule AshDispatch.Introspection do
       missing = AshDispatch.Introspection.all_missing_templates(:my_app)
   """
 
+  alias AshDispatch.Naming
   alias AshDispatch.Resource.Info, as: ResourceInfo
 
   @type event_info :: %{
@@ -164,9 +165,16 @@ defmodule AshDispatch.Introspection do
   @doc """
   Returns the template directory path for an event.
 
-  For module-based events, uses the module's directory + /templates/.
-  For pure inline events, uses convention-based path:
-    lib/{otp_app}/{domain}/templates/{resource_name}/{event_name}
+  Delegates to `AshDispatch.TemplateResolver.resolve_template_directory/2` which is
+  the single source of truth for template path resolution.
+
+  ## Resolution Order
+
+  1. **Explicit module**: If event has `module:` option, use module-based path
+  2. **Derived module**: Use `{App}.{Domain}.Events.{EventName}.Event` path
+
+  Events are expected to have modules (either explicit or generated via `mix ash_dispatch.gen`).
+  Templates live in `{module_dir}/templates/`.
 
   ## Parameters
 
@@ -179,27 +187,7 @@ defmodule AshDispatch.Introspection do
   """
   @spec template_directory(event_info(), atom()) :: String.t()
   def template_directory(event_info, otp_app) do
-    case event_info.module do
-      nil ->
-        # Pure inline event - use convention-based path
-        # lib/{otp_app}/{domain}/templates/{resource_name}/{event_name}
-        domain = event_info.domain |> to_string()
-        resource_name = event_info.resource_name || event_info.name |> to_string()
-        event_name = event_info.name |> to_string()
-
-        Path.join([
-          "lib",
-          to_string(otp_app),
-          domain,
-          "templates",
-          resource_name,
-          event_name
-        ])
-
-      module ->
-        # Module-based event - use module's directory + /templates/
-        module_path(module) |> Path.dirname() |> Path.join("templates")
-    end
+    AshDispatch.TemplateResolver.resolve_template_directory(event_info, otp_app)
   end
 
   # ============================================================================
@@ -251,13 +239,16 @@ defmodule AshDispatch.Introspection do
   @doc """
   Derives the expected module name for an event.
 
+  Uses otp_app as the module prefix (e.g., :my_app → MyApp) and derives
+  the domain from either the event_info or the resource.
+
   Used by both the generator (to create modules) and the transformer
   (to auto-connect generated modules).
 
   ## Parameters
 
-  - `event_info` - Event info map or struct with :domain and :name keys
-  - `otp_app` - The OTP application name
+  - `event_info` - Event info map or struct with :domain, :name, and :resource keys
+  - `otp_app` - The OTP application name (used for module prefix)
 
   ## Returns
 
@@ -265,11 +256,8 @@ defmodule AshDispatch.Introspection do
   """
   @spec derive_module_name(map(), atom()) :: module()
   def derive_module_name(event_info, otp_app) do
-    app_module = otp_app |> to_string() |> Macro.camelize()
-    domain_module = event_info.domain |> to_string() |> Macro.camelize()
-    event_module = event_info.name |> to_string() |> Macro.camelize()
-
-    Module.concat([app_module, domain_module, "Events", event_module, "Event"])
+    domain = event_info[:domain] || Naming.domain_name(event_info[:resource])
+    Naming.event_module_from_otp_app(otp_app, domain, event_info[:name])
   end
 
   # ============================================================================
@@ -286,19 +274,11 @@ defmodule AshDispatch.Introspection do
     end)
   end
 
-  defp normalize_inline_event(event, resource, otp_app) do
-    # Get resource name for event_id derivation
-    resource_name =
-      resource
-      |> Module.split()
-      |> List.last()
-      |> Macro.underscore()
-
-    # Build event_id from resource and event name
-    event_id = event.event_id || "#{resource_name}.#{event.name}"
-
-    # Get domain from resource
-    domain = get_domain_from_resource(resource, otp_app)
+  defp normalize_inline_event(event, resource, _otp_app) do
+    # Use Naming for consistent derivation
+    resource_name = Naming.resource_name(resource)
+    event_id = event.event_id || Naming.event_id(resource, event.name)
+    domain = Naming.domain_name(resource)
 
     %{
       source: :inline,
@@ -307,7 +287,7 @@ defmodule AshDispatch.Introspection do
       resource: resource,
       resource_name: resource_name,
       module: event.module,
-      domain: domain,
+      domain: domain && String.to_atom(domain),
       channels: normalize_channels(event.channels || []),
       content: event.content,
       metadata: event.metadata,
@@ -382,13 +362,6 @@ defmodule AshDispatch.Introspection do
 
   defp templates_for_channel(_), do: []
 
-  defp module_path(module) do
-    module
-    |> Module.split()
-    |> Enum.map(&Macro.underscore/1)
-    |> then(fn parts -> Path.join(["lib" | parts]) <> ".ex" end)
-  end
-
   defp module_path_from_name(module_name, otp_app) do
     parts =
       module_name
@@ -415,22 +388,5 @@ defmodule AshDispatch.Introspection do
     end
   rescue
     _ -> []
-  end
-
-  defp get_domain_from_resource(resource, otp_app) do
-    # Try to find which domain the resource belongs to
-    otp_app
-    |> domains()
-    |> Enum.find_value(fn domain ->
-      resources = safe_resources(domain)
-
-      if resource in resources do
-        domain
-        |> Module.split()
-        |> List.last()
-        |> Macro.underscore()
-        |> String.to_atom()
-      end
-    end)
   end
 end

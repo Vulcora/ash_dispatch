@@ -24,9 +24,12 @@ defmodule AshDispatch.Dispatcher do
   - `:webhook` → `AshDispatch.Transports.Webhook` (async via Oban)
   """
 
+  alias AshDispatch.Config
   alias AshDispatch.Context
+  alias AshDispatch.ChannelResolver
+  alias AshDispatch.EventResolver
+  alias AshDispatch.Naming
   alias AshDispatch.Transports
-  alias AshDispatch.Resources.DeliveryReceipt
   alias AshDispatch.Event.RecipientExtractor
 
   require Logger
@@ -89,11 +92,9 @@ defmodule AshDispatch.Dispatcher do
 
   def dispatch(event_id, data, variables)
       when is_binary(event_id) and is_map(data) and is_map(variables) do
-    # Get event module from app config
-    event_modules = Application.get_env(:ash_dispatch, :event_modules, [])
-
-    case Enum.find(event_modules, fn {id, _module} -> id == event_id end) do
-      {^event_id, event_module} ->
+    # Use centralized EventResolver for consistent event lookup
+    case EventResolver.find_module(event_id) do
+      {:ok, event_module} ->
         # Create initial context (before generate_send_variables)
         initial_context = %Context{
           event_id: event_id,
@@ -102,23 +103,19 @@ defmodule AshDispatch.Dispatcher do
           user: extract_user_from_data(data)
         }
 
-        # Generate real variables if event module implements generate_send_variables/2
+        # Generate real variables using EventResolver (handles function_exported? and error handling)
         # This allows events to provide real data (tokens, etc.) for actual sending
         # while using sample_data() for previews
         enhanced_vars_result =
-          if function_exported?(event_module, :generate_send_variables, 2) do
-            event_module.generate_send_variables(initial_context, variables)
-          else
-            {:ok, variables}
-          end
+          EventResolver.generate_send_variables(event_module, initial_context, variables)
 
         case enhanced_vars_result do
           {:ok, enhanced_variables} ->
             # Update context with enhanced variables
             context = %{initial_context | variables: enhanced_variables}
 
-            # Get channels from event module
-            channels = event_module.channels(context)
+            # Use centralized ChannelResolver for consistent priority logic
+            channels = ChannelResolver.resolve(event_id, event_module, context)
 
             # Build event config
             event_config = %{
@@ -146,7 +143,7 @@ defmodule AshDispatch.Dispatcher do
             {:error, reason}
         end
 
-      nil ->
+      {:error, :not_found} ->
         Logger.error("Event module not found for event_id: #{event_id}")
         {:error, :event_not_found}
     end
@@ -229,19 +226,35 @@ defmodule AshDispatch.Dispatcher do
   # Private functions
 
   defp resolve_recipients_for_channel(context, channel, event_config) do
-    # Hybrid mode: prefer inline DSL config over module callbacks for recipient resolution
-    # This allows inline DSL to override module behavior
+    # DSL-first: Always use audience-based resolution
+    # The channel.audience comes from the DSL and should be the source of truth
+    # Module callbacks are only used if they return non-empty results
     cond do
       # If there's a recipient_filter in event_config, use it (inline DSL or event-level config)
       not is_nil(event_config[:recipient_filter]) ->
         AshDispatch.Event.Helpers.resolve_recipients_for_audience(context, channel, event_config)
 
-      # If there's a module but no inline recipient config, use module callback
+      # If there's a module, try its recipients callback first
+      # But fall back to audience-based resolution if it returns empty
       not is_nil(event_config[:module]) ->
         module = event_config[:module]
-        module.recipients(context, channel)
 
-      # Pure inline DSL without recipient_filter - use helpers with app-level config
+        case EventResolver.recipients(module, context, channel) do
+          # Module returned recipients - use them
+          recipients when is_list(recipients) and recipients != [] ->
+            recipients
+
+          # Module returned empty list - fall back to audience-based resolution
+          # This handles both explicit empty returns and default [] from call_if_exported
+          _ ->
+            AshDispatch.Event.Helpers.resolve_recipients_for_audience(
+              context,
+              channel,
+              event_config
+            )
+        end
+
+      # Pure inline DSL without module - use helpers with app-level config
       true ->
         AshDispatch.Event.Helpers.resolve_recipients_for_audience(context, channel, event_config)
     end
@@ -306,7 +319,7 @@ defmodule AshDispatch.Dispatcher do
 
     # Create DeliveryReceipt
     # Use authorize?: false and skip_unknown_inputs to work within transaction context
-    DeliveryReceipt
+    Config.delivery_receipt_resource()
     |> Ash.Changeset.for_create(:create, attrs)
     |> Ash.create(authorize?: false, skip_unknown_inputs: [:notification_id])
   end
@@ -367,8 +380,8 @@ defmodule AshDispatch.Dispatcher do
 
     cond do
       # Module-based events: use resource() callback to get the source type
-      not is_nil(module) and function_exported?(module, :resource, 0) ->
-        resource_module = module.resource()
+      not is_nil(module) and not is_nil(EventResolver.resource(module)) ->
+        resource_module = EventResolver.resource(module)
         resource_key = get_resource_key(module, context)
 
         case Map.get(context.data, resource_key) do
@@ -400,18 +413,15 @@ defmodule AshDispatch.Dispatcher do
 
   # Get resource key from module callback or context
   defp get_resource_key(module, context) do
-    if function_exported?(module, :data_key, 0) do
-      module.data_key()
-    else
-      context.resource_key
-    end
+    # Use EventResolver for safe callback execution
+    EventResolver.data_key(module) || context.resource_key
   end
 
   # Find the in-app notification ID for skip_if_read policy
   defp find_in_app_notification_id(event_id, user_id) do
     require Ash.Query
 
-    case AshDispatch.Resources.DeliveryReceipt
+    case Config.delivery_receipt_resource()
          |> Ash.Query.filter(
            event_id == ^event_id and user_id == ^user_id and transport == :in_app
          )
@@ -433,9 +443,10 @@ defmodule AshDispatch.Dispatcher do
         module ->
           # Hybrid mode: module + inline DSL
           # Step 1: Enhance context with module's prepare_template_assigns if available
+          extra_assigns = safe_prepare_template_assigns(module, context, channel)
+
           enhanced_context =
-            if function_exported?(module, :prepare_template_assigns, 2) do
-              extra_assigns = safe_prepare_template_assigns(module, context, channel)
+            if map_size(extra_assigns) > 0 do
               # Add extra assigns to context variables
               Map.update(context, :variables, extra_assigns, fn vars ->
                 Map.merge(vars, extra_assigns)
@@ -668,63 +679,25 @@ defmodule AshDispatch.Dispatcher do
     end
   end
 
-  # Derive OTP app from event_id for inline DSL events
-  defp derive_otp_app_from_event_id(event_id) when is_binary(event_id) do
-    # For now, try common app names based on event_id domain
-    # Format: "domain.event_name" -> check data for module namespace
-    case String.split(event_id, ".", parts: 2) do
-      [domain, _event_name] ->
-        # Try to guess from common domains
-        # This is a heuristic - in production you might want to configure this
-        case domain do
-          domain when domain in ["requests", "orders", "tickets", "accounts"] -> :magasin
-          "test_product" -> :ash_dispatch
-          # Default fallback
-          _ -> :magasin
-        end
-
-      _ ->
-        # Default for single-part event IDs
-        :magasin
-    end
+  # Derive OTP app - use configured value (single source of truth)
+  defp derive_otp_app_from_event_id(_event_id) do
+    Config.otp_app() || :magasin
   end
 
-  defp derive_otp_app_from_event_id(_), do: :magasin
-
   # Derive event directory from module name for file-based template loading
+  # Uses Naming.module_directory for consistent path derivation
   # Example: Magasin.Accounts.Events.PasswordReset.Event -> lib/magasin/accounts/events/password_reset
-  defp derive_event_dir_from_module(module, otp_app) when is_atom(module) do
-    module_parts =
-      module
-      |> Module.split()
-      |> Enum.map(&Macro.underscore/1)
+  defp derive_event_dir_from_module(module, _otp_app) when is_atom(module) do
+    # Use Naming for consistent path derivation
+    relative_path = Naming.module_directory(module)
 
-    case module_parts do
-      # Pattern: App.Domain.Events.EventName.Event
-      [_app, domain | rest] when length(rest) >= 2 ->
-        # Remove "Event" suffix from end: ["events", "new_reseller_request", "event"] -> ["events", "new_reseller_request"]
-        path_parts = Enum.drop(rest, -1)
-        # path_parts already includes "events", so don't add it again!
-        relative_path = Path.join(["lib", to_string(otp_app), domain | path_parts])
-
-        # Convert to absolute path for file operations
-        # In development/test: use source directory
-        # In production: this won't be called (uses priv manifest instead)
-        case Application.app_dir(otp_app) do
-          dir when is_binary(dir) ->
-            # App dir points to _build/ENV/lib/APP, we need to go to source
-            # Check if we're in development/test (source available)
-            source_path = Path.join([File.cwd!(), relative_path])
-            if File.exists?(source_path), do: source_path, else: nil
-
-          _ ->
-            nil
-        end
-
-      _ ->
-        # Fallback: just use the module name path
-        nil
-    end
+    # Convert to absolute path for file operations
+    # In development/test: use source directory
+    # In production: this won't be called (uses priv manifest instead)
+    source_path = Path.join([File.cwd!(), relative_path])
+    if File.exists?(source_path), do: source_path, else: nil
+  rescue
+    _ -> nil
   end
 
   defp derive_event_dir_from_module(_, _), do: nil
@@ -756,22 +729,11 @@ defmodule AshDispatch.Dispatcher do
       case channel.transport do
         :email ->
           # Get variant for template resolution
-          # Prefer channel.variant (from inline DSL) over callback
-          variant =
-            channel.variant ||
-              if function_exported?(module, :template_variant, 2) do
-                module.template_variant(context, channel)
-              else
-                nil
-              end
+          # Prefer channel.variant (from inline DSL) over EventResolver callback
+          variant = channel.variant || EventResolver.template_variant(module, context, channel)
 
-          # Prepare template assigns
-          base_assigns =
-            if function_exported?(module, :prepare_template_assigns, 2) do
-              safe_prepare_template_assigns(module, context, channel)
-            else
-              %{}
-            end
+          # Prepare template assigns using EventResolver
+          base_assigns = safe_prepare_template_assigns(module, context, channel)
 
           # Merge context data and variables into assigns (variables take precedence)
           assigns =
@@ -784,10 +746,10 @@ defmodule AshDispatch.Dispatcher do
 
           # Check if module has body_html/body_text callbacks (for test modules without templates)
           {html_body, text_body} =
-            if function_exported?(module, :body_html, 2) &&
-                 function_exported?(module, :body_text, 2) do
+            if EventResolver.has_body_callbacks?(module) do
               # Use callbacks directly (for test modules or simple modules)
-              {module.body_html(context, channel), module.body_text(context, channel)}
+              {EventResolver.body_html(module, context, channel),
+               EventResolver.body_text(module, context, channel)}
             else
               # Try to render templates using TemplateResolver (uses compiled templates or event_dir)
               # For hybrid mode with inline DSL, templates may not be found - that's OK,
@@ -862,15 +824,12 @@ defmodule AshDispatch.Dispatcher do
   end
 
   defp get_notification_type(module, context) do
-    if function_exported?(module, :notification_type, 1) do
-      module.notification_type(context)
-    else
-      :info
-    end
+    # Use EventResolver for safe callback execution with default :info
+    EventResolver.notification_type(module, context)
   end
 
   defp default_from_email do
-    Application.get_env(:ash_dispatch, :default_from_email, "noreply@example.com")
+    Config.default_from_email()
   end
 
   defp dispatch_to_transport(receipt, context, channel, event_config) do
@@ -905,7 +864,7 @@ defmodule AshDispatch.Dispatcher do
   # Helper to extract user from data map using Ash introspection
   # No hardcoded patterns - derives from Ash resource relationships
   defp extract_user_from_data(data) do
-    user_module = Application.get_env(:ash_dispatch, :user_module)
+    user_module = Config.user_module()
 
     if is_nil(user_module) do
       Logger.warning("No :user_module configured in :ash_dispatch config")
@@ -947,9 +906,10 @@ defmodule AshDispatch.Dispatcher do
 
   # Counter broadcasting integration
   defp broadcast_counters(context, channel, event_config) do
-    counter_broadcaster = Application.get_env(:ash_dispatch, :counter_broadcaster)
+    counter_broadcaster = Config.counter_broadcaster()
 
-    if counter_broadcaster && function_exported?(counter_broadcaster, :broadcast, 3) do
+    if counter_broadcaster && Code.ensure_loaded?(counter_broadcaster) &&
+         function_exported?(counter_broadcaster, :broadcast, 3) do
       # Hybrid mode: prefer inline DSL counters over module callback
       counters =
         cond do
@@ -957,15 +917,9 @@ defmodule AshDispatch.Dispatcher do
           is_list(channel.counters) and channel.counters != [] ->
             channel.counters
 
-          # Fall back to event module callback
+          # Fall back to event module callback using EventResolver
           not is_nil(event_config[:module]) ->
-            module = event_config[:module]
-
-            if function_exported?(module, :counters, 2) do
-              module.counters(context, channel)
-            else
-              []
-            end
+            EventResolver.counters(event_config[:module], context, channel)
 
           # No counters defined
           true ->
@@ -1044,27 +998,35 @@ defmodule AshDispatch.Dispatcher do
   defp apply_channel_load(context, _channel), do: context
 
   # Wrap prepare_template_assigns with helpful error messages for unloaded relationships
+  # Uses EventResolver for safe callback execution, but adds extra error handling for NotLoaded
   defp safe_prepare_template_assigns(module, context, channel) do
-    module.prepare_template_assigns(context, channel)
-  rescue
-    e in KeyError ->
-      reraise_with_load_hint(e, context, __STACKTRACE__)
+    # First check if the module exports the function
+    if EventResolver.exports?(module, :prepare_template_assigns, 2) do
+      try do
+        module.prepare_template_assigns(context, channel)
+      rescue
+        e in KeyError ->
+          reraise_with_load_hint(e, context, __STACKTRACE__)
 
-    e in UndefinedFunctionError ->
-      # Happens when trying to call functions on NotLoaded struct
-      if String.contains?(Exception.message(e), "Ash.NotLoaded") do
-        reraise_with_load_hint(e, context, __STACKTRACE__)
-      else
-        reraise e, __STACKTRACE__
-      end
+        e in UndefinedFunctionError ->
+          # Happens when trying to call functions on NotLoaded struct
+          if String.contains?(Exception.message(e), "Ash.NotLoaded") do
+            reraise_with_load_hint(e, context, __STACKTRACE__)
+          else
+            reraise e, __STACKTRACE__
+          end
 
-    e in Protocol.UndefinedError ->
-      # Happens when trying to enumerate NotLoaded
-      if String.contains?(Exception.message(e), "Ash.NotLoaded") do
-        reraise_with_load_hint(e, context, __STACKTRACE__)
-      else
-        reraise e, __STACKTRACE__
+        e in Protocol.UndefinedError ->
+          # Happens when trying to enumerate NotLoaded
+          if String.contains?(Exception.message(e), "Ash.NotLoaded") do
+            reraise_with_load_hint(e, context, __STACKTRACE__)
+          else
+            reraise e, __STACKTRACE__
+          end
       end
+    else
+      %{}
+    end
   end
 
   defp reraise_with_load_hint(original_error, context, stacktrace) do

@@ -83,18 +83,31 @@ See [Oban Configuration](oban-configuration.md) for complete setup.
 
 If you're using standalone event modules (with `AshDispatch.Event` behaviour) instead of the DSL-based approach, you need to configure these options:
 
-### Event Modules Registry
+### Event Modules (Auto-Discovered)
 
-Register all your event modules so AshDispatch can find them:
+Event modules are **automatically discovered** from your Ash domains - no manual configuration needed!
+
+AshDispatch scans all resources with `AshDispatch.Resource` extension and finds:
+1. Events with explicit `module:` option in DSL
+2. Auto-generated event modules following the naming convention
 
 ```elixir
-config :ash_dispatch, :event_modules, [
-  # Format: {event_id, module}
-  {"orders.created", MyApp.Orders.Events.Created.Event},
-  {"orders.shipped", MyApp.Orders.Events.Shipped.Event},
-  {"tickets.resolved", MyApp.Tickets.Events.Resolved.Event}
+# OLD - No longer needed!
+# config :ash_dispatch, :event_modules, [...]
+
+# NEW - Just configure your otp_app and domains
+config :ash_dispatch, :otp_app, :my_app
+
+config :my_app, :ash_domains, [
+  MyApp.Orders,
+  MyApp.Tickets
 ]
 ```
+
+The `AshDispatch.EventRegistry` module handles discovery:
+- `EventRegistry.get_event_modules()` - Returns `[{event_id, module}, ...]`
+- `EventRegistry.find_event("order.created")` - Find specific event
+- `EventRegistry.find_module("order.created")` - Find event module
 
 This configuration is used by:
 - `AshDispatch.Changes.DispatchEvent` to find event modules
@@ -321,9 +334,54 @@ config :ash_dispatch,
 
 **Default:** `[]` (no domains scanned)
 
-### Audience Filters (for counter routing)
+### Audiences (Recipient Resolution)
 
-Define how to identify users for different counter audiences:
+Configure how recipients are resolved for each audience type:
+
+```elixir
+config :ash_dispatch,
+  audiences: [
+    # Bare atom = relationship-based (extract from record)
+    :user,      # Extract from :user relationship
+    :creator,   # Extract from :creator relationship
+    :partner,   # Extract from :partner relationship
+
+    # Tuple = filter-based (query all matching users)
+    {:admin, [:user, {:admin, true}]},
+    {:super_admin, [:user, {:super_admin, true}]},
+    {:support, [:user, {:role, :support}]}
+  ]
+```
+
+**Why needed:**
+- Determines recipient resolution strategy (relationship vs filter)
+- Used by counters AND events for consistent behavior
+- Enables automatic `user_id_path` derivation
+
+**Two configuration patterns:**
+
+| Pattern | Format | Behavior |
+|---------|--------|----------|
+| Relationship-based | `:user` | Extract from record's relationship |
+| Filter-based | `{:admin, [...]}` | Query all users matching filter |
+
+**Relationship-based** (bare atoms):
+- For counters: extract user from record, broadcast to ONE user
+- `user_id_path` derived from audience name (`:user` → `[:user_id]`)
+- E.g., `:partner` extracts `record.partner_id`
+
+**Filter-based** (tuples):
+- For counters: query all matching users, broadcast to ALL
+- Format: `{:audience_name, [:relationship, filters...]}`
+- E.g., `{:admin, [:user, {:admin, true}]}` queries users where `admin == true`
+
+**Default:** `[]` (assumes relationship-based for unknown audiences)
+
+See [Counter Broadcasting](counter-broadcasting.md) and [Recipient Resolution](recipient-resolution.md) for details.
+
+### Audience Filters (Legacy Configuration)
+
+The `recipient_filters` config is still supported for backward compatibility:
 
 ```elixir
 config :ash_dispatch,
@@ -337,19 +395,7 @@ config :ash_dispatch,
   ]
 ```
 
-**Why needed:**
-- Determines which users receive which counter updates
-- Used by CounterLoader to filter counters by user's audiences
-- Required for `:admin`, `:partner`, and other custom audiences
-
-**Default:** `[]` (no audience filters)
-
-**Example queries:**
-- `admin: [admin: true]` → Queries `User |> filter(admin == true)`
-- `partner: [role: :partner]` → Queries `User |> filter(role == :partner)`
-- `user: []` → Matches all users (no filter)
-
-See [Counter Broadcasting](counter-broadcasting.md) for audience details.
+**Prefer the new `audiences` config** which supports both relationship-based and filter-based patterns in a unified format.
 
 ### Base URL
 
@@ -396,27 +442,30 @@ config :ash_dispatch,
 - Integrate with existing audit/logging systems
 - Custom policies or validations
 
-### Admin Resolver
+### Audience Resolution
 
-Configure how to resolve admin users for `:admin` audience:
+Configure how recipients are resolved for each audience using `recipient_filters`:
 
 ```elixir
 config :ash_dispatch,
-  admin_resolver: MyApp.AdminResolver
+  recipient_filters: [
+    audiences: [
+      # Bare atom: extract from relationship with same name
+      :user,
+      :creator,
+
+      # Filter-based: query users matching filter
+      admin: [:user, admin: true],
+      partner: [:user, role: :partner],
+
+      # Relationship chain: follow multiple relationships
+      seller: [:user, :associated_seller]
+    ]
+  ]
 ```
 
-Your admin resolver must implement:
-
-```elixir
-defmodule MyApp.AdminResolver do
-  def resolve_admins(context, opts \\ []) do
-    # Return list of admin user structs
-    # opts may contain filters like [role: :support]
-  end
-end
-```
-
-**Default:** Uses `user_resource` with `filter: [admin: true]`
+This replaces the need for custom resolver modules. See [Recipient Resolution](recipient-resolution.md)
+for all 6 supported audience formats and advanced examples.
 
 ## Complete Example
 
@@ -425,25 +474,27 @@ Here's a complete configuration with all features enabled:
 ```elixir
 # config/config.exs
 config :ash_dispatch,
+  # Required: Your app's OTP name (for event auto-discovery)
+  otp_app: :my_app,
+
   # Counter broadcasting (real-time updates)
   counter_broadcast_fn: {MyAppWeb.UserChannel, :broadcast_counter},
   domains: [MyApp.Orders, MyApp.Tickets, MyApp.Catalog, MyApp.Accounts],
   user_module: MyApp.Accounts.User,
-  recipient_filters: [
-    audiences: [
-      admin: [admin: true],
-      partner: [role: :partner],
-      user: []
-    ]
+
+  # Audience configuration (unified format)
+  audiences: [
+    # Relationship-based (extract from record)
+    :user,
+    :partner,
+
+    # Filter-based (query all matching users)
+    {:admin, [:user, {:admin, true}]},
+    {:super_admin, [:user, {:super_admin, true}]}
   ],
 
-  # Standalone event modules (if using)
-  event_modules: [
-    {"orders.created", MyApp.Orders.Events.Created.Event},
-    {"orders.shipped", MyApp.Orders.Events.Shipped.Event},
-    {"tickets.created", MyApp.Tickets.Events.Created.Event},
-    {"tickets.resolved", MyApp.Tickets.Events.Resolved.Event}
-  ],
+  # Event modules are AUTO-DISCOVERED from domains - no manual config needed!
+  # The EventRegistry scans resources with AshDispatch.Resource extension
 
   # User/admin resolution
   user_resource: MyApp.Accounts.User,

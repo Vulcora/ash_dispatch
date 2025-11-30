@@ -42,10 +42,10 @@ defmodule AshDispatch.Resource.Transformers.InjectCounterBroadcasts do
 
   If `trigger_on` is a list, the change is injected into all specified actions.
 
-  ## Counter Registry Integration
+  ## Counter Broadcast Integration
 
-  The injected change broadcasts counters using the configured CounterRegistry
-  and CounterBroadcaster implementations.
+  The injected change broadcasts counters using the configured `counter_broadcast_fn`
+  function.
   """
 
   use Spark.Dsl.Transformer
@@ -109,9 +109,11 @@ defmodule AshDispatch.Resource.Transformers.InjectCounterBroadcasts do
         resource: resource,
         query_filter: counter.query_filter,
         audience: counter.audience,
-        invalidates: counter.invalidates
+        invalidates: counter.invalidates,
+        authorize?: counter.authorize?
       ]
       |> maybe_add_user_id_path(counter.user_id_path)
+      |> maybe_add_scope(counter.scope)
       |> maybe_add_filter_by_record(counter.filter_by_record)
 
     # Find the action and add the change
@@ -163,6 +165,12 @@ defmodule AshDispatch.Resource.Transformers.InjectCounterBroadcasts do
 
   defp maybe_add_user_id_path(opts, user_id_path) when is_list(user_id_path) do
     Keyword.put(opts, :user_id_path, user_id_path)
+  end
+
+  defp maybe_add_scope(opts, nil), do: opts
+
+  defp maybe_add_scope(opts, scope) do
+    Keyword.put(opts, :scope, scope)
   end
 
   defp maybe_add_filter_by_record(opts, nil), do: opts

@@ -108,8 +108,33 @@ defmodule AshDispatch.Resource.Dsl do
           type: {:or, [:atom, {:list, :atom}]},
           required: true,
           doc: """
-          Action name(s) that trigger this event.
-          Can be a single action or list of actions.
+          Action name(s) that trigger this event, or `:manual` for manual-only events.
+
+          Can be a single action, list of actions, or the special value `:manual`.
+
+          ## Manual-Only Events
+
+          Use `trigger_on: :manual` for events that are dispatched programmatically
+          via `AshDispatch.Dispatcher.dispatch/3` rather than automatically on actions.
+
+          This is useful for:
+          - Events triggered by external systems (AshAuthentication senders)
+          - Events that need custom context not available in action changes
+          - Events that should only be triggered manually from admin UI
+
+          Manual events are still registered in the EventRegistry for:
+          - Preview in admin email template UI
+          - Manual trigger functionality
+          - TypeScript type generation
+
+          Example:
+
+              # Dispatched by AshAuthentication sender, not auto-triggered
+              event :password_reset,
+                trigger_on: :manual,
+                event_id: "accounts.password_reset",
+                data_key: :user,
+                channels: [[transport: :email, audience: :user]]
           """
         ],
         module: [
@@ -615,10 +640,18 @@ defmodule AshDispatch.Resource.Dsl do
           doc: """
           Audience who receives this counter broadcast.
 
-          Valid values:
-          - `:user` - Broadcast to specific user (query scoped to their user_id)
-          - `:admin` - Broadcast to all admin users (query recipients via recipient_filters config)
-          - `:system` - Broadcast to all connected users (rare)
+          Use any audience atom configured in `:ash_dispatch, :recipient_filters`.
+          AshDispatch supports 6 flexible audience formats:
+
+          - **Bare atom** - `:user`, `:creator` (extract from relationship)
+          - **Relationship + filter** - `admin: [:user, admin: true]`
+          - **Relationship chain** - `sellers: [:user, :associated_seller]`
+          - **Template filters** - Dynamic values from context
+          - **Function/MFA** - Complex resolution logic
+          - **System** - Static recipients
+
+          See [Recipient Resolution](documentation/topics/recipient-resolution.md) for
+          complete configuration guide and examples.
           """
         ],
         invalidates: [
@@ -709,27 +742,78 @@ defmodule AshDispatch.Resource.Dsl do
               }
           """
         ],
-        global?: [
+        authorize?: [
           type: :boolean,
-          default: false,
+          default: true,
           doc: """
-          Whether this is a global counter (bypasses policies, no user scoping).
+          Whether to use Ash authorization (policies) for counter queries.
 
-          Global counters:
-          - Always use `authorize?: false` for queries
-          - Don't scope queries by user_id
-          - Suitable for admin counters that need system-wide totals
+          - `true` (default): Queries respect Ash policies, scoped via `scope` or `user_id_path`
+          - `false`: Bypass policies, count ALL matching records (system-wide totals)
 
           Example - Admin counter for all pending orders:
 
               counter :admin_pending_orders,
-                global?: true,
+                authorize?: false,
                 trigger_on: [:create, :complete],
                 query_filter: [status: :pending],
                 audience: :admin,
                 group: :orders
 
-          Defaults to false (counter uses authorization and user scoping).
+          For user-scoped counters with custom filtering, use `scope` instead:
+
+              counter :my_assigned_tickets,
+                audience: :admin,
+                scope: expr(assigned_to_id == ^actor(:id))
+
+          Defaults to true (counter uses Ash authorization).
+          """
+        ],
+        scope: [
+          type: {:or, [:any, nil]},
+          required: false,
+          doc: """
+          Ash expression for scoping counter queries to the recipient.
+
+          The `scope` option accepts any Ash expression and is evaluated with the
+          broadcast recipient as the "actor". This enables powerful filtering:
+
+          ## Expression Templates
+
+          Use `^actor(:field)` to reference the recipient's attributes:
+
+              # Simple: My orders
+              scope: expr(user_id == ^actor(:id))
+
+              # Regional: Orders in my region
+              scope: expr(region == ^actor(:region))
+
+              # Team: Tickets assigned to anyone in my team
+              scope: expr(assigned_support.team_id == ^actor(:team_id))
+
+              # Complex: Orders containing my products (seller)
+              scope: expr(exists(items, product.seller_id == ^actor(:id)))
+
+          ## Relationship with user_id_path
+
+          The `user_id_path` option is syntactic sugar for simple scoping:
+
+              # These are equivalent:
+              user_id_path: [:user_id]
+              scope: expr(user_id == ^actor(:id))
+
+              # Nested paths also work:
+              user_id_path: [:cart, :user_id]
+              scope: expr(cart.user_id == ^actor(:id))
+
+          If both `scope` and `user_id_path` are provided, `scope` takes precedence.
+
+          ## When to Use scope vs user_id_path
+
+          - **`user_id_path`**: Simple direct/nested user_id relationships
+          - **`scope`**: Complex filtering (attributes, nested relationships, exists)
+
+          Defaults to nil (uses `user_id_path` derivation if available).
           """
         ],
         aggregate: [

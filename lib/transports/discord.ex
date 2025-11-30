@@ -64,6 +64,8 @@ defmodule AshDispatch.Transports.Discord do
   - Error (Red): 15548997 (0xED4245)
   """
 
+  import AshDispatch.ContentMap
+
   alias AshDispatch.Channel
   alias AshDispatch.Workers.SendWebhook
 
@@ -152,26 +154,26 @@ defmodule AshDispatch.Transports.Discord do
   defp build_discord_payload(content, _context) when is_map(content) do
     # Base payload with content
     payload = %{
-      "content" => content["notification_message"] || content[:notification_message]
+      "content" => get_content(content, :notification_message)
     }
 
     # Add embed if provided
     payload =
-      case content["discord_embed"] || content[:discord_embed] do
+      case get_content(content, :discord_embed) do
         nil -> payload
         embed -> Map.put(payload, "embeds", [embed])
       end
 
     # Add username override if provided
     payload =
-      case content["discord_username"] || content[:discord_username] do
+      case get_content(content, :discord_username) do
         nil -> payload
         username -> Map.put(payload, "username", username)
       end
 
     # Add avatar override if provided
     payload =
-      case content["discord_avatar_url"] || content[:discord_avatar_url] do
+      case get_content(content, :discord_avatar_url) do
         nil -> payload
         avatar_url -> Map.put(payload, "avatar_url", avatar_url)
       end

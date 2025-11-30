@@ -29,6 +29,7 @@ counters do
     counter_name: :pending_orders,
     query_filter: [status: :pending],
     audience: :user,
+    user_id_path: [:user_id],  # Scope to user's orders
     invalidates: ["orders"]
 end
 ```
@@ -65,6 +66,7 @@ defmodule MyApp.Orders.ProductOrder do
       counter_name: :pending_orders,
       query_filter: [status: :pending],
       audience: :user,
+      user_id_path: [:user_id],  # Scope to user's orders
       invalidates: ["orders"]
   end
 end
@@ -193,14 +195,32 @@ group: :cart
 
 Groups are used by the TypeScript generator to create organized type definitions.
 
-**`:global?`** (optional) - Bypass authorization for system-wide counters
+**`:authorize?`** (optional) - Whether to use Ash authorization (policies)
 
 ```elixir
-global?: true   # Bypasses policies, no user scoping
-global?: false  # Default: uses authorization
+authorize?: false  # Bypass policies, count ALL matching records
+authorize?: true   # Default: use Ash authorization
 ```
 
-Global counters are useful for admin dashboards that need system-wide totals regardless of policies.
+Set to `false` for admin counters that need system-wide totals regardless of policies.
+
+**`:scope`** (optional) - Ash expression for scoping counter queries
+
+```elixir
+# Simple: My orders
+scope: expr(user_id == ^actor(:id))
+
+# Regional: Orders in my region
+scope: expr(region == ^actor(:region))
+
+# Team: Tickets assigned to my team
+scope: expr(assigned_support.team_id == ^actor(:team_id))
+
+# Complex: Orders containing my products
+scope: expr(exists(items, product.seller_id == ^actor(:id)))
+```
+
+The `scope` expression is evaluated with the broadcast recipient as the "actor". This enables powerful filtering beyond simple user_id relationships. See [Scope Expressions](#scope-expressions) for details.
 
 **`:aggregate`** (optional) - Use Ash aggregate instead of query_filter
 
@@ -216,25 +236,250 @@ When specified, uses an Ash aggregate defined on the resource instead of running
 user_id_path: [:cart, :user_id]  # For CartItem -> Cart -> User
 ```
 
+**Note:** In most cases, you **don't need to specify `user_id_path`**. AshDispatch automatically derives it by introspecting your resource's `belongs_to` relationships to the configured `user_module`. See [Automatic user_id_path Derivation](#automatic-user_id_path-derivation) below.
+
+---
+
+## Automatic user_id_path Derivation
+
+AshDispatch automatically derives `user_id_path` from your resource's Ash relationships, so you rarely need to configure it explicitly.
+
+### How It Works
+
+When a counter fires, AshDispatch:
+
+1. Looks at the resource's `belongs_to` relationships
+2. Finds relationships pointing to the configured `user_module`
+3. Uses the `source_attribute` (e.g., `:user_id`) as the path
+
+```elixir
+# Your resource
+defmodule MyApp.Orders.ProductOrder do
+  belongs_to :user, MyApp.Accounts.User  # source_attribute: :user_id
+end
+
+# No user_id_path needed!
+counters do
+  counter :pending_orders,
+    trigger_on: [:create],
+    query_filter: [status: :pending],
+    audience: :user  # Automatically scoped via derived [:user_id]
+end
+```
+
+### Ambiguity Handling
+
+If a resource has **multiple** `belongs_to` relationships to the user module, AshDispatch logs a warning and requires explicit configuration:
+
+```elixir
+# Resource with multiple user relationships
+defmodule MyApp.Tickets.Ticket do
+  belongs_to :user, MyApp.Accounts.User
+  belongs_to :assigned_admin, MyApp.Accounts.User
+end
+
+# Warning logged:
+# [ResourceIntrospection] Ambiguous user relationships on MyApp.Tickets.Ticket.
+# Found multiple belongs_to relationships to user module: [:user, :assigned_admin]
+
+# Solution: Be explicit
+counters do
+  counter :open_tickets,
+    trigger_on: [:create],
+    query_filter: [status: :open],
+    audience: :user,
+    user_id_path: [:user_id]  # Explicitly choose :user relationship
+end
+```
+
+### When to Use Explicit user_id_path
+
+Use explicit `user_id_path` when:
+- Resource has multiple relationships to user module (ambiguous)
+- User relationship is nested (e.g., `CartItem -> Cart -> User`)
+- Non-standard relationship naming
+
+```elixir
+# Nested path example
+counter :cart_items,
+  trigger_on: [:create, :destroy],
+  query_filter: [],
+  audience: :user,
+  user_id_path: [:cart, :user_id]  # CartItem -> Cart.user_id
+```
+
+---
+
+## Scope Expressions
+
+For complex scoping beyond simple user_id relationships, use the `scope` option with Ash expressions.
+
+### Expression Templates
+
+Scope expressions can use `^actor(:field)` to reference the broadcast recipient's attributes:
+
+```elixir
+^actor(:id)           # Recipient's ID
+^actor(:region)       # Recipient's region attribute
+^actor(:team_id)      # Recipient's team_id attribute
+^actor([:profile, :org_id])  # Nested path access
+```
+
+### Common Patterns
+
+**My Records (simple):**
+```elixir
+counter :my_orders,
+  audience: :user,
+  scope: expr(user_id == ^actor(:id))
+```
+
+**My Assigned Records (relationship attribute):**
+```elixir
+counter :my_assigned_tickets,
+  audience: :admin,
+  scope: expr(assigned_to_id == ^actor(:id))
+```
+
+**Regional Scoping (attribute matching):**
+```elixir
+counter :regional_orders,
+  audience: :admin,
+  scope: expr(region == ^actor(:region))
+```
+
+**Team Scoping (through relationship):**
+```elixir
+counter :team_tickets,
+  audience: :team_lead,
+  scope: expr(assigned_support.team_id == ^actor(:team_id))
+```
+
+**Records with My Products (exists):**
+```elixir
+counter :seller_orders,
+  audience: :seller,
+  scope: expr(exists(items, product.seller_id == ^actor(:id)))
+```
+
+### scope vs user_id_path
+
+| Feature | `user_id_path` | `scope` |
+|---------|----------------|---------|
+| Simple user_id | ✅ `[:user_id]` | ✅ `expr(user_id == ^actor(:id))` |
+| Nested paths | ✅ `[:cart, :user_id]` | ✅ `expr(cart.user_id == ^actor(:id))` |
+| Attribute matching | ❌ | ✅ `expr(region == ^actor(:region))` |
+| Relationship traversal | ❌ | ✅ `expr(assigned_support.team_id == ^actor(:team_id))` |
+| exists/has_many | ❌ | ✅ `expr(exists(items, ...))` |
+| Complex conditions | ❌ | ✅ Any Ash expression |
+
+**Recommendation:**
+- Use `user_id_path` for simple user_id relationships (cleaner syntax)
+- Use `scope` when you need any of the advanced features
+
+### Combining scope with authorize?
+
+The `scope` and `authorize?` options work independently:
+
+```elixir
+# Admin sees ALL records (no authorization check, no scoping)
+counter :all_orders, authorize?: false
+
+# Admin sees THEIR assigned records (authorization enabled + custom scope)
+counter :my_assigned_orders,
+  scope: expr(assigned_to_id == ^actor(:id))
+
+# Admin sees regional records WITHOUT policy check
+counter :regional_totals,
+  authorize?: false,
+  scope: expr(region == ^actor(:region))
+```
+
+---
+
+## Audience vs Query Scoping
+
+**Important:** `audience` and query scoping are separate concepts:
+
+| Layer | Purpose | Mechanism |
+|-------|---------|-----------|
+| **Audience** | WHO receives the broadcast | Recipient resolution |
+| **Authorization** | WHAT records actor CAN see | Ash policies (`authorize?`) |
+| **Scoping** | WHAT subset we WANT to count | `scope` or `user_id_path` |
+
+This separation allows flexible combinations:
+
+```elixir
+# User sees their own count (auto-derived scoping)
+counter :my_orders, audience: :user
+
+# Admin sees system-wide count (bypass authorization)
+counter :all_orders, audience: :admin, authorize?: false
+
+# Admin sees THEIR assigned tickets (custom scope)
+counter :my_assigned_tickets,
+  audience: :admin,
+  scope: expr(assigned_to_id == ^actor(:id))
+
+# Regional admin sees orders in their region
+counter :regional_orders,
+  audience: :admin,
+  scope: expr(region == ^actor(:region))
+
+# Partner sees their scoped count
+counter :partner_orders, audience: :partner, user_id_path: [:partner_id]
+```
+
 ---
 
 ## Audience Types
 
-### :user - Scoped to Acting User
+### Audience Configuration Pattern
 
-Broadcasts counter update only to the user who triggered the action.
+Audiences are configured in `config :ash_dispatch, :audiences` using two formats:
+
+```elixir
+config :ash_dispatch,
+  audiences: [
+    # Bare atom = relationship-based (extract from record)
+    :user,
+    :creator,
+    :partner,
+
+    # Tuple = filter-based (query all matching users)
+    {:admin, [:user, {:admin, true}]},
+    {:super_admin, [:user, {:super_admin, true}]}
+  ]
+```
+
+**Relationship-based** (bare atoms):
+- Extract recipient from the record's relationship
+- Broadcast to ONE user (the record owner)
+- E.g., `:user` extracts from `order.user`
+
+**Filter-based** (tuples):
+- Query ALL users matching the filter
+- Broadcast to MULTIPLE users
+- E.g., `:admin` broadcasts to all users where `admin: true`
+
+This distinction affects both **recipient resolution** (who gets broadcast) and **query scoping** (how counts are calculated).
+
+### :user - Broadcast to Acting User
+
+Broadcasts counter update to the user who triggered the action.
 
 ```elixir
 counter :pending_orders,
   trigger_on: [:create, :complete],
   counter_name: :pending_orders,
   query_filter: [status: :pending],
-  audience: :user
+  audience: :user,
+  user_id_path: [:user_id]  # Scope query to this user's orders
 ```
 
 **Behavior:**
-- Counter query automatically scoped to `user_id` from context
-- Only broadcasts to that specific user
+- Broadcasts to the user who triggered the action
+- Query scoped via `user_id_path` (if provided)
 - Perfect for user-specific counters (cart items, my orders, my tickets)
 
 **Example:**
@@ -247,7 +492,7 @@ Order.create!(%{user_id: "user-123", ...})
 # 2. Broadcasts ONLY to "user-123"
 ```
 
-### :admin - All Admin Users
+### :admin - Broadcast to All Admins
 
 Broadcasts counter update to all users matching the admin filter.
 
@@ -256,7 +501,8 @@ counter :admin_pending_reseller_requests,
   trigger_on: [:create, :accept, :decline],
   counter_name: :admin_pending_reseller_requests,
   query_filter: [status: :pending],
-  audience: :admin
+  audience: :admin,
+  authorize?: false  # No authorization - count ALL records
 ```
 
 **Configuration:**
@@ -271,8 +517,8 @@ config :ash_dispatch,
 ```
 
 **Behavior:**
-- Counter query NOT scoped to user (counts all records)
 - Broadcasts to ALL users matching admin filter
+- `authorize?: false` bypasses policies (system-wide count)
 - Perfect for admin dashboards
 
 **Example:**
@@ -291,17 +537,21 @@ ResellerRequest.create!(...)
 Define custom audiences for specialized counter routing.
 
 ```elixir
+# Partner sees their own scoped data
 counter :partner_pending_orders,
   trigger_on: [:create],
   counter_name: :partner_pending_orders,
   query_filter: [status: :pending],
-  audience: :partner
+  audience: :partner,
+  user_id_path: [:partner_id]  # Scope to partner's orders
 
+# System counter - global view
 counter :system_failed_jobs,
   trigger_on: [:fail],
   counter_name: :system_failed_jobs,
   query_filter: [status: :failed],
-  audience: :system
+  audience: :system,
+  authorize?: false
 ```
 
 **Configuration:**
@@ -336,6 +586,7 @@ defmodule MyApp.Orders.ProductOrder do
       counter_name: :pending_orders,
       query_filter: [status: :pending],
       audience: :user,
+      user_id_path: [:user_id],          # Scope to user's orders
       group: :orders,                    # TypeScript grouping
       invalidates: ["orders", "cart_items"]
 
@@ -345,17 +596,18 @@ defmodule MyApp.Orders.ProductOrder do
       counter_name: :processing_orders,
       query_filter: [status: :processing],
       audience: :user,
+      user_id_path: [:user_id],
       group: :orders,
       invalidates: ["orders"]
 
-    # Admins see ALL pending orders (global bypasses policies)
+    # Admins see ALL pending orders (bypass authorization)
     counter :admin_pending_orders,
       trigger_on: [:create, :complete, :cancel],
       counter_name: :admin_pending_orders,
       query_filter: [status: :pending],
       audience: :admin,
       group: :orders,
-      global?: true,                     # No user scoping, bypass auth
+      authorize?: false,                 # No authorization, count all
       invalidates: ["orders", "analytics"]
 
     # Admins see ALL processing orders
@@ -365,7 +617,7 @@ defmodule MyApp.Orders.ProductOrder do
       query_filter: [status: :processing],
       audience: :admin,
       group: :orders,
-      global?: true,
+      authorize?: false,
       invalidates: ["orders", "analytics"]
   end
 end
@@ -413,6 +665,7 @@ defmodule MyApp.Tickets.Ticket do
       counter_name: :open_tickets,
       query_filter: [status: :open],
       audience: :user,
+      user_id_path: [:user_id],
       invalidates: ["tickets"]
 
     # User sees their in-progress tickets
@@ -421,6 +674,7 @@ defmodule MyApp.Tickets.Ticket do
       counter_name: :in_progress_tickets,
       query_filter: [status: :in_progress],
       audience: :user,
+      user_id_path: [:user_id],
       invalidates: ["tickets"]
 
     # Support team sees ALL open tickets
@@ -429,6 +683,7 @@ defmodule MyApp.Tickets.Ticket do
       counter_name: :admin_open_tickets,
       query_filter: [status: :open],
       audience: :admin,
+      authorize?: false,
       invalidates: ["tickets", "support_dashboard"]
 
     # Support team sees ALL in-progress tickets
@@ -437,6 +692,7 @@ defmodule MyApp.Tickets.Ticket do
       counter_name: :admin_in_progress_tickets,
       query_filter: [status: :in_progress],
       audience: :admin,
+      authorize?: false,
       invalidates: ["tickets", "support_dashboard"]
   end
 end
@@ -456,6 +712,7 @@ defmodule MyApp.Catalog.Cart do
       counter_name: :cart_items,
       query_filter: [],  # Count all items in user's cart
       audience: :user,
+      user_id_path: [:user_id],  # Scope to user's cart
       invalidates: ["cart", "checkout"]
   end
 end
@@ -516,6 +773,7 @@ counter :pending_orders,
   counter_name: :pending_orders,
   query_filter: [status: :pending],
   audience: :user,
+  user_id_path: [:user_id],
   invalidates: [
     "orders",      # Refetch order lists
     "analytics",   # Refetch analytics dashboard
@@ -538,7 +796,8 @@ counters do
     trigger_on: [:create],
     counter_name: :pending_orders,
     query_filter: [status: :pending],
-    audience: :user
+    audience: :user,
+    user_id_path: [:user_id]
 end
 
 # AshDispatch injects:
@@ -548,6 +807,7 @@ create :create do
     counter_name: :pending_orders,
     query_filter: [status: :pending],
     audience: :user,
+    user_id_path: [:user_id],
     invalidates: []
 end
 ```
@@ -786,8 +1046,8 @@ If multiple actions update the same counter, consider batching:
 # Check counter definitions
 AshDispatch.Dsl.Info.counters(MyApp.Orders.ProductOrder)
 
-# Verify broadcast function
-Application.get_env(:ash_dispatch, :counter_broadcast_fn)
+# Verify broadcast function (using Config module)
+AshDispatch.Config.counter_broadcast_fn()
 
 # Test manually
 AshDispatch.Changes.BroadcastCounterUpdate.broadcast_counter_update(
@@ -825,8 +1085,8 @@ MyApp.Orders.ProductOrder
 
 **Debug:**
 ```elixir
-# Check domains
-Application.get_env(:ash_dispatch, :domains)
+# Check domains (using Config module)
+AshDispatch.Config.domains()
 
 # Test counter loading manually
 CounterLoader.load_counters_for_user(user.id)

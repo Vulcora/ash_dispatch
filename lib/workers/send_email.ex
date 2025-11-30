@@ -60,7 +60,8 @@ defmodule AshDispatch.Workers.SendEmail do
     queue: :emails,
     max_attempts: 5
 
-  alias AshDispatch.Resources.DeliveryReceipt
+  alias AshDispatch.Config
+  alias AshDispatch.ReceiptStatus
 
   require Logger
 
@@ -88,7 +89,7 @@ defmodule AshDispatch.Workers.SendEmail do
     Logger.info("Processing email job for receipt #{receipt_id}")
 
     # Fetch receipt (bypass authorization - workers run as system)
-    case DeliveryReceipt |> Ash.get(receipt_id, authorize?: false) do
+    case Config.delivery_receipt_resource() |> Ash.get(receipt_id, authorize?: false) do
       {:ok, receipt} ->
         process_email(receipt, args)
 
@@ -105,60 +106,29 @@ defmodule AshDispatch.Workers.SendEmail do
     with :continue <- check_skip_if_read_policy(receipt),
          :send <- check_user_preferences(receipt) do
       # Mark as sending
-      {:ok, receipt} = mark_sending(receipt)
+      {:ok, receipt} = ReceiptStatus.mark_sending(receipt)
 
       # Send email (pass receipt for field fallback)
       case send_email(receipt, args) do
         {:ok, provider_response} ->
           # Mark as sent
-          mark_sent(receipt, provider_response)
+          ReceiptStatus.mark_sent(receipt, provider_response)
           Logger.info("Email sent successfully for receipt #{receipt.id}")
           :ok
 
         {:error, reason} ->
           # Mark as failed (will be retried by Oban)
-          mark_failed(receipt, reason)
+          ReceiptStatus.mark_failed(receipt, reason)
           Logger.error("Email failed for receipt #{receipt.id}: #{inspect(reason)}")
           {:error, reason}
       end
     else
       {:skip, reason} ->
         # Either policy check failed - mark as skipped
-        mark_skipped(receipt, reason)
+        ReceiptStatus.mark_skipped(receipt, reason)
         Logger.info("Email skipped for receipt #{receipt.id}: #{reason}")
         :ok
     end
-  end
-
-  defp mark_sending(receipt) do
-    receipt
-    |> Ash.Changeset.for_update(:mark_sending, %{})
-    |> Ash.update()
-  end
-
-  defp mark_sent(receipt, provider_response) do
-    receipt
-    |> Ash.Changeset.for_update(:mark_sent, %{
-      provider_id: provider_response[:id],
-      provider_response: provider_response
-    })
-    |> Ash.update!()
-  end
-
-  defp mark_failed(receipt, reason) do
-    receipt
-    |> Ash.Changeset.for_update(:mark_failed, %{
-      error_message: inspect(reason)
-    })
-    |> Ash.update!()
-  end
-
-  defp mark_skipped(receipt, reason) do
-    receipt
-    |> Ash.Changeset.for_update(:skip, %{
-      error_message: reason
-    })
-    |> Ash.update!()
   end
 
   defp send_email(receipt, args) do
@@ -176,7 +146,7 @@ defmodule AshDispatch.Workers.SendEmail do
     }
 
     # Check for configured email backend
-    case Application.get_env(:ash_dispatch, :email_backend) do
+    case Config.email_backend() do
       nil ->
         # No backend configured - mock success for now
         Logger.info("""
@@ -227,7 +197,7 @@ defmodule AshDispatch.Workers.SendEmail do
 
   defp load_notification(receipt) do
     if receipt.notification_id do
-      case Ash.get(AshDispatch.Resources.Notification, receipt.notification_id, authorize?: false) do
+      case Ash.get(Config.notification_resource(), receipt.notification_id, authorize?: false) do
         {:ok, notification} -> {:ok, notification}
         error -> error
       end
@@ -239,7 +209,7 @@ defmodule AshDispatch.Workers.SendEmail do
   # Check user email preferences
   defp check_user_preferences(receipt) do
     # Get preference provider from config
-    preference_provider = Application.get_env(:ash_dispatch, :preference_provider)
+    preference_provider = Config.preference_provider()
 
     cond do
       # No preference provider configured - always send

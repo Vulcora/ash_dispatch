@@ -64,7 +64,7 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
     queue: :default,
     max_attempts: 1
 
-  alias AshDispatch.Resources.DeliveryReceipt
+  alias AshDispatch.Config
   alias AshDispatch.Workers.SendEmail
 
   require Ash.Query
@@ -97,7 +97,7 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
 
     # Query for eligible failed receipts
     query =
-      DeliveryReceipt
+      Config.delivery_receipt_resource()
       |> Ash.Query.filter(status == :failed)
       |> Ash.Query.filter(retry_count < ^max_retries)
       |> Ash.Query.filter(is_nil(last_retry_at) or last_retry_at < ^cutoff_time)
@@ -153,7 +153,7 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
   - `:ok` on success
   - `{:error, reason}` on failure
   """
-  def retry_receipt(%DeliveryReceipt{} = receipt, max_retries) do
+  def retry_receipt(%{__struct__: _} = receipt, max_retries) do
     # Check if this will be the final retry
     next_retry_count = (receipt.retry_count || 0) + 1
     is_final_retry = next_retry_count >= max_retries
@@ -202,10 +202,11 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
   # Private functions
 
   defp get_config(key, default) do
+    # These are worker-specific config options not in Config module
     Application.get_env(:ash_dispatch, key, default)
   end
 
-  defp enqueue_worker(%DeliveryReceipt{transport: :email} = receipt, _is_final_retry) do
+  defp enqueue_worker(%{transport: :email} = receipt, _is_final_retry) do
     # For email transport, use SendEmail worker with receipt_id
     # The worker will fetch the receipt and use its stored content
     %{receipt_id: receipt.id}
@@ -213,7 +214,7 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
     |> Oban.insert()
   end
 
-  defp enqueue_worker(%DeliveryReceipt{transport: transport} = receipt, _is_final_retry) do
+  defp enqueue_worker(%{transport: transport} = receipt, _is_final_retry) do
     # For other transports, log and skip for now
     # Future: Add Discord, Slack, SMS workers as they're implemented
     Logger.warning(

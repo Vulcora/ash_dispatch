@@ -2,67 +2,54 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
   @moduledoc false
   # Helper functions for ManualTrigger resources
 
-  alias AshDispatch.Context
+  alias AshDispatch.{Config, Context, EventResolver, Naming}
 
   require Logger
 
   def list_available_events(user) do
-    # Get DSL events (primary source)
+    alias AshDispatch.ChannelResolver
+
+    # Only include DSL events with trigger_on: :manual
+    # Standalone event modules are not shown in manual trigger UI
     dsl_events = list_dsl_events()
-    dsl_event_ids = MapSet.new(dsl_events, fn {event_id, _, _} -> event_id end)
 
-    # Get event module events (fallback for events not in DSL)
-    module_events =
-      Application.get_env(:ash_dispatch, :event_modules, [])
-      |> Enum.reject(fn {event_id, _} -> MapSet.member?(dsl_event_ids, event_id) end)
-      |> Enum.map(fn {event_id, event_module} -> {event_id, event_module, nil} end)
-
-    # Combine both sources
-    all_events = dsl_events ++ module_events
-
-    all_events
-    |> Enum.filter(fn {_event_id, event_module, _event_config} ->
-      has_email_channels?(event_module) &&
-        is_event_applicable_for_user?(event_module, user)
+    dsl_events
+    |> Enum.filter(fn {event_id, event_module, event_config} ->
+      has_email_channels?(event_id, event_module, event_config) &&
+        EventResolver.applicable_for_user?(event_module, user)
     end)
     |> Enum.map(fn {event_id, event_module, event_config} ->
-      # Get channels from DSL config or event module
+      # Use EventResolver for building sample context
+      sample_context = EventResolver.build_sample_context(event_id, event_module)
+
+      # Use centralized ChannelResolver for consistent priority logic
       channels =
-        if event_config do
-          convert_dsl_channels_to_structs(event_config.channels || [])
-        else
-          get_channels_from_module(event_id, event_module)
-        end
+        ChannelResolver.resolve(
+          event_id,
+          event_module,
+          sample_context,
+          dsl_channels: event_config && event_config.channels
+        )
 
       %{
         event_id: event_id,
-        description: get_event_description(event_module),
-        domain: get_domain(event_module),
+        description: get_event_description(event_module, event_id),
+        domain: EventResolver.domain(event_module) |> to_string_or_nil(),
         channels: format_channels(channels),
         required_context: get_required_context(event_id),
         example_context: get_example_context(event_id, event_module),
-        required_resources: get_required_resources(event_module)
+        required_resources:
+          EventResolver.required_resources(event_module) |> format_required_resources()
       }
     end)
     |> Enum.sort_by(& &1.event_id)
   end
 
-  defp get_channels_from_module(event_id, event_module) do
-    sample_context = build_sample_context(event_id, event_module)
-
-    if function_exported?(event_module, :channels, 1) do
-      try do
-        event_module.channels(sample_context)
-      rescue
-        _ -> []
-      end
-    else
-      []
-    end
-  end
+  defp to_string_or_nil(nil), do: nil
+  defp to_string_or_nil(value), do: to_string(value)
 
   defp list_dsl_events do
-    domains = Application.get_env(:ash_dispatch, :domains, [])
+    domains = Config.domains()
 
     Enum.flat_map(domains, fn domain ->
       try do
@@ -72,6 +59,7 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
           if AshDispatch.Resource.Info.dispatch_enabled?(resource) do
             resource
             |> AshDispatch.Resource.Info.events()
+            |> Enum.filter(&manually_triggerable?/1)
             |> Enum.map(fn event ->
               {event.event_id, event.module, event}
             end)
@@ -85,75 +73,34 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
     end)
   end
 
-  defp convert_dsl_channels_to_structs(channels) when is_list(channels) do
-    Enum.map(channels, fn
-      %AshDispatch.Dsl.Channel{} = channel ->
-        # Already a DSL channel struct, convert to runtime channel
-        %AshDispatch.Channel{
-          transport: channel.transport,
-          audience: channel.audience,
-          time: channel.time,
-          policy: channel.policy,
-          variant: channel.variant,
-          webhook_url: channel.webhook_url,
-          content: channel.content,
-          metadata: channel.metadata,
-          opts: channel.opts,
-          load: channel.load
-        }
+  # Only events with trigger_on: :manual should appear in manual trigger UI
+  defp manually_triggerable?(%{trigger_on: :manual}), do: true
 
-      channel when is_list(channel) ->
-        # Keyword list format from DSL
-        %AshDispatch.Channel{
-          transport: Keyword.fetch!(channel, :transport),
-          audience: Keyword.fetch!(channel, :audience),
-          time: Keyword.get(channel, :time, {:in, 0}),
-          policy: Keyword.get(channel, :policy, :always),
-          variant: Keyword.get(channel, :variant),
-          webhook_url: Keyword.get(channel, :webhook_url),
-          content: Keyword.get(channel, :content, %{}),
-          metadata: Keyword.get(channel, :metadata, %{}),
-          opts: Keyword.get(channel, :opts, %{}),
-          load: Keyword.get(channel, :load, [])
-        }
+  defp manually_triggerable?(%{trigger_on: triggers}) when is_list(triggers),
+    do: :manual in triggers
 
-      channel ->
-        channel
-    end)
-  end
+  defp manually_triggerable?(_), do: false
 
   def get_user_preference_for_event(user_id, event_id) do
-    event_modules = Application.get_env(:ash_dispatch, :event_modules, [])
+    # Use centralized EventResolver for event lookup
+    case EventResolver.find_module(event_id) do
+      {:ok, event_module} ->
+        # Use EventResolver for building sample context
+        sample_context = EventResolver.build_sample_context(event_id, event_module)
 
-    case Enum.find(event_modules, fn {id, _mod} -> id == event_id end) do
-      {_id, event_module} ->
-        sample_context = build_sample_context(event_id, event_module)
-
-        user_configurable =
-          if function_exported?(event_module, :user_configurable?, 1) do
-            try do
-              event_module.user_configurable?(sample_context)
-            rescue
-              _ -> false
-            end
-          else
-            false
-          end
+        # Use EventResolver for safe callback execution
+        user_configurable = EventResolver.user_configurable?(event_module, sample_context)
 
         category =
-          if user_configurable && function_exported?(event_module, :category, 1) do
-            try do
-              event_module.category(sample_context)
-            rescue
-              _ -> nil
-            end
+          if user_configurable do
+            EventResolver.category(event_module, sample_context)
           else
             nil
           end
 
         preference_enabled =
           if user_configurable && category do
-            preference_provider = Application.get_env(:ash_dispatch, :preference_provider)
+            preference_provider = Config.preference_provider()
 
             if preference_provider do
               case preference_provider.get_preferences(user_id) do
@@ -177,7 +124,7 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
            preference_enabled: preference_enabled
          }}
 
-      nil ->
+      {:error, :not_found} ->
         {:error, "Event not found: #{event_id}"}
     end
   end
@@ -222,22 +169,15 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
   resource/0 and data_key/0 callbacks before dispatching the event.
   """
   def load_and_dispatch(event_id, context_data, opts, actor) do
-    event_modules = Application.get_env(:ash_dispatch, :event_modules, [])
-
-    case Enum.find(event_modules, fn {id, _mod} -> id == event_id end) do
-      {_id, event_module} ->
+    # Use centralized EventResolver for event lookup
+    case EventResolver.find_module(event_id) do
+      {:ok, event_module} ->
         # Load the resource data using the same logic as preview
         case build_context_from_data(event_id, event_module, context_data, actor) do
           {:ok, context} ->
-            # Generate real variables if event module implements generate_send_variables/2
-            # This allows events to provide real data (tokens, etc.) for actual sending
-            # while using sample_data() for previews
+            # Generate real variables using EventResolver (handles errors gracefully)
             enhanced_opts_result =
-              if function_exported?(event_module, :generate_send_variables, 2) do
-                event_module.generate_send_variables(context, opts)
-              else
-                {:ok, opts}
-              end
+              EventResolver.generate_send_variables(event_module, context, opts)
 
             # Check if variable generation succeeded
             case enhanced_opts_result do
@@ -253,62 +193,34 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
             {:error, reason}
         end
 
-      nil ->
+      {:error, :not_found} ->
         {:error, "Event #{event_id} not found"}
     end
   end
 
   def preview_trigger(event_id, context_data, channel_filter, recipient_email, actor) do
-    event_modules = Application.get_env(:ash_dispatch, :event_modules, [])
-
-    case Enum.find(event_modules, fn {id, _mod} -> id == event_id end) do
-      {_id, event_module} ->
+    # Use centralized EventResolver for event lookup
+    case EventResolver.find_module(event_id) do
+      {:ok, event_module} ->
         with {:ok, context} <-
                build_context_from_data(event_id, event_module, context_data, actor),
              {:ok, channels} <- get_filtered_channels(event_module, context, channel_filter) do
           previews =
             Enum.map(channels, fn channel ->
-              subject =
-                if function_exported?(event_module, :subject, 2) do
-                  try do
-                    event_module.subject(context, channel)
-                  rescue
-                    e ->
-                      Logger.error("Subject computation failed: #{inspect(e)}")
-                      nil
-                  end
-                else
-                  nil
-                end
-
-              {_from_name, from_address} =
-                if function_exported?(event_module, :from, 2) do
-                  try do
-                    event_module.from(context, channel)
-                  rescue
-                    _ -> {"", ""}
-                  end
-                else
-                  {"", ""}
-                end
-
+              # Use EventResolver for all callback lookups
+              subject = EventResolver.subject(event_module, context, channel)
+              from_result = EventResolver.from(event_module, context, channel)
+              from_address = if from_result, do: elem(from_result, 1), else: ""
               recipient = recipient_email || get_preview_recipient(event_module, context, channel)
+              variant = EventResolver.template_variant(event_module, context, channel)
 
-              variant =
-                if function_exported?(event_module, :template_variant, 2) do
-                  try do
-                    event_module.template_variant(context, channel)
-                  rescue
-                    _ -> nil
-                  end
-                else
-                  nil
-                end
-
+              # Prepare template assigns using EventResolver (with special error handling for previews)
               assigns_result =
-                if function_exported?(event_module, :prepare_template_assigns, 2) do
+                if EventResolver.exports?(event_module, :prepare_template_assigns, 2) do
                   try do
-                    base_assigns = event_module.prepare_template_assigns(context, channel)
+                    base_assigns =
+                      EventResolver.prepare_template_assigns(event_module, context, channel)
+
                     {:ok, Map.merge(context.data, base_assigns)}
                   rescue
                     e ->
@@ -344,28 +256,8 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
                 {:ok, assigns} ->
                   {html_body, text_body, notification_title, notification_message} =
                     if channel.transport == :in_app do
-                      title =
-                        if function_exported?(event_module, :notification_title, 2) do
-                          try do
-                            event_module.notification_title(context, channel)
-                          rescue
-                            _ -> nil
-                          end
-                        else
-                          nil
-                        end
-
-                      message =
-                        if function_exported?(event_module, :notification_message, 2) do
-                          try do
-                            event_module.notification_message(context, channel)
-                          rescue
-                            _ -> nil
-                          end
-                        else
-                          nil
-                        end
-
+                      title = EventResolver.notification_title(event_module, context, channel)
+                      message = EventResolver.notification_message(event_module, context, channel)
                       {nil, nil, title, message}
                     else
                       try do
@@ -414,53 +306,32 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
           {:ok, previews}
         end
 
-      nil ->
+      {:error, :not_found} ->
         {:error, "Event not found: #{event_id}"}
     end
   end
 
   # Private helpers
 
-  defp has_email_channels?(event_module) do
-    if function_exported?(event_module, :sample_data, 0) do
-      try do
-        sample_data = event_module.sample_data()
-        event_id = if function_exported?(event_module, :id, 0), do: event_module.id(), else: nil
-        context = %Context{event_id: event_id || "sample", data: sample_data, metadata: %{}}
+  defp has_email_channels?(event_id, event_module, event_config) do
+    # Use EventResolver for safe callback execution
+    sample_data = EventResolver.sample_data(event_module)
+    context = %Context{event_id: event_id, data: sample_data, metadata: %{}}
 
-        channels =
-          if function_exported?(event_module, :channels, 1) do
-            event_module.channels(context)
-          else
-            []
-          end
-
-        channels =
-          if channels == [] && event_id do
-            get_inline_dsl_channels(event_id)
-          else
-            channels
-          end
-
-        Enum.any?(channels, &(&1.transport == :email))
-      rescue
-        _ -> false
-      end
-    else
-      false
-    end
-  end
-
-  defp get_inline_dsl_channels(event_id) do
-    case get_event_dsl_config(event_id) do
-      {:ok, event_config, _resource} -> event_config.channels
-      :not_found -> []
-    end
+    # Use centralized ChannelResolver for consistent priority logic
+    # Pass DSL channels if available for proper resolution
+    AshDispatch.ChannelResolver.has_transport?(
+      event_id,
+      event_module,
+      context,
+      :email,
+      dsl_channels: event_config && event_config.channels
+    )
   end
 
   # Look up the full event DSL config and the resource it's defined on
   defp get_event_dsl_config(event_id) do
-    domains = Application.get_env(:ash_dispatch, :domains, [])
+    domains = Config.domains()
 
     result =
       Enum.find_value(domains, fn domain ->
@@ -488,38 +359,7 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
     result || :not_found
   end
 
-  defp is_event_applicable_for_user?(_event_module, nil), do: true
-
-  defp is_event_applicable_for_user?(event_module, user) do
-    if function_exported?(event_module, :applicable_for_user?, 1) do
-      try do
-        event_module.applicable_for_user?(user)
-      rescue
-        _ -> true
-      end
-    else
-      true
-    end
-  end
-
-  defp build_sample_context(event_id, event_module) do
-    sample_data =
-      if function_exported?(event_module, :sample_data, 0) do
-        try do
-          event_module.sample_data()
-        rescue
-          _ -> %{}
-        end
-      else
-        %{}
-      end
-
-    %Context{
-      event_id: event_id,
-      data: sample_data,
-      metadata: %{}
-    }
-  end
+  # Note: is_event_applicable_for_user? and build_sample_context are now handled by EventResolver
 
   defp build_context_from_data(event_id, event_module, context_data, actor) do
     # Normalize context_data keys to atoms (JSON sends string keys)
@@ -529,8 +369,8 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
     base_data_result =
       case get_event_dsl_config(event_id) do
         {:ok, event_config, resource} ->
-          # Get data_key from config or derive from resource
-          data_key = event_config.data_key || derive_data_key(resource)
+          # Get data_key from config or derive from resource using Naming
+          data_key = event_config.data_key || Naming.data_key(resource)
           id_field = String.to_atom("#{data_key}_id")
 
           # Load primary resource if ID is provided
@@ -583,7 +423,7 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
     resource_key =
       case get_event_dsl_config(event_id) do
         {:ok, event_config, resource} ->
-          event_config.data_key || derive_data_key(resource)
+          event_config.data_key || Naming.data_key(resource)
 
         :not_found ->
           nil
@@ -598,16 +438,8 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
      }}
   end
 
-  defp derive_data_key(resource) do
-    resource
-    |> Module.split()
-    |> List.last()
-    |> Macro.underscore()
-    |> String.to_atom()
-  end
-
   defp load_resource(resource, id, load_opts) do
-    domain = resource.__domain__()
+    domain = Ash.Resource.Info.domain(resource)
 
     case Ash.get(resource, id, domain: domain, authorize?: false, load: load_opts) do
       {:ok, record} -> {:ok, record}
@@ -616,28 +448,17 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
   end
 
   defp load_data_from_required_resources(event_module, context_data) do
-    # Check for resource/0 callback (mirrors DSL pattern)
-    if function_exported?(event_module, :resource, 0) do
+    # Use EventResolver for safe callback execution
+    resource = EventResolver.resource(event_module)
+
+    if resource do
       try do
-        resource = event_module.resource()
+        # Get data_key from EventResolver or derive from resource
+        data_key = EventResolver.data_key(event_module) || Naming.data_key(resource)
 
-        # Get data_key from callback or derive from resource
-        data_key =
-          if function_exported?(event_module, :data_key, 0) do
-            event_module.data_key()
-          else
-            derive_data_key(resource)
-          end
-
-        # Get domain from event module's domain/0 callback
-        domain =
-          if function_exported?(event_module, :domain, 0) do
-            # Convert atom domain to module name
-            domain_atom = event_module.domain()
-            domain_to_module(domain_atom)
-          else
-            nil
-          end
+        # Get domain from EventResolver and convert to module
+        domain_atom = EventResolver.domain(event_module)
+        domain = if domain_atom, do: domain_to_module(domain_atom), else: nil
 
         id_field = String.to_atom("#{data_key}_id")
 
@@ -683,7 +504,7 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
   # Convert domain atom like :accounts to module like Magasin.Accounts
   defp domain_to_module(domain_atom) when is_atom(domain_atom) do
     # Get configured domains and find matching one
-    domains = Application.get_env(:ash_dispatch, :domains, [])
+    domains = Config.domains()
 
     Enum.find(domains, fn domain_module ->
       domain_module
@@ -708,22 +529,16 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
 
   # Get aggregated load options from all channels defined by event module
   defp get_channel_load_opts(event_module) do
-    if function_exported?(event_module, :channels, 1) do
-      try do
-        # Use empty context to get channel definitions
-        sample_context = %Context{event_id: "", data: %{}, metadata: %{}}
-        channels = event_module.channels(sample_context)
+    # Use empty context to get channel definitions
+    sample_context = %Context{event_id: "", data: %{}, metadata: %{}}
 
-        # Aggregate load options from all channels
-        channels
-        |> Enum.flat_map(fn channel -> Map.get(channel, :load, []) end)
-        |> Enum.uniq()
-      rescue
-        _ -> []
-      end
-    else
-      []
-    end
+    # Use centralized ChannelResolver for consistent priority logic
+    channels = AshDispatch.ChannelResolver.get_module_channels(event_module, sample_context)
+
+    # Aggregate load options from all channels
+    channels
+    |> Enum.flat_map(fn channel -> Map.get(channel, :load, []) end)
+    |> Enum.uniq()
   end
 
   defp get_id_fields(context_data) do
@@ -733,61 +548,39 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
   end
 
   defp get_filtered_channels(event_module, context, nil) do
-    if function_exported?(event_module, :channels, 1) do
-      channels =
-        try do
-          event_module.channels(context)
-        rescue
-          _ -> []
-        end
-
-      {:ok, channels}
-    else
-      {:ok, []}
-    end
+    # Use centralized ChannelResolver for consistent priority logic
+    channels = AshDispatch.ChannelResolver.resolve(context.event_id, event_module, context)
+    {:ok, channels}
   end
 
   defp get_filtered_channels(event_module, context, channel_filter) do
-    if function_exported?(event_module, :channels, 1) do
-      channels =
-        try do
-          event_module.channels(context)
-        rescue
-          _ -> []
-        end
+    # Use centralized ChannelResolver for consistent priority logic
+    channels = AshDispatch.ChannelResolver.resolve(context.event_id, event_module, context)
 
-      filtered =
-        Enum.filter(channels, fn channel ->
-          Enum.all?(channel_filter, fn {key, value} ->
-            Map.get(channel, key) == value
-          end)
+    # Apply user-specified filters
+    filtered =
+      Enum.filter(channels, fn channel ->
+        Enum.all?(channel_filter, fn {key, value} ->
+          Map.get(channel, key) == value
         end)
+      end)
 
-      {:ok, filtered}
-    else
-      {:ok, []}
-    end
+    {:ok, filtered}
   end
 
   defp get_preview_recipient(event_module, context, channel) do
-    if function_exported?(event_module, :recipients, 2) do
-      try do
-        case event_module.recipients(context, channel) do
-          [first | _] -> first
-          [] -> "preview@example.com"
-        end
-      rescue
-        _ -> "preview@example.com"
-      end
-    else
-      "preview@example.com"
+    # Use EventResolver for safe callback execution
+    case EventResolver.recipients(event_module, context, channel) do
+      [first | _] -> first
+      [] -> "preview@example.com"
     end
   end
 
   defp render_templates(event_module, transport, variant, assigns) do
     # Get otp_app from config - needed for priv manifest lookup
-    otp_app = Application.get_env(:ash_dispatch, :otp_app)
+    otp_app = Config.otp_app()
 
+    # TemplateResolver auto-derives event_dir from module source when not provided
     html =
       case AshDispatch.TemplateResolver.render(
              event_module: event_module,
@@ -817,7 +610,28 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
     {html, text}
   end
 
-  defp get_event_description(event_module) do
+  defp get_event_description(nil, event_id) do
+    # For events without a module, derive description from event_id
+    # e.g., "user.password_reset" -> "User > Password Reset"
+    case String.split(event_id || "", ".") do
+      [domain, event_name] ->
+        formatted_domain = domain |> Macro.camelize()
+
+        formatted_event =
+          event_name
+          |> String.replace("_", " ")
+          |> String.split()
+          |> Enum.map(&String.capitalize/1)
+          |> Enum.join(" ")
+
+        "#{formatted_domain} > #{formatted_event}"
+
+      _ ->
+        "Email event"
+    end
+  end
+
+  defp get_event_description(event_module, _event_id) do
     case Module.split(event_module) do
       parts when length(parts) >= 5 ->
         domain = Enum.at(parts, 1)
@@ -835,49 +649,31 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
     end
   end
 
-  defp get_domain(event_module) do
-    if function_exported?(event_module, :domain, 0) do
-      try do
-        event_module.domain() |> to_string()
-      rescue
-        _ -> nil
-      end
-    else
-      nil
-    end
-  end
+  # Note: get_domain is now handled directly via EventResolver.domain/1 in list_available_events
 
-  defp get_required_resources(event_module) do
-    if function_exported?(event_module, :required_resources, 0) do
-      try do
-        event_module.required_resources()
-        |> Enum.map(fn
-          {key, resource_module} when is_atom(resource_module) ->
-            %{
-              key: to_string(key),
-              resource: inspect(resource_module),
-              filter: nil
-            }
+  # Format required_resources from EventResolver output
+  defp format_required_resources(required_resources) do
+    Enum.map(required_resources, fn
+      {key, resource_module} when is_atom(resource_module) ->
+        %{
+          key: to_string(key),
+          resource: inspect(resource_module),
+          filter: nil
+        }
 
-          {key, {resource_module, opts}} when is_atom(resource_module) ->
-            filter = Keyword.get(opts, :filter)
+      {key, {resource_module, opts}} when is_atom(resource_module) ->
+        filter = Keyword.get(opts, :filter)
 
-            %{
-              key: to_string(key),
-              resource: inspect(resource_module),
-              filter: if(filter, do: Enum.into(filter, %{}), else: nil)
-            }
+        %{
+          key: to_string(key),
+          resource: inspect(resource_module),
+          filter: if(filter, do: Enum.into(filter, %{}), else: nil)
+        }
 
-          _ ->
-            nil
-        end)
-        |> Enum.reject(&is_nil/1)
-      rescue
-        _ -> []
-      end
-    else
-      []
-    end
+      _ ->
+        nil
+    end)
+    |> Enum.reject(&is_nil/1)
   end
 
   defp format_channels(channels) do
@@ -899,7 +695,7 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
     # Derive required context from DSL config
     case get_event_dsl_config(event_id) do
       {:ok, event_config, resource} ->
-        data_key = event_config.data_key || derive_data_key(resource)
+        data_key = event_config.data_key || Naming.data_key(resource)
         id_field = "#{data_key}_id"
         [id_field]
 
@@ -909,22 +705,17 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
   end
 
   defp get_example_context(event_id, event_module) do
-    if function_exported?(event_module, :sample_data, 0) do
-      try do
-        event_module.sample_data()
-      rescue
-        _ -> build_default_example_context(event_id)
-      end
-    else
-      build_default_example_context(event_id)
-    end
+    # Use EventResolver for safe sample_data retrieval
+    sample_data = EventResolver.sample_data(event_module)
+    # If sample_data is empty, use default example context
+    if map_size(sample_data) > 0, do: sample_data, else: build_default_example_context(event_id)
   end
 
   defp build_default_example_context(event_id) do
     # Derive example context from DSL config
     case get_event_dsl_config(event_id) do
       {:ok, event_config, resource} ->
-        data_key = event_config.data_key || derive_data_key(resource)
+        data_key = event_config.data_key || Naming.data_key(resource)
         id_field = String.to_atom("#{data_key}_id")
         %{id_field => "uuid-here"}
 

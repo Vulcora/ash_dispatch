@@ -229,6 +229,55 @@ Order.create!(%{status: :pending})
 
 See [Counter Broadcasting](lib/documentation/topics/counter-broadcasting.md) and [Phoenix Integration](lib/documentation/topics/phoenix-integration.md) for complete guides.
 
+## Internal Architecture
+
+AshDispatch uses centralized resolver modules to ensure consistent behavior across all dispatch pathways:
+
+### ChannelResolver
+
+`AshDispatch.ChannelResolver` handles all channel resolution with consistent priority logic:
+
+- **DSL channels take precedence** over module callbacks
+- Converts various channel formats (DSL structs, maps, keyword lists) to `%Channel{}` structs
+- Supports future `strategy: :merge` option to combine both sources
+
+```elixir
+# Used internally by Dispatcher, ManualTrigger, preview generators, etc.
+channels = AshDispatch.ChannelResolver.resolve(event_id, event_module, context,
+  dsl_channels: event_config.channels
+)
+```
+
+### EventResolver
+
+`AshDispatch.EventResolver` centralizes event module discovery and safe callback execution:
+
+- Find event modules by ID
+- Call callbacks with consistent error handling
+- Build sample contexts for previews
+
+```elixir
+# Find an event module
+{:ok, module} = AshDispatch.EventResolver.find_module("orders.created")
+
+# Safe callback execution with defaults
+subject = AshDispatch.EventResolver.subject(module, context, channel, default: "No subject")
+```
+
+### Naming
+
+`AshDispatch.Naming` handles consistent filename and label generation for multi-audience templates:
+
+```elixir
+# Generate audience-specific filenames
+AshDispatch.Naming.filename("email", :admin, "summary", "html")
+# => "email.admin.summary.html"
+
+# Generate display labels
+AshDispatch.Naming.label(:email, :admin, "summary")
+# => "email (admin, summary)"
+```
+
 ## Design Principles
 
 ### 1. Resource-Centric
@@ -245,6 +294,9 @@ User preferences, rate limiting, and delivery policies protect users from notifi
 
 ### 5. Framework Integration
 Deep integration with Ash actions, Oban jobs, and the Ash ecosystem.
+
+### 6. Centralized Logic
+Channel resolution, event discovery, and naming all use centralized modules to ensure consistency and maintainability.
 
 ## Development Status
 

@@ -1,4 +1,7 @@
 defmodule AshDispatch.TemplateResolver do
+  alias AshDispatch.Config
+  alias AshDispatch.Naming
+
   @moduledoc """
   Resolves and renders HEEx/EEx templates for events with fallback chain.
 
@@ -140,12 +143,24 @@ defmodule AshDispatch.TemplateResolver do
         # Explicit path: already points to template directory, don't add /templates
         render_from_files(template_path, transport, variant, format, assigns, false, otp_app)
 
-      # 3. File-based: Module with templates/ subdirectory
+      # 3. File-based: Explicit event_dir with templates/ subdirectory
       event_dir ->
         # Module-based: event_dir is __DIR__, add /templates subdirectory
         render_from_files(event_dir, transport, variant, format, assigns, true, otp_app)
 
-      # 4. Priv directory manifest (module-based events)
+      # 4. File-based: Derive event_dir from module source (development)
+      event_module && derive_module_dir(event_module) ->
+        render_from_files(
+          derive_module_dir(event_module),
+          transport,
+          variant,
+          format,
+          assigns,
+          true,
+          otp_app
+        )
+
+      # 5. Priv directory manifest (module-based events)
       event_module && otp_app && priv_manifest_exists?(otp_app) ->
         render_from_priv_manifest(
           {:module, event_module},
@@ -184,6 +199,19 @@ defmodule AshDispatch.TemplateResolver do
       {:ok, path} -> File.exists?(path)
       {:error, _} -> false
     end
+  end
+
+  # Derive directory from module's source file (for development mode)
+  # Returns nil if source info is not available (e.g., in releases)
+  defp derive_module_dir(nil), do: nil
+
+  defp derive_module_dir(event_module) do
+    case event_module.__info__(:compile)[:source] do
+      nil -> nil
+      source -> source |> to_string() |> Path.dirname()
+    end
+  rescue
+    _ -> nil
   end
 
   # Get manifest path for the given OTP app
@@ -362,7 +390,7 @@ defmodule AshDispatch.TemplateResolver do
   #   :markdown -> "md.eex" (Discord/Slack messages)
   #   :json -> "json.eex"   (Webhook payloads)
   defp extension_for(format) do
-    custom_extensions = Application.get_env(:ash_dispatch, :format_extensions, %{})
+    custom_extensions = Config.format_extensions()
 
     defaults = %{
       html: "html.heex",
@@ -581,73 +609,129 @@ defmodule AshDispatch.TemplateResolver do
   end
 
   @doc """
-  Derives template path from event_id using convention.
+  Resolves the template directory for an event.
 
-  If `domain` and `resource_name` are provided, uses them for the path.
-  Otherwise extracts from event_id (legacy support).
+  This is the **single source of truth** for template path resolution.
+  Used by both the code generator and the runtime renderer.
 
-  ## New Structure (resource.event format)
+  ## Resolution Order
 
-  Templates are now organized by domain/resource/event to prevent collisions:
+  1. **Explicit module**: If event has `module:` option, use module-based path
+  2. **Derived module**: Use `{App}.{Domain}.Events.{EventName}.Event` path
 
-      # With explicit domain and resource_name (current format)
-      derive_template_path("reseller_request.new_reseller_request", :magasin, "requests", "reseller_request")
-      # => "lib/magasin/requests/templates/reseller_request/new_reseller_request"
+  Events are expected to have modules (either explicit or generated via `mix ash_dispatch.gen`).
+  Templates live in `{module_dir}/templates/`.
 
-  ## Legacy Structure (domain.event format - deprecated)
+  ## Parameters
 
-  For backwards compatibility, falls back to domain/event structure if no resource_name:
-
-      # Without resource_name (legacy)
-      derive_template_path("requests.new_reseller_request", :magasin, "requests", nil)
-      # => "lib/magasin/requests/templates/new_reseller_request"
+  - `event_info` - Map with `:domain`, `:name`, and optionally `:module`
+  - `otp_app` - The OTP application name
 
   ## Examples
 
-      # Current format (prevents collisions)
-      derive_template_path("reseller_request.created", :magasin, "requests", "reseller_request")
-      # => "lib/magasin/requests/templates/reseller_request/created"
+      resolve_template_directory(%{domain: :accounts, name: :email_confirmation}, :magasin)
+      # => "lib/magasin/accounts/events/email_confirmation/templates"
 
-      derive_template_path("partner_request.created", :magasin, "requests", "partner_request")
-      # => "lib/magasin/requests/templates/partner_request/created"
-
-      # Legacy format (can cause collisions)
-      derive_template_path("requests.created", :magasin, "requests", nil)
-      # => "lib/magasin/requests/templates/created"
+      resolve_template_directory(%{domain: :orders, name: :created}, :magasin)
+      # => "lib/magasin/orders/events/created/templates"
   """
-  def derive_template_path(event_id, otp_app, domain \\ nil, resource_name \\ nil)
+  @spec resolve_template_directory(map(), atom()) :: String.t()
+  def resolve_template_directory(event_info, otp_app) do
+    # 1. Explicit module takes priority
+    case Map.get(event_info, :module) do
+      module when is_atom(module) and not is_nil(module) ->
+        module_path_from_module(module)
+
+      nil ->
+        # 2. Use derived module path
+        # Events should have modules - either explicit or generated via codegen
+        derived_module = derive_event_module(event_info, otp_app)
+        module_path_from_module(derived_module)
+    end
+  end
+
+  @doc """
+  Derives the expected event module name from event info.
+
+  Delegates to `AshDispatch.Naming.event_module/3` which is the single source
+  of truth for module name derivation.
+
+  ## Examples
+
+      derive_event_module(%{domain: :accounts, name: :email_confirmation, resource: Magasin.Accounts.User}, :magasin)
+      # => Magasin.Accounts.Events.EmailConfirmation.Event
+  """
+  @spec derive_event_module(map(), atom()) :: module()
+  def derive_event_module(event_info, otp_app) do
+    # If resource is available, use Naming.event_module for consistency
+    # Otherwise fall back to otp_app-based derivation for backward compatibility
+    case event_info[:resource] do
+      resource when is_atom(resource) and not is_nil(resource) ->
+        domain = event_info[:domain] || Naming.domain_name(resource)
+        Naming.event_module(resource, domain, event_info[:name])
+
+      nil ->
+        # Fallback: derive from otp_app (for legacy/test cases)
+        app_module = otp_app |> to_string() |> Macro.camelize()
+        domain_module = event_info[:domain] |> to_string() |> Macro.camelize()
+        event_module = event_info[:name] |> to_string() |> Macro.camelize()
+
+        Module.concat([app_module, domain_module, "Events", event_module, "Event"])
+    end
+  end
+
+  # Derives template path from module name
+  # Delegates to Naming.template_directory/1 for consistent path derivation
+  # Module: Magasin.Accounts.Events.PasswordReset.Event
+  # Path: lib/magasin/accounts/events/password_reset/templates
+  defp module_path_from_module(module) do
+    Naming.template_directory(module)
+  end
+
+  @doc """
+  Derives template path from event_id.
+
+  Parses the event_id to extract domain and event name, then uses
+  `resolve_template_directory/2` for the actual path resolution.
+
+  ## Parameters
+
+  - `event_id` - Event ID string (e.g., "orders.created", "user.email_confirmation")
+  - `otp_app` - The OTP application name
+  - `domain` - Optional domain override (uses first part of event_id if not provided)
+
+  ## Examples
+
+      derive_template_path("orders.created", :magasin)
+      # => "lib/magasin/orders/events/created/templates"
+
+      derive_template_path("user.email_confirmation", :magasin, "accounts")
+      # => "lib/magasin/accounts/events/email_confirmation/templates"
+  """
+  def derive_template_path(event_id, otp_app, domain \\ nil, _resource_name \\ nil)
       when is_binary(event_id) and is_atom(otp_app) do
     case String.split(event_id, ".", parts: 2) do
       [resource_or_domain, event_name] ->
-        # Extract domain and resource name
-        domain_name = domain || resource_or_domain
-        res_name = resource_name || resource_or_domain
+        domain_atom =
+          if domain,
+            do: String.to_atom(to_string(domain)),
+            else: String.to_atom(resource_or_domain)
 
-        # If we have a resource_name, use new structure: lib/{app}/{domain}/templates/{resource}/{event}
-        # Otherwise use legacy structure: lib/{app}/{domain}/templates/{event}
-        if resource_name do
-          Path.join(["lib", to_string(otp_app), domain_name, "templates", res_name, event_name])
-        else
-          # Legacy path for backwards compatibility
-          Path.join(["lib", to_string(otp_app), domain_name, "templates", event_name])
-        end
+        resolve_template_directory(
+          %{domain: domain_atom, name: String.to_atom(event_name)},
+          otp_app
+        )
 
       [single_part] ->
-        # Fallback if no domain separator (shouldn't happen with auto-generated IDs)
-        domain_name = domain || "dispatch"
+        domain_atom =
+          if domain,
+            do: String.to_atom(to_string(domain)),
+            else: :dispatch
 
-        if resource_name do
-          Path.join([
-            "lib",
-            to_string(otp_app),
-            domain_name,
-            "templates",
-            resource_name,
-            single_part
-          ])
-        else
-          Path.join(["lib", to_string(otp_app), domain_name, "templates", single_part])
-        end
+        resolve_template_directory(
+          %{domain: domain_atom, name: String.to_atom(single_part)},
+          otp_app
+        )
     end
   end
 end

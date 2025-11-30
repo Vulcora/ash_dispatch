@@ -1,7 +1,7 @@
 defmodule AshDispatch.MixProject do
   use Mix.Project
 
-  @version "0.1.5"
+  @version "0.2.0"
   @description "Event-driven notification system for Ash Framework with multiple transport types"
   @source_url "https://github.com/Vulcora/ash_dispatch"
 
@@ -136,7 +136,6 @@ defmodule AshDispatch.MixProject do
           AshDispatch.Resources.Notification
         ],
         "Behaviours & Plugins": [
-          AshDispatch.RecipientResolver,
           AshDispatch.UserPreference,
           AshDispatch.Event.Interpolation
         ],
@@ -146,7 +145,6 @@ defmodule AshDispatch.MixProject do
           AshDispatch.Dsl.Sections
         ],
         Testing: [
-          AshDispatch.Test.RecipientResolver,
           AshDispatch.Test.UserPreference
         ]
       ],

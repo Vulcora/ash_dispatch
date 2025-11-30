@@ -28,6 +28,8 @@ defmodule AshDispatch.Helpers.NotificationLoader do
       )
   """
 
+  alias AshDispatch.Config
+
   require Ash.Query
   require Logger
 
@@ -59,7 +61,7 @@ defmodule AshDispatch.Helpers.NotificationLoader do
     limit = Keyword.get(opts, :limit, 50)
     serializer = Keyword.get(opts, :serializer)
 
-    notification_resource()
+    Config.notification_resource()
     |> Ash.Query.filter(user_id == ^user_id)
     |> Ash.Query.sort(inserted_at: :desc)
     |> Ash.Query.limit(limit)
@@ -131,7 +133,7 @@ defmodule AshDispatch.Helpers.NotificationLoader do
     actor = Keyword.get(opts, :actor)
 
     with {:ok, notification} <-
-           notification_resource()
+           Config.notification_resource()
            |> Ash.get(notification_id, actor: actor),
          {:ok, updated} <-
            notification
@@ -161,11 +163,6 @@ defmodule AshDispatch.Helpers.NotificationLoader do
   - `{:error, reason}` - Failed to mark notifications
   """
   def mark_all_as_read(user_id, _opts \\ []) do
-    notification_resource().mark_all_as_read(user_id)
-  end
-
-  # Get configured notification resource or fall back to default
-  defp notification_resource do
-    Application.get_env(:ash_dispatch, :notification_resource, AshDispatch.Resources.Notification)
+    Config.notification_resource().mark_all_as_read(user_id)
   end
 end

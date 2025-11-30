@@ -11,29 +11,49 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
       defmodule MyApp.Deliveries.DeliveryReceipt do
         use AshDispatch.Resources.DeliveryReceipt.Base,
           repo: MyApp.Repo,
-          user_resource: MyApp.Accounts.User
+          domain: MyApp.Deliveries,
+          notification_resource: MyApp.Notifications.Notification,
+          extensions: [AshTypescript.Resource]
+
+        # Optional: TypeScript type configuration
+        typescript do
+          type_name("DeliveryReceipt")
+        end
+
+        # Add your User relationship
+        relationships do
+          belongs_to :user, MyApp.Accounts.User do
+            source_attribute :user_id
+            destination_attribute :id
+            allow_nil? true
+            public? true
+          end
+        end
       end
 
-  This will create a complete DeliveryReceipt resource with all attributes, actions,
-  and a user relationship to your User resource - no manual duplication needed!
+  ## Options
+
+  - `:repo` - (required) Ecto repo module
+  - `:domain` - (required) Ash domain for the resource
+  - `:notification_resource` - (required) Your Notification resource module
+  - `:user_resource` - User resource module for auto-created relationship (optional)
+  - `:extensions` - Additional Ash extensions (e.g., `[AshTypescript.Resource]`)
   """
 
   defmacro __using__(opts) do
     repo = Keyword.fetch!(opts, :repo)
+    domain = Keyword.fetch!(opts, :domain)
+    notification_resource = Keyword.fetch!(opts, :notification_resource)
     user_resource = Keyword.get(opts, :user_resource)
-
-    notification_resource =
-      Keyword.get(opts, :notification_resource, AshDispatch.Resources.Notification)
+    extra_extensions = Keyword.get(opts, :extensions, [])
+    all_extensions = [AshStateMachine] ++ extra_extensions
 
     quote do
       use Ash.Resource,
-        domain: unquote(Keyword.get(opts, :domain, AshDispatch.Domain)),
+        domain: unquote(domain),
         data_layer: AshPostgres.DataLayer,
         authorizers: [Ash.Policy.Authorizer],
-        extensions: [
-          AshStateMachine,
-          AshTypescript.Resource
-        ]
+        extensions: unquote(all_extensions)
 
       postgres do
         table "delivery_receipts"
@@ -110,8 +130,7 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
         attribute :audience, :atom,
           allow_nil?: false,
           public?: true,
-          constraints: [one_of: [:user, :admin, :system]],
-          description: "Target audience type"
+          description: "Target audience type (flexible - apps can use any atom)"
 
         attribute :status, :atom,
           default: :pending,

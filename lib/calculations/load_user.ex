@@ -21,6 +21,8 @@ defmodule AshDispatch.Calculations.LoadUser do
   """
   use Ash.Resource.Calculation
 
+  alias AshDispatch.Config
+
   @impl true
   def load(_query, _opts, _context) do
     # Declare that we need user_id to perform this calculation
@@ -30,8 +32,8 @@ defmodule AshDispatch.Calculations.LoadUser do
   @impl true
   def calculate(records, _opts, context) do
     # Get user resource configuration
-    user_resource = Application.get_env(:ash_dispatch, :user_resource)
-    user_domain = Application.get_env(:ash_dispatch, :user_domain)
+    user_resource = Config.user_resource()
+    user_domain = Config.user_domain()
 
     if is_nil(user_resource) or is_nil(user_domain) do
       # No user resource configured - return nil for all records

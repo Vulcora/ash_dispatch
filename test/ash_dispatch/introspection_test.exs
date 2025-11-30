@@ -1,5 +1,6 @@
 defmodule AshDispatch.IntrospectionTest do
-  use ExUnit.Case, async: true
+  # Disable async because tests depend on Application config set in test_helper.exs
+  use ExUnit.Case, async: false
 
   alias AshDispatch.Introspection
 
@@ -39,16 +40,8 @@ defmodule AshDispatch.IntrospectionTest do
   end
 
   describe "missing_event_modules/1" do
-    setup do
-      # Ensure test config is set
-      Application.put_env(:ash_dispatch_test, :ash_domains, [AshDispatch.Test.Domain])
-
-      on_exit(fn ->
-        Application.delete_env(:ash_dispatch_test, :ash_domains)
-      end)
-
-      :ok
-    end
+    # Config is set in test_helper.exs:
+    # Application.put_env(:ash_dispatch_test, :ash_domains, [AshDispatch.Test.Domain])
 
     test "returns events without explicit module that need generation" do
       # Get missing modules for our test app
@@ -78,9 +71,9 @@ defmodule AshDispatch.IntrospectionTest do
       ticket_created = Enum.find(missing, &(&1.event_id == "ticket.created"))
 
       assert ticket_created != nil
-      # Domain is derived from AshDispatch.Test.Domain -> "Domain" -> :domain -> "Domain"
+      # Domain is derived from resource namespace: AshDispatch.Test.Ticket -> "Test"
       # So module is: {OtpApp}.{Domain}.Events.{Event}.Event
-      assert ticket_created.module_name == AshDispatchTest.Domain.Events.Created.Event
+      assert ticket_created.module_name == AshDispatchTest.Test.Events.Created.Event
       assert String.ends_with?(ticket_created.module_path, "events/created/event.ex")
     end
 
@@ -96,15 +89,7 @@ defmodule AshDispatch.IntrospectionTest do
   end
 
   describe "all_events/1" do
-    setup do
-      Application.put_env(:ash_dispatch_test, :ash_domains, [AshDispatch.Test.Domain])
-
-      on_exit(fn ->
-        Application.delete_env(:ash_dispatch_test, :ash_domains)
-      end)
-
-      :ok
-    end
+    # Config is set in test_helper.exs
 
     test "returns all inline events from resources" do
       events = Introspection.all_events(:ash_dispatch_test)
@@ -137,7 +122,7 @@ defmodule AshDispatch.IntrospectionTest do
   end
 
   describe "template_directory/2" do
-    test "returns convention-based path for inline events without module" do
+    test "returns module-based path for inline events (derived from domain/name)" do
       event_info = %{
         module: nil,
         domain: :orders,
@@ -147,10 +132,11 @@ defmodule AshDispatch.IntrospectionTest do
 
       result = Introspection.template_directory(event_info, :my_app)
 
-      assert result == "lib/my_app/orders/templates/product_order/created"
+      # Always uses module-based path: lib/{app}/{domain}/events/{event}/templates
+      assert result == "lib/my_app/orders/events/created/templates"
     end
 
-    test "returns module-based path for events with module" do
+    test "returns module-based path for events with explicit module" do
       event_info = %{
         module: MyApp.Orders.Events.Created.Event,
         domain: :orders,
@@ -164,7 +150,7 @@ defmodule AshDispatch.IntrospectionTest do
       assert String.contains?(result, "my_app/orders/events/created")
     end
 
-    test "falls back to event name when resource_name is nil" do
+    test "derives path from domain and event name" do
       event_info = %{
         module: nil,
         domain: :tickets,
@@ -174,20 +160,13 @@ defmodule AshDispatch.IntrospectionTest do
 
       result = Introspection.template_directory(event_info, :acme)
 
-      assert result == "lib/acme/tickets/templates/assigned/assigned"
+      # Always uses module-based path structure
+      assert result == "lib/acme/tickets/events/assigned/templates"
     end
   end
 
   describe "dispatch_resources/1" do
-    setup do
-      Application.put_env(:ash_dispatch_test, :ash_domains, [AshDispatch.Test.Domain])
-
-      on_exit(fn ->
-        Application.delete_env(:ash_dispatch_test, :ash_domains)
-      end)
-
-      :ok
-    end
+    # Config is set in test_helper.exs
 
     test "returns resources with AshDispatch.Resource extension" do
       resources = Introspection.dispatch_resources(:ash_dispatch_test)

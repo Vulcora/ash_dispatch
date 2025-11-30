@@ -40,7 +40,7 @@ defmodule AshDispatch.Changes.DispatchEvent do
 
   use Ash.Resource.Change
 
-  alias AshDispatch.{Context, Channel, Dispatcher}
+  alias AshDispatch.{ChannelResolver, Config, Context, Dispatcher, EventResolver}
   alias Ash.Changeset
 
   require Logger
@@ -154,14 +154,12 @@ defmodule AshDispatch.Changes.DispatchEvent do
     # Load relationships if specified
     record = maybe_load_relationships(record, load, changeset)
 
-    # Get event module and call prepare_data if it exists
-    event_modules = Application.get_env(:ash_dispatch, :event_modules, [])
-
+    # Use centralized EventResolver for event lookup and prepare_data
     data =
-      case Enum.find(event_modules, fn {id, _module} -> id == event_id end) do
-        {^event_id, event_module} ->
-          # Call prepare_data (may return empty map from default implementation)
-          prepared_data = event_module.prepare_data(changeset, record)
+      case EventResolver.find_module(event_id) do
+        {:ok, event_module} ->
+          # Call prepare_data using EventResolver (handles errors gracefully)
+          prepared_data = EventResolver.prepare_data(event_module, changeset, record)
 
           # If prepare_data returns empty map, use default behavior
           if map_size(prepared_data) == 0 do
@@ -170,7 +168,7 @@ defmodule AshDispatch.Changes.DispatchEvent do
             prepared_data
           end
 
-        _ ->
+        {:error, :not_found} ->
           # Fallback if event not found in config
           Map.put(%{}, data_key, record)
       end
@@ -233,8 +231,8 @@ defmodule AshDispatch.Changes.DispatchEvent do
   defp maybe_enrich_context_with_prepare_data(context, _changeset, _record, nil), do: context
 
   defp maybe_enrich_context_with_prepare_data(context, changeset, record, event_module) do
-    # Call prepare_data - it receives changeset and record
-    prepared_data = event_module.prepare_data(changeset, record)
+    # Use EventResolver for safe callback execution
+    prepared_data = EventResolver.prepare_data(event_module, changeset, record)
 
     # Merge prepared data into context.data if non-empty
     if map_size(prepared_data) > 0 do
@@ -242,15 +240,6 @@ defmodule AshDispatch.Changes.DispatchEvent do
     else
       context
     end
-  rescue
-    error ->
-      Logger.warning("""
-      Failed to call prepare_data on #{inspect(event_module)}
-      Error: #{inspect(error)}
-      Continuing with base context...
-      """)
-
-      context
   end
 
   defp get_base_url do
@@ -260,7 +249,7 @@ defmodule AshDispatch.Changes.DispatchEvent do
     # 3. Explicit base_url config (deprecated)
     # 4. Fallback to localhost
     cond do
-      endpoint = Application.get_env(:ash_dispatch, :endpoint) ->
+      endpoint = Config.endpoint() ->
         endpoint.url()
 
       host = System.get_env("PHX_HOST") ->
@@ -273,7 +262,7 @@ defmodule AshDispatch.Changes.DispatchEvent do
           _ -> "#{scheme}://#{host}:#{port}"
         end
 
-      base_url = Application.get_env(:ash_dispatch, :base_url) ->
+      base_url = Config.base_url() ->
         base_url
 
       true ->
@@ -281,66 +270,15 @@ defmodule AshDispatch.Changes.DispatchEvent do
     end
   end
 
-  defp resolve_channels(_context, %{channels: channels}) when not is_nil(channels) do
-    # Inline DSL channels take precedence (for hybrid mode)
-    # Convert inline channel configs to Channel structs
-    Enum.map(channels, &channel_config_to_struct/1)
-  end
-
-  defp resolve_channels(context, %{module: module}) when not is_nil(module) do
-    # Fall back to module callback if no inline channels
-    module.channels(context)
-  end
-
-  defp channel_config_to_struct(channel) when is_map(channel) do
-    %Channel{
-      transport: Map.fetch!(channel, :transport),
-      audience: Map.fetch!(channel, :audience),
-      time: extract_time(channel),
-      policy: Map.get(channel, :policy, :always),
-      variant: Map.get(channel, :variant),
-      webhook_url: Map.get(channel, :webhook_url),
-      content: Map.get(channel, :content, %{}) |> Enum.into(%{}),
-      metadata: Map.get(channel, :metadata, %{}) |> Enum.into(%{}),
-      opts: Map.get(channel, :opts, %{}),
-      load: Map.get(channel, :load, [])
-    }
-  end
-
-  defp channel_config_to_struct(channel) when is_list(channel) do
-    %Channel{
-      transport: Keyword.fetch!(channel, :transport),
-      audience: Keyword.fetch!(channel, :audience),
-      time: extract_time(channel),
-      policy: Keyword.get(channel, :policy, :always),
-      variant: Keyword.get(channel, :variant),
-      webhook_url: Keyword.get(channel, :webhook_url),
-      content: Keyword.get(channel, :content, []) |> Enum.into(%{}),
-      metadata: Keyword.get(channel, :metadata, []) |> Enum.into(%{}),
-      opts: Keyword.get(channel, :opts, %{}),
-      load: Keyword.get(channel, :load, [])
-    }
-  end
-
-  # Extract time from channel config - supports both :time and :delay keys
-  defp extract_time(channel) when is_map(channel) do
-    case Map.get(channel, :time) || Map.get(channel, :delay) do
-      nil -> {:in, 0}
-      {:in, _} = time -> time
-      {:at, _} = time -> time
-      seconds when is_integer(seconds) -> {:in, seconds}
-      _ -> {:in, 0}
-    end
-  end
-
-  defp extract_time(channel) when is_list(channel) do
-    case Keyword.get(channel, :time) || Keyword.get(channel, :delay) do
-      nil -> {:in, 0}
-      {:in, _} = time -> time
-      {:at, _} = time -> time
-      seconds when is_integer(seconds) -> {:in, seconds}
-      _ -> {:in, 0}
-    end
+  defp resolve_channels(context, event_config) do
+    # Use centralized ChannelResolver for consistent priority logic
+    # DSL channels take precedence, module callback is fallback
+    ChannelResolver.resolve(
+      context.event_id,
+      Map.get(event_config, :module),
+      context,
+      dsl_channels: Map.get(event_config, :channels)
+    )
   end
 
   defp dispatch_to_channel(context, channel, event_config) do

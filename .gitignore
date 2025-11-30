@@ -29,3 +29,6 @@ Thumbs.db
 
 # Build artifacts
 /priv/ash_dispatch/
+
+# AI
+.claude/

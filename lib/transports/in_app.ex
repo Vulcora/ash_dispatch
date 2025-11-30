@@ -35,6 +35,10 @@ defmodule AshDispatch.Transports.InApp do
       # -> Returns {:ok, updated_receipt}
   """
 
+  import AshDispatch.ContentMap
+
+  alias AshDispatch.Config
+
   require Logger
 
   @doc """
@@ -128,12 +132,7 @@ defmodule AshDispatch.Transports.InApp do
         }
 
         # Create Notification record via Ash
-        notification_resource =
-          Application.get_env(
-            :ash_dispatch,
-            :notification_resource,
-            AshDispatch.Resources.Notification
-          )
+        notification_resource = Config.notification_resource()
 
         case notification_resource
              |> Ash.Changeset.for_create(:create, notification_attrs)
@@ -200,11 +199,6 @@ defmodule AshDispatch.Transports.InApp do
 
   defp extract_resource_id(_), do: nil
 
-  # Get content value, handling both atom and string keys (Postgres returns string keys)
-  defp get_content(content, key) when is_atom(key) do
-    content[key] || content[Atom.to_string(key)]
-  end
-
   # Get notification type, converting string values to atoms and defaulting to :info
   defp get_notification_type(content) do
     case get_content(content, :notification_type) do
@@ -219,7 +213,7 @@ defmodule AshDispatch.Transports.InApp do
 
   # Broadcast notification to user's channel in JSON-serializable format
   defp broadcast_notification(notification) do
-    pubsub_module = Application.get_env(:ash_dispatch, :pubsub_module)
+    pubsub_module = Config.pubsub_module()
 
     if pubsub_module do
       serialized = %{

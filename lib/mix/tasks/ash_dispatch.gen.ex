@@ -151,6 +151,9 @@ defmodule Mix.Tasks.AshDispatch.Gen do
 
       generated_count = generated_count + generate_sdk_files(missing.sdk_files)
 
+      # Ensure .prettierignore includes generated files
+      generated_count = generated_count + ensure_prettierignore(otp_app)
+
       if generated_count > 0 do
         Mix.shell().info("\nGenerated #{generated_count} file(s)")
       end
@@ -221,15 +224,21 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     output_path = sdk_path(otp_app, "events.ts")
 
     if output_path && length(events) > 0 do
-      expected_content = generate_events_typescript_content(events)
-      current_content = if File.exists?(output_path), do: File.read!(output_path), else: ""
+      expected_content = generate_events_typescript_content(events) |> ensure_trailing_newline()
+      file_exists = File.exists?(output_path)
+      current_content = if file_exists, do: File.read!(output_path), else: ""
 
-      # Compare without timestamp line
-      expected_without_ts = remove_timestamp(expected_content)
-      current_without_ts = remove_timestamp(current_content)
+      # Compare without timestamp and trailing whitespace (handles formatter differences)
+      expected_normalized = normalize_for_comparison(expected_content)
+      current_normalized = normalize_for_comparison(current_content)
 
-      if expected_without_ts != current_without_ts do
-        %{path: output_path, content: expected_content}
+      if expected_normalized != current_normalized do
+        %{
+          path: output_path,
+          content: expected_content,
+          event_count: length(events),
+          is_new: !file_exists
+        }
       else
         nil
       end
@@ -242,15 +251,21 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     output_path = sdk_path(otp_app, "types.ts")
 
     if output_path && length(counters) > 0 do
-      expected_content = generate_types_typescript_content(counters)
-      current_content = if File.exists?(output_path), do: File.read!(output_path), else: ""
+      expected_content = generate_types_typescript_content(counters) |> ensure_trailing_newline()
+      file_exists = File.exists?(output_path)
+      current_content = if file_exists, do: File.read!(output_path), else: ""
 
-      # Compare without timestamp line
-      expected_without_ts = remove_timestamp(expected_content)
-      current_without_ts = remove_timestamp(current_content)
+      # Compare without timestamp and trailing whitespace (handles formatter differences)
+      expected_normalized = normalize_for_comparison(expected_content)
+      current_normalized = normalize_for_comparison(current_content)
 
-      if expected_without_ts != current_without_ts do
-        %{path: output_path, content: expected_content}
+      if expected_normalized != current_normalized do
+        %{
+          path: output_path,
+          content: expected_content,
+          counter_count: length(Enum.uniq_by(counters, & &1.name)),
+          is_new: !file_exists
+        }
       else
         nil
       end
@@ -286,6 +301,18 @@ defmodule Mix.Tasks.AshDispatch.Gen do
 
   defp remove_timestamp(content) do
     Regex.replace(~r/\/\/ Generated at: .*\n/, content, "")
+  end
+
+  # Normalize content for comparison - strips timestamp and trailing whitespace
+  defp normalize_for_comparison(content) do
+    content
+    |> remove_timestamp()
+    |> String.trim_trailing()
+  end
+
+  # Ensure content ends with exactly one newline (prettier standard)
+  defp ensure_trailing_newline(content) do
+    String.trim_trailing(content) <> "\n"
   end
 
   defp count_missing(missing) do
@@ -565,7 +592,20 @@ defmodule Mix.Tasks.AshDispatch.Gen do
 
     File.write!(events_info.path, events_info.content)
 
-    Mix.shell().info([:green, "* creating ", :reset, events_info.path])
+    action = if events_info.is_new, do: "creating ", else: "updating "
+    detail = "(#{events_info.event_count} events)"
+
+    Mix.shell().info([
+      :green,
+      "* #{action}",
+      :reset,
+      events_info.path,
+      " ",
+      :faint,
+      detail,
+      :reset
+    ])
+
     1
   end
 
@@ -654,12 +694,26 @@ defmodule Mix.Tasks.AshDispatch.Gen do
 
     File.write!(types_info.path, types_info.content)
 
-    Mix.shell().info([:green, "* creating ", :reset, types_info.path])
+    action = if types_info.is_new, do: "creating ", else: "updating "
+    detail = "(#{types_info.counter_count} counters)"
+
+    Mix.shell().info([
+      :green,
+      "* #{action}",
+      :reset,
+      types_info.path,
+      " ",
+      :faint,
+      detail,
+      :reset
+    ])
+
     1
   end
 
   defp generate_types_typescript_content(counters) do
-    unique = Enum.uniq_by(counters, & &1.name)
+    # Sort by name for deterministic output
+    unique = counters |> Enum.uniq_by(& &1.name) |> Enum.sort_by(& &1.name)
     grouped = Enum.group_by(unique, & &1.group)
     merged_metadata = merge_counter_metadata(counters)
     by_source = Enum.group_by(counters, & &1.source)
@@ -849,6 +903,8 @@ defmodule Mix.Tasks.AshDispatch.Gen do
         sources: sources
       }
     end)
+    # Sort by name for deterministic output
+    |> Enum.sort_by(& &1.name)
   end
 
   defp snake_to_camel(string) do
@@ -880,6 +936,120 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     end)
 
     length(sdk_files)
+  end
+
+  # ============================================================================
+  # Prettier Ignore
+  # ============================================================================
+
+  @prettierignore_header "# Auto-generated by AshDispatch - do not edit this section"
+  @prettierignore_footer "# End AshDispatch section"
+
+  defp ensure_prettierignore(otp_app) do
+    case find_prettierignore_path(otp_app) do
+      nil ->
+        0
+
+      {prettierignore_path, paths_to_ignore} ->
+        if update_prettierignore(prettierignore_path, paths_to_ignore) do
+          action = if File.exists?(prettierignore_path), do: "updating ", else: "creating "
+          Mix.shell().info([:green, "* #{action}", :reset, prettierignore_path])
+          1
+        else
+          0
+        end
+    end
+  end
+
+  defp find_prettierignore_path(otp_app) do
+    sdk_base = sdk_base_path(otp_app)
+    ash_ts_output = Application.get_env(:ash_typescript, :output_file)
+
+    if sdk_base do
+      # Find the frontend project root (where package.json lives)
+      frontend_root = find_frontend_root(sdk_base)
+
+      if frontend_root do
+        prettierignore_path = Path.join(frontend_root, ".prettierignore")
+
+        # Calculate relative paths from frontend root
+        sdk_relative = Path.relative_to(sdk_base, frontend_root)
+
+        paths = [sdk_relative <> "/"]
+
+        # Also add ash_rpc.ts if it exists
+        paths =
+          if ash_ts_output do
+            rpc_relative = Path.relative_to(ash_ts_output, frontend_root)
+            paths ++ [rpc_relative]
+          else
+            paths
+          end
+
+        {prettierignore_path, paths}
+      else
+        nil
+      end
+    else
+      nil
+    end
+  end
+
+  defp find_frontend_root(path) do
+    # Walk up the directory tree looking for package.json
+    cond do
+      File.exists?(Path.join(path, "package.json")) ->
+        path
+
+      path == "/" or path == "." ->
+        nil
+
+      true ->
+        find_frontend_root(Path.dirname(path))
+    end
+  end
+
+  defp update_prettierignore(path, paths_to_ignore) do
+    existing_content = if File.exists?(path), do: File.read!(path), else: ""
+
+    # Check if all paths are already in the file
+    all_present =
+      Enum.all?(paths_to_ignore, fn p ->
+        String.contains?(existing_content, p)
+      end)
+
+    if all_present do
+      false
+    else
+      # Generate the AshDispatch section
+      section_content =
+        [@prettierignore_header] ++
+          Enum.map(paths_to_ignore, &"#{&1}") ++
+          [@prettierignore_footer]
+
+      new_section = Enum.join(section_content, "\n")
+
+      # Check if we already have an AshDispatch section
+      new_content =
+        if String.contains?(existing_content, @prettierignore_header) do
+          # Replace existing section
+          Regex.replace(
+            ~r/#{Regex.escape(@prettierignore_header)}.*?#{Regex.escape(@prettierignore_footer)}/s,
+            existing_content,
+            new_section
+          )
+        else
+          # Append new section
+          if existing_content == "" do
+            new_section <> "\n"
+          else
+            String.trim_trailing(existing_content) <> "\n\n" <> new_section <> "\n"
+          end
+        end
+
+      File.write!(path, new_content)
+      true
+    end
   end
 
   # ============================================================================

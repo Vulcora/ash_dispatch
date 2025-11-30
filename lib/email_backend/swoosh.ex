@@ -59,6 +59,8 @@ defmodule AshDispatch.EmailBackend.Swoosh do
       # => {:ok, %{id: "msg_xyz", provider: :swoosh}}
   """
 
+  alias AshDispatch.Config
+
   require Logger
 
   @doc """
@@ -152,7 +154,7 @@ defmodule AshDispatch.EmailBackend.Swoosh do
   # Private functions
 
   defp get_mailer do
-    case Application.get_env(:ash_dispatch, :swoosh_mailer) do
+    case Config.swoosh_mailer() do
       nil ->
         raise """
         No Swoosh mailer configured for AshDispatch!

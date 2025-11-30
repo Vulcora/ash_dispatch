@@ -705,16 +705,15 @@ This pattern allows AshDispatch to be **library-friendly** while providing **fir
 
 ---
 
-## Migration from RecipientResolver
+## Why Config-Based Resolution?
 
-If you're migrating from the old `RecipientResolver` behaviour:
+Early versions of notification libraries often required custom resolver modules
+with hardcoded patterns for each resource type. This approach had problems:
 
-**Before (old pattern):**
+**Old pattern (avoid this):**
 ```elixir
-# lib/my_app/recipient_resolver.ex (130 lines of cond chains!)
+# 130+ lines of brittle cond chains!
 defmodule MyApp.RecipientResolver do
-  @behaviour AshDispatch.RecipientResolver
-
   def extract_user_id(%{data: data}) do
     cond do
       user = Map.get(data, :user) -> get_id(user)
@@ -723,19 +722,19 @@ defmodule MyApp.RecipientResolver do
           nil -> :error
           user -> get_id(user)
         end
-      # ... 40+ more lines
+      # ... 40+ more lines for each resource type
     end
   end
 
   def resolve_admins(_context) do
-    # Custom query logic
+    # Custom query logic duplicated everywhere
   end
 end
 ```
 
-**After (DSL-based pattern):**
+**AshDispatch's config-based approach:**
 ```elixir
-# config/config.exs (just configuration!)
+# config/config.exs - just configuration!
 config :ash_dispatch,
   user_module: MyApp.Accounts.User,
   recipient_filters: [
@@ -746,16 +745,16 @@ config :ash_dispatch,
     ]
   ]
 
-# Delete lib/my_app/recipient_resolver.ex entirely
+# No resolver module needed!
 ```
 
 **Benefits:**
-- ❌ Delete 130+ lines of brittle code
+- ✅ Zero boilerplate - just config
 - ✅ Future-proof for new resources and audiences
-- ✅ Zero maintenance - just update config
+- ✅ Zero maintenance - add audiences without code changes
 - ✅ Automatic CiString handling
 - ✅ Works with ANY Ash resource structure
-- ✅ Add new audiences without code changes
+- ✅ Uses Ash introspection - no hardcoded patterns
 
 ## Troubleshooting
 

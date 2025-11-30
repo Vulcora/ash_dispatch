@@ -6,6 +6,9 @@ defmodule AshDispatch.Calculations.ObanJob do
   The calculation itself just returns nil - the real loading happens in the preparation.
   """
   use Ash.Resource.Calculation
+
+  alias AshDispatch.Config
+
   import Ecto.Query
 
   @impl true
@@ -61,7 +64,7 @@ defmodule AshDispatch.Calculations.ObanJob do
   end
 
   defp get_repo do
-    Application.get_env(:ash_dispatch, :repo) ||
+    Config.repo() ||
       raise """
       Missing configuration for :ash_dispatch, :repo
 

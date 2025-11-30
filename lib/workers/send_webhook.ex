@@ -71,7 +71,8 @@ defmodule AshDispatch.Workers.SendWebhook do
     queue: :webhooks,
     max_attempts: 5
 
-  alias AshDispatch.Resources.DeliveryReceipt
+  alias AshDispatch.Config
+  alias AshDispatch.ReceiptStatus
 
   require Logger
 
@@ -97,7 +98,7 @@ defmodule AshDispatch.Workers.SendWebhook do
     Logger.info("Processing webhook job for receipt #{receipt_id}")
 
     # Fetch receipt (bypass authorization - workers run as system)
-    case DeliveryReceipt |> Ash.get(receipt_id, authorize?: false) do
+    case Config.delivery_receipt_resource() |> Ash.get(receipt_id, authorize?: false) do
       {:ok, receipt} ->
         process_webhook(receipt, args)
 
@@ -111,45 +112,22 @@ defmodule AshDispatch.Workers.SendWebhook do
 
   defp process_webhook(receipt, args) do
     # Mark as sending
-    {:ok, receipt} = mark_sending(receipt)
+    {:ok, receipt} = ReceiptStatus.mark_sending(receipt)
 
     # Send webhook
     case send_webhook(args) do
       {:ok, response} ->
         # Mark as sent
-        mark_sent(receipt, response)
+        ReceiptStatus.mark_sent(receipt, response)
         Logger.info("Webhook sent successfully for receipt #{receipt.id}")
         :ok
 
       {:error, reason} ->
         # Mark as failed (will be retried by Oban)
-        mark_failed(receipt, reason)
+        ReceiptStatus.mark_failed(receipt, reason)
         Logger.error("Webhook failed for receipt #{receipt.id}: #{inspect(reason)}")
         {:error, reason}
     end
-  end
-
-  defp mark_sending(receipt) do
-    receipt
-    |> Ash.Changeset.for_update(:mark_sending, %{})
-    |> Ash.update()
-  end
-
-  defp mark_sent(receipt, response) do
-    receipt
-    |> Ash.Changeset.for_update(:mark_sent, %{
-      provider_id: response[:id],
-      provider_response: response
-    })
-    |> Ash.update!()
-  end
-
-  defp mark_failed(receipt, reason) do
-    receipt
-    |> Ash.Changeset.for_update(:mark_failed, %{
-      error_message: inspect(reason)
-    })
-    |> Ash.update!()
   end
 
   defp send_webhook(args) do

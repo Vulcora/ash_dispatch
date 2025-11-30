@@ -445,18 +445,21 @@ end
 
 ### 3. Configure Event Discovery
 
-AshDispatch automatically discovers event modules at compile time. Ensure your event modules are compiled before the dispatcher:
+AshDispatch automatically discovers event modules at runtime. Just configure your OTP app and domains:
 
 ```elixir
 # config/config.exs
 config :ash_dispatch,
   otp_app: :my_app,
-  event_modules: []  # Auto-discovered at compile time
+  domains: [MyApp.Orders, MyApp.Tickets]
+
+# Your domains must be configured
+config :my_app, :ash_domains, [MyApp.Orders, MyApp.Tickets]
 ```
 
-Event modules are discovered by looking for modules that:
-- Implement the `AshDispatch.Event` behaviour
-- Define an `id/0` callback
+Event modules are discovered by scanning resources with `AshDispatch.Resource` extension:
+- Events with explicit `module:` option in DSL
+- Auto-generated modules following `{App}.{Domain}.Events.{Event}.Event` convention
 
 ### 4. Use Manual Triggers in Your Admin UI
 

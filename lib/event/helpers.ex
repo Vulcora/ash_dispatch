@@ -30,6 +30,8 @@ defmodule AshDispatch.Event.Helpers do
   - Returns configured system recipients (if any)
   """
 
+  alias AshDispatch.Config
+
   require Logger
   require Ash.Query
 
@@ -101,8 +103,18 @@ defmodule AshDispatch.Event.Helpers do
             other -> other
           end)
 
-        dynamic_filter = apply(module, function, resolved_args)
-        resolve_by_filter(dynamic_filter, context)
+        arity = length(resolved_args)
+
+        if function_exported?(module, function, arity) do
+          dynamic_filter = apply(module, function, resolved_args)
+          resolve_by_filter(dynamic_filter, context)
+        else
+          Logger.warning(
+            "[AshDispatch] Dynamic filter function #{inspect(module)}.#{function}/#{arity} not found"
+          )
+
+          []
+        end
 
       # Empty list = all users (query with no filter)
       [] ->
@@ -111,7 +123,8 @@ defmodule AshDispatch.Event.Helpers do
       # List with relationship path and filter = [:user, admin: true]
       # First bare atoms are the relationship path, rest is filter
       list when is_list(list) ->
-        {relationship_path, filter} = parse_relationship_path_and_filter(list)
+        {relationship_path, filter} =
+          AshDispatch.Helpers.ResourceIntrospection.parse_audience_config(list)
 
         if relationship_path == [] do
           # No relationship path, just a filter (legacy format)
@@ -181,7 +194,7 @@ defmodule AshDispatch.Event.Helpers do
       end
 
     # 2. Fall back to app config
-    app_audiences = Application.get_env(:ash_dispatch, :audiences, [])
+    app_audiences = Config.audiences()
 
     app_filter =
       if audience in app_audiences do
@@ -208,26 +221,11 @@ defmodule AshDispatch.Event.Helpers do
     end)
   end
 
-  # Parse audience config list into relationship path and filter
-  # Examples:
-  #   [:user, admin: true] -> {[:user], [admin: true]}
-  #   [:user, :associated_seller] -> {[:user, :associated_seller], []}
-  #   [admin: true] -> {[], [admin: true]}
-  defp parse_relationship_path_and_filter(list) do
-    {relationship_path, filter} =
-      Enum.split_while(list, fn
-        item when is_atom(item) -> true
-        {_key, _value} -> false
-      end)
-
-    {relationship_path, filter}
-  end
-
   # Resolve recipients by following relationship path and applying filter
   # For [:user, admin: true] - extract :user from context, filter for admin: true
   # For [:user, :associated_seller] - follow relationship chain
   defp resolve_via_relationship_and_filter(context, relationship_path, filter) do
-    user_module = Application.get_env(:ash_dispatch, :user_module)
+    user_module = Config.user_module()
 
     if is_nil(user_module) do
       Logger.warning("No :user_module configured, cannot resolve via relationship path")
@@ -332,7 +330,7 @@ defmodule AshDispatch.Event.Helpers do
 
   # Resolve recipients using an Ash Query filter
   defp resolve_by_filter(filter, context) do
-    user_module = Application.get_env(:ash_dispatch, :user_module)
+    user_module = Config.user_module()
 
     if is_nil(user_module) do
       Logger.warning(
@@ -382,7 +380,7 @@ defmodule AshDispatch.Event.Helpers do
 
   # Resolve user from a named relationship in the context
   defp resolve_from_relationship(context, relationship_name) do
-    user_module = Application.get_env(:ash_dispatch, :user_module)
+    user_module = Config.user_module()
 
     if is_nil(user_module) do
       Logger.warning(
@@ -460,7 +458,7 @@ defmodule AshDispatch.Event.Helpers do
   end
 
   def evaluate_user_filter(user, filter) do
-    user_module = Application.get_env(:ash_dispatch, :user_module)
+    user_module = Config.user_module()
 
     if is_nil(user_module) do
       Logger.warning("[Event.Helpers] No :user_module configured, cannot evaluate filter")

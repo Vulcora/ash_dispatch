@@ -316,14 +316,6 @@ CounterLoader.load_counters_for_user("admin-456")
 # }
 ```
 
-#### Load Admin Counters Only
-
-```elixir
-# Load only :admin audience counters
-admin_counters = CounterLoader.load_admin_counters()
-# => %{admin_pending_reseller_requests: 3, admin_pending_orders: 12}
-```
-
 #### Configuration
 
 ```elixir

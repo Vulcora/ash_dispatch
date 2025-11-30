@@ -73,6 +73,8 @@ defmodule AshDispatch.Transports.Slack do
   - `<url|text>` - Hyperlink
   """
 
+  import AshDispatch.ContentMap
+
   alias AshDispatch.Channel
   alias AshDispatch.Workers.SendWebhook
 
@@ -163,40 +165,40 @@ defmodule AshDispatch.Transports.Slack do
   defp build_slack_payload(content, _context) when is_map(content) do
     # Base payload with text
     payload = %{
-      "text" => content["notification_message"] || content[:notification_message]
+      "text" => get_content(content, :notification_message)
     }
 
     # Add blocks if provided (Block Kit - preferred format)
     payload =
-      case content["slack_blocks"] || content[:slack_blocks] do
+      case get_content(content, :slack_blocks) do
         nil -> payload
         blocks -> Map.put(payload, "blocks", blocks)
       end
 
     # Add attachments if provided (legacy format)
     payload =
-      case content["slack_attachments"] || content[:slack_attachments] do
+      case get_content(content, :slack_attachments) do
         nil -> payload
         attachments -> Map.put(payload, "attachments", attachments)
       end
 
     # Add username override if provided
     payload =
-      case content["slack_username"] || content[:slack_username] do
+      case get_content(content, :slack_username) do
         nil -> payload
         username -> Map.put(payload, "username", username)
       end
 
     # Add icon emoji if provided
     payload =
-      case content["slack_icon_emoji"] || content[:slack_icon_emoji] do
+      case get_content(content, :slack_icon_emoji) do
         nil -> payload
         icon_emoji -> Map.put(payload, "icon_emoji", icon_emoji)
       end
 
     # Add icon URL if provided
     payload =
-      case content["slack_icon_url"] || content[:slack_icon_url] do
+      case get_content(content, :slack_icon_url) do
         nil -> payload
         icon_url -> Map.put(payload, "icon_url", icon_url)
       end

@@ -10,22 +10,45 @@ defmodule AshDispatch.Resources.Notification.Base do
       defmodule MyApp.Notifications.Notification do
         use AshDispatch.Resources.Notification.Base,
           repo: MyApp.Repo,
-          domain: MyApp.Notifications
+          domain: MyApp.Notifications,
+          extensions: [AshTypescript.Resource]
+
+        # Optional: TypeScript type configuration
+        typescript do
+          type_name("Notification")
+        end
+
+        # Add your User relationship
+        relationships do
+          belongs_to :user, MyApp.Accounts.User do
+            source_attribute :user_id
+            destination_attribute :id
+            allow_nil? false
+            public? true
+            define_attribute? false  # Base already defines user_id
+          end
+        end
       end
 
-  This will create a complete Notification resource with all attributes, actions,
-  and counter DSL - no manual duplication needed!
+  ## Options
+
+  - `:repo` - (required) Ecto repo module
+  - `:domain` - (required) Ash domain
+  - `:extensions` - Additional Ash extensions (e.g., `[AshTypescript.Resource]`)
   """
 
   defmacro __using__(opts) do
     repo = Keyword.fetch!(opts, :repo)
     domain = Keyword.fetch!(opts, :domain)
+    extra_extensions = Keyword.get(opts, :extensions, [])
+    # AshDispatch.Resource provides counter broadcasting DSL
+    all_extensions = [AshDispatch.Resource] ++ extra_extensions
 
     quote do
       use Ash.Resource,
         domain: unquote(domain),
         data_layer: AshPostgres.DataLayer,
-        extensions: [AshTypescript.Resource, AshDispatch.Resource]
+        extensions: unquote(all_extensions)
 
       require Ash.Query
       require Ash.Expr

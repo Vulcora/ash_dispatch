@@ -52,9 +52,11 @@ Defines an event that is automatically dispatched when specified actions occur.
 
 | Name | Type | Default | Required | Description |
 |------|------|---------|----------|-------------|
-| `trigger_on` | `atom \| [atom]` | - | ✅ | Action name(s) that trigger this event |
+| `trigger_on` | `atom \| [atom] \| :manual` | - | ✅ | Action name(s) that trigger this event, or `:manual` for manual-only dispatch |
 | `module` | `atom` | `nil` | ❌ | Optional callback module implementing `AshDispatch.Event` behaviour |
 | `event_id` | `string` | auto-generated | ❌ | Explicit event ID. Auto-generated as `{resource_name}.{event_name}` if not specified |
+| `data_key` | `atom` | `:record` | ❌ | Key to use for the resource in context.data |
+| `manual_trigger_filter` | `keyword` | `nil` | ❌ | Filter for showing event in manual trigger UI (e.g., `[confirmed_at: nil]`) |
 | `load` | `[atom]` | `[]` | ❌ | Relationships to preload before dispatching |
 | `domain` | `atom` | `nil` | ❌ | Event domain (e.g., `:orders`, `:tickets`). Defaults to resource domain |
 | `channels` | `[keyword_list \| map]` | `[]` | ❌ | List of delivery channels for this event |
@@ -125,6 +127,38 @@ dispatch do
     ]
 end
 ```
+
+#### Manual-only events
+
+Use `trigger_on: :manual` for events that are dispatched programmatically via `AshDispatch.Dispatcher.dispatch/3` rather than automatically on actions. This is useful for:
+
+- Events triggered by external systems (AshAuthentication senders)
+- Events that need custom context not available in action changes
+- Events that should only be triggered from admin UI
+
+```elixir
+dispatch do
+  # Dispatched by AshAuthentication sender, not auto-triggered
+  event :password_reset,
+    trigger_on: :manual,
+    data_key: :user,
+    module: MyApp.Accounts.Events.PasswordReset.Event,
+    channels: [[transport: :email, audience: :user]]
+
+  # Only show in manual trigger UI for unconfirmed users
+  event :email_confirmation,
+    trigger_on: :manual,
+    data_key: :user,
+    manual_trigger_filter: [confirmed_at: nil],
+    module: MyApp.Accounts.Events.EmailConfirmation.Event,
+    channels: [[transport: :email, audience: :user]]
+end
+```
+
+Manual events are still registered in EventRegistry for:
+- Preview in admin email template UI
+- Manual trigger functionality
+- TypeScript type generation
 
 ---
 
@@ -523,8 +557,154 @@ end
 
 ---
 
+## counters
+
+The `counters` section defines real-time counter broadcasts that automatically update frontend UIs when actions occur.
+
+### Usage
+
+```elixir
+defmodule MyApp.Orders.ProductOrder do
+  use Ash.Resource,
+    extensions: [AshDispatch.Resource]
+
+  counters do
+    counter :pending_orders,
+      trigger_on: [:create, :complete, :cancel],
+      query_filter: [status: :pending],
+      audience: :user,
+      group: :orders,
+      invalidates: ["orders"]
+
+    counter :admin_pending_orders,
+      trigger_on: [:create, :complete, :cancel],
+      query_filter: [status: :pending],
+      audience: :admin,
+      authorize?: false,
+      invalidates: ["orders"]
+  end
+end
+```
+
+### Counter Options
+
+| Name | Type | Default | Required | Description |
+|------|------|---------|----------|-------------|
+| `trigger_on` | `atom \| [atom]` | - | ✅ | Action name(s) that trigger this counter broadcast |
+| `query_filter` | `keyword` | `[]` | ❌ | Static Ash filter for counting (e.g., `[status: :pending]`) |
+| `audience` | `atom` | - | ✅ | Who receives broadcasts: `:user`, `:admin`, or custom audience |
+| `counter_name` | `atom` | same as name | ❌ | Counter name to broadcast (defaults to DSL name) |
+| `invalidates` | `[string]` | `[]` | ❌ | Frontend query keys to invalidate |
+| `group` | `atom` | `nil` | ❌ | Counter group for TypeScript generation |
+| `authorize?` | `boolean` | `true` | ❌ | Whether to use Ash authorization (policies) |
+| `scope` | `Ash.Expr.t()` | `nil` | ❌ | Ash expression for recipient-specific scoping |
+| `user_id_path` | `[atom]` | auto-derived | ❌ | Path to user_id for scoping (e.g., `[:cart, :user_id]`) |
+| `filter_by_record` | `keyword` | `nil` | ❌ | Filter by triggering record field |
+| `aggregate` | `atom` | `nil` | ❌ | Use Ash aggregate instead of query_filter |
+
+### Three-Layer Control Model
+
+Counters use a three-layer control model for maximum flexibility:
+
+| Layer | Option | Purpose |
+|-------|--------|---------|
+| **Audience** | `audience: :admin` | WHO receives the broadcast |
+| **Authorization** | `authorize?: false` | WHAT records actor CAN see (Ash policies) |
+| **Scoping** | `scope: expr(...)` | WHAT subset we WANT to count |
+
+### Counter Examples
+
+#### User Counter (Auto-Scoped)
+
+```elixir
+counter :my_pending_orders,
+  trigger_on: [:create, :complete],
+  query_filter: [status: :pending],
+  audience: :user,
+  invalidates: ["orders"]
+```
+
+User counters automatically derive `user_id_path` from the resource's `belongs_to :user` relationship.
+
+#### Admin Counter (System-Wide)
+
+```elixir
+counter :admin_pending_orders,
+  trigger_on: [:create, :complete],
+  query_filter: [status: :pending],
+  audience: :admin,
+  authorize?: false,  # Bypass policies - count ALL records
+  invalidates: ["orders", "analytics"]
+```
+
+#### Scoped Counter (Custom Expression)
+
+```elixir
+# Regional admin sees only orders in their region
+counter :regional_pending_orders,
+  trigger_on: [:create, :complete],
+  query_filter: [status: :pending],
+  audience: :admin,
+  scope: expr(region == ^actor(:region)),
+  invalidates: ["orders"]
+
+# Admin sees their assigned tickets
+counter :my_assigned_tickets,
+  trigger_on: [:create, :resolve],
+  query_filter: [status: :open],
+  audience: :admin,
+  scope: expr(assigned_to_id == ^actor(:id)),
+  invalidates: ["tickets"]
+
+# Seller sees orders containing their products
+counter :seller_orders,
+  trigger_on: [:create, :complete],
+  query_filter: [status: :pending],
+  audience: :seller,
+  scope: expr(exists(items, product.seller_id == ^actor(:id))),
+  invalidates: ["orders"]
+```
+
+#### Nested Resource Counter
+
+```elixir
+# CartItem → Cart → User (no direct user relationship)
+counter :cart_items,
+  trigger_on: [:add_to_cart, :remove_from_cart],
+  query_filter: [],
+  audience: :user,
+  user_id_path: [:cart, :user_id],  # Explicit path
+  invalidates: ["cart"]
+```
+
+### Scope Expression Templates
+
+The `scope` option accepts any Ash expression with `^actor(:field)` templates:
+
+```elixir
+^actor(:id)           # Recipient's ID
+^actor(:region)       # Recipient's region attribute
+^actor(:team_id)      # Recipient's team_id
+^actor([:profile, :org_id])  # Nested path access
+```
+
+### scope vs user_id_path
+
+| Feature | `user_id_path` | `scope` |
+|---------|----------------|---------|
+| Simple user_id | ✅ `[:user_id]` | ✅ `expr(user_id == ^actor(:id))` |
+| Nested paths | ✅ `[:cart, :user_id]` | ✅ `expr(cart.user_id == ^actor(:id))` |
+| Attribute matching | ❌ | ✅ `expr(region == ^actor(:region))` |
+| Relationship traversal | ❌ | ✅ `expr(assigned_support.team_id == ^actor(:team_id))` |
+| exists/has_many | ❌ | ✅ `expr(exists(items, ...))` |
+
+**Recommendation:** Use `user_id_path` for simple cases, `scope` for complex filtering.
+
+---
+
 ## See Also
 
 - [Getting Started Tutorial](../tutorials/getting-started.md)
 - [What is AshDispatch?](../topics/what-is-ash-dispatch.md)
 - [Phoenix Integration](../topics/phoenix-integration.md)
+- [Counter Broadcasting](../topics/counter-broadcasting.md)

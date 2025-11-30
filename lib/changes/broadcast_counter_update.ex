@@ -21,14 +21,12 @@ defmodule AshDispatch.Changes.BroadcastCounterUpdate do
 
   ## Configuration
 
-  The counter system requires two configured modules:
+  The counter system requires a configured broadcast function:
 
       config :ash_dispatch,
-        counter_registry: MyApp.CounterRegistry,
-        counter_broadcaster: MyApp.CounterBroadcaster
+        counter_broadcast_fn: &MyAppWeb.CounterBroadcaster.broadcast/4
 
-  See `AshDispatch.Behaviours.CounterRegistry` and `AshDispatch.Behaviours.CounterBroadcaster`
-  for implementation details.
+  See `AshDispatch.Behaviours.CounterBroadcaster` for implementation details.
 
   ## Usage
 
@@ -105,6 +103,9 @@ defmodule AshDispatch.Changes.BroadcastCounterUpdate do
 
   use Ash.Resource.Change
 
+  alias AshDispatch.Config
+  alias AshDispatch.Helpers.ResourceIntrospection
+
   require Ash.Query
   require Logger
 
@@ -132,50 +133,54 @@ defmodule AshDispatch.Changes.BroadcastCounterUpdate do
     recipients = resolve_recipients_for_counter(record, audience, opts)
     Logger.debug("[BroadcastCounterUpdate] Resolved #{length(recipients)} recipients")
 
+    # Get authorization and scoping options
+    authorize? = Keyword.get(opts, :authorize?, true)
+    scope = Keyword.get(opts, :scope)
+
+    # Use consolidated helper for user_id_path resolution
+    user_id_path =
+      ResourceIntrospection.resolve_user_id_path_for_scoping(resource,
+        authorize?: authorize?,
+        scope: scope,
+        user_id_path: Keyword.get(opts, :user_id_path),
+        audience: audience
+      )
+
     # For each recipient, execute query and broadcast
     Enum.each(recipients, fn recipient ->
-      # Determine if query should be user-scoped
-      user_scoped? = audience == :user
-
       # Execute count query
       count =
         try do
-          if user_scoped? do
-            # User-scoped: count items for this specific user
-            query =
-              resource
-              |> Ash.Query.new()
+          query =
+            resource
+            |> Ash.Query.new()
 
-            # Apply static filter only if not empty/nil
-            query = apply_query_filter(query, query_filter)
+          # Apply static filter only if not empty/nil
+          query = apply_query_filter(query, query_filter)
 
-            # Apply user_id filter based on configured path
-            # Skip if filter_by_record is provided - it already scopes to user's data
-            query =
-              if filter_by_record do
-                query
-              else
-                user_id_path = Keyword.get(opts, :user_id_path, [:user_id])
-                user_filter = build_user_filter(user_id_path, recipient.id)
+          # Apply scoping based on priority: scope > user_id_path > none
+          # Skip if filter_by_record is provided - it already scopes to user's data
+          query =
+            cond do
+              # Explicit scope expression takes precedence
+              scope && !filter_by_record ->
+                apply_scope_expression(query, scope, recipient)
+
+              # Legacy user_id_path support
+              user_id_path && !filter_by_record ->
+                user_filter = ResourceIntrospection.build_user_filter(user_id_path, recipient.id)
                 Ash.Query.filter(query, ^user_filter)
-              end
 
-            # Apply dynamic filter by record field (e.g., cart_id from Cart)
-            query = apply_filter_by_record(query, record, filter_by_record)
+              # No scoping (global counter or filter_by_record handles it)
+              true ->
+                query
+            end
 
-            Ash.count!(query, authorize?: false)
-          else
-            # Global: count all items (admin/system counters)
-            query = Ash.Query.new(resource)
+          # Apply dynamic filter by record field (e.g., cart_id from Cart)
+          query = apply_filter_by_record(query, record, filter_by_record)
 
-            # Apply static filter only if not empty/nil
-            query = apply_query_filter(query, query_filter)
-
-            # Apply dynamic filter by record field
-            query = apply_filter_by_record(query, record, filter_by_record)
-
-            Ash.count!(query, authorize?: false)
-          end
+          # Use authorize? setting - false bypasses policies
+          Ash.count!(query, authorize?: authorize?, actor: recipient)
         rescue
           e ->
             Logger.error(
@@ -195,26 +200,33 @@ defmodule AshDispatch.Changes.BroadcastCounterUpdate do
     end)
   end
 
-  # Resolve recipients for counter broadcasting using unified system
+  # Resolve recipients for counter broadcasting using audience config pattern.
+  #
+  # The audience configuration determines recipient resolution:
+  # - Relationship-based (bare atom like :user) → extract from record
+  # - Filter-based (tuple like {:admin, [...]}) → query all matching users
+  #
+  # This aligns with the Ash philosophy of deriving behavior from configuration.
   defp resolve_recipients_for_counter(record, audience, opts) do
-    case audience do
-      :user ->
-        # For :user audience, extract the user from the record
-        case extract_user_from_record(record, opts) do
-          nil -> []
-          user -> [user]
-        end
-
-      _ ->
-        # For :admin, :system, or custom audiences, use event system
-        channel = %{audience: audience}
-        AshDispatch.Event.Helpers.resolve_recipients_for_audience(nil, channel)
+    if ResourceIntrospection.is_relationship_audience?(audience) do
+      # Relationship-based: extract the single recipient from the record
+      # e.g., :user → notification.user, :partner → order.partner
+      case extract_user_from_record(record, audience, opts) do
+        nil -> []
+        user -> [user]
+      end
+    else
+      # Filter-based: query all users matching the audience filter
+      # e.g., :admin → all users where admin: true
+      channel = %{audience: audience}
+      AshDispatch.Event.Helpers.resolve_recipients_for_audience(nil, channel)
     end
   end
 
   # Extract user from record (supports nested relationships)
-  defp extract_user_from_record(record, opts) do
-    user_id = extract_user_id(record, opts)
+  # Uses audience to derive relationship name when user_id_path not explicit
+  defp extract_user_from_record(record, audience, opts) do
+    user_id = extract_user_id(record, audience, opts)
 
     if user_id do
       # Return minimal user struct with id (same format as Event.Helpers)
@@ -224,12 +236,20 @@ defmodule AshDispatch.Changes.BroadcastCounterUpdate do
     end
   end
 
-  # Extract user_id from record, supporting nested relationship paths
-  defp extract_user_id(record, opts) do
+  # Extract user_id from record, supporting nested relationship paths.
+  # Uses audience to derive field name when not explicitly configured.
+  defp extract_user_id(record, audience, opts) do
     case Keyword.get(opts, :user_id_path) do
       nil ->
-        # Fallback to direct field lookup
-        user_id_field = Keyword.get(opts, :user_id_field, :user_id)
+        # Derive field from audience relationship name
+        # e.g., :user → :user_id, :partner → :partner_id
+        relationship_name = ResourceIntrospection.get_audience_relationship(audience)
+
+        user_id_field =
+          Keyword.get(opts, :user_id_field) ||
+            (relationship_name && String.to_atom("#{relationship_name}_id")) ||
+            :user_id
+
         Map.get(record, user_id_field)
 
       path when is_list(path) ->
@@ -294,6 +314,22 @@ defmodule AshDispatch.Changes.BroadcastCounterUpdate do
 
   defp apply_query_filter(query, _query_filter), do: query
 
+  # Apply scope expression with recipient as actor context.
+  #
+  # Scope expressions can use ^actor(:field) templates to reference
+  # the recipient's attributes. For example:
+  #   scope: expr(user_id == ^actor(:id))
+  #   scope: expr(region == ^actor(:region))
+  #   scope: expr(assigned_support.team_id == ^actor(:team_id))
+  #
+  # The expression is applied as a filter to the query.
+  defp apply_scope_expression(query, scope_expr, recipient) do
+    # Set the actor context so ^actor(:field) templates resolve correctly
+    query
+    |> Ash.Query.set_context(%{actor: recipient})
+    |> Ash.Query.filter(^scope_expr)
+  end
+
   # Apply filter by record field (e.g., filter CartItem by cart_id from Cart)
   defp apply_filter_by_record(query, _record, nil), do: query
 
@@ -333,20 +369,9 @@ defmodule AshDispatch.Changes.BroadcastCounterUpdate do
     end
   end
 
-  # Build a filter expression for user_id based on the path
-  defp build_user_filter([field], user_id) do
-    [{field, user_id}]
-  end
-
-  defp build_user_filter([relationship | rest], user_id) do
-    # For nested paths like [:cart, :user_id], build nested filter
-    nested_filter = build_user_filter(rest, user_id)
-    [{relationship, nested_filter}]
-  end
-
   defp broadcast_to_user(user_id, counter_name, count, invalidates, _audience) do
     # Get configured broadcast function
-    case Application.get_env(:ash_dispatch, :counter_broadcast_fn) do
+    case Config.counter_broadcast_fn() do
       nil ->
         Logger.warning(
           "[BroadcastCounterUpdate] No counter_broadcast_fn configured, skipping broadcast"

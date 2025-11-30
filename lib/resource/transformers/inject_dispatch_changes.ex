@@ -46,6 +46,8 @@ defmodule AshDispatch.Resource.Transformers.InjectDispatchChanges do
 
   use Spark.Dsl.Transformer
 
+  alias AshDispatch.Config
+  alias AshDispatch.Naming
   alias Spark.Dsl.Transformer
 
   # Run after ValidateEvents (which runs after SetPrimaryActions)
@@ -62,12 +64,71 @@ defmodule AshDispatch.Resource.Transformers.InjectDispatchChanges do
 
     # Get the resource module for generating event ID
     resource = Transformer.get_persisted(dsl_state, :module)
+    domain_name = Naming.domain_name(resource)
+
+    # First pass: Update event entities with auto-derived values
+    # This ensures Info.events() returns events with proper event_id, module, domain, and data_key
+    dsl_state =
+      Enum.reduce(events, dsl_state, fn event, acc_dsl_state ->
+        case event do
+          %AshDispatch.Resource.Dsl.Event{name: name} = evt ->
+            # Auto-generate event_id if not set
+            updated_event =
+              if is_nil(evt.event_id) do
+                %{evt | event_id: Naming.event_id(resource, name)}
+              else
+                evt
+              end
+
+            # Auto-resolve module if not set (checks if convention-named module exists)
+            updated_event =
+              if is_nil(updated_event.module) do
+                resolved_module = resolve_event_module(updated_event, resource, domain_name)
+                %{updated_event | module: resolved_module}
+              else
+                updated_event
+              end
+
+            # Auto-derive domain from resource path if not set
+            updated_event =
+              if is_nil(updated_event.domain) do
+                derived_domain = domain_name && String.to_atom(domain_name)
+                %{updated_event | domain: derived_domain}
+              else
+                updated_event
+              end
+
+            # Auto-derive data_key from resource name if not set
+            updated_event =
+              if is_nil(updated_event.data_key) do
+                %{updated_event | data_key: Naming.data_key(resource)}
+              else
+                updated_event
+              end
+
+            # Only replace if something changed
+            if updated_event != evt do
+              Transformer.replace_entity(acc_dsl_state, [:dispatch], updated_event, fn existing ->
+                match?(%AshDispatch.Resource.Dsl.Event{name: ^name}, existing)
+              end)
+            else
+              acc_dsl_state
+            end
+
+          _ ->
+            acc_dsl_state
+        end
+      end)
+
+    # Re-fetch events after updating
+    events = Transformer.get_entities(dsl_state, [:dispatch])
 
     # Build a map of event_id -> channels for persistence
     dispatch_channels =
       events
+      |> Enum.filter(&match?(%AshDispatch.Resource.Dsl.Event{}, &1))
       |> Enum.map(fn event ->
-        event_id = event.event_id || generate_event_id(resource, event.name)
+        event_id = event.event_id || Naming.event_id(resource, event.name)
         channels = build_channels(event.channels)
         {event_id, channels}
       end)
@@ -79,7 +140,13 @@ defmodule AshDispatch.Resource.Transformers.InjectDispatchChanges do
     # For each event, inject the dispatch change into the triggered action(s)
     dsl_state =
       Enum.reduce(events, dsl_state, fn event, acc_dsl_state ->
-        inject_event_dispatch(acc_dsl_state, event)
+        case event do
+          %AshDispatch.Resource.Dsl.Event{} ->
+            inject_event_dispatch(acc_dsl_state, event)
+
+          _ ->
+            acc_dsl_state
+        end
       end)
 
     {:ok, dsl_state}
@@ -111,17 +178,23 @@ defmodule AshDispatch.Resource.Transformers.InjectDispatchChanges do
   # Private helpers
 
   defp inject_event_dispatch(dsl_state, event) do
-    # Normalize trigger_on to always be a list
-    action_names =
-      case event.trigger_on do
-        name when is_atom(name) -> [name]
-        names when is_list(names) -> names
-      end
+    # Skip injection for manual-only events
+    # These are dispatched programmatically, not via action changes
+    if event.trigger_on == :manual do
+      dsl_state
+    else
+      # Normalize trigger_on to always be a list
+      action_names =
+        case event.trigger_on do
+          name when is_atom(name) -> [name]
+          names when is_list(names) -> names
+        end
 
-    # Inject dispatch change into each action
-    Enum.reduce(action_names, dsl_state, fn action_name, acc_dsl_state ->
-      inject_into_action(acc_dsl_state, action_name, event)
-    end)
+      # Inject dispatch change into each action
+      Enum.reduce(action_names, dsl_state, fn action_name, acc_dsl_state ->
+        inject_into_action(acc_dsl_state, action_name, event)
+      end)
+    end
   end
 
   defp inject_into_action(dsl_state, action_name, event) do
@@ -129,13 +202,11 @@ defmodule AshDispatch.Resource.Transformers.InjectDispatchChanges do
     resource = Transformer.get_persisted(dsl_state, :module)
 
     # Generate event ID if not explicitly set
-    event_id =
-      event.event_id ||
-        generate_event_id(resource, event.name)
+    event_id = event.event_id || Naming.event_id(resource, event.name)
 
     # Extract domain and resource names for template path resolution
-    domain_name = extract_domain_name(resource)
-    resource_name = extract_resource_name(resource)
+    domain_name = Naming.domain_name(resource)
+    resource_name = Naming.resource_name(resource)
 
     # Resolve the event module:
     # 1. If explicitly set in DSL (user override) -> use that
@@ -186,53 +257,6 @@ defmodule AshDispatch.Resource.Transformers.InjectDispatchChanges do
         add_change_to_action(dsl_state, action, change_opts)
     end
   end
-
-  defp generate_event_id(resource, event_name) when is_atom(resource) do
-    # Use resource.event format to avoid collisions when multiple resources
-    # in the same domain use common event names (e.g., :created, :updated)
-    # E.g., Magasin.Requests.ResellerRequest + :created -> "reseller_request.created"
-    resource_name =
-      resource
-      |> Module.split()
-      |> List.last()
-      |> Macro.underscore()
-
-    "#{resource_name}.#{event_name}"
-  end
-
-  defp generate_event_id(_resource, event_name), do: "unknown.#{event_name}"
-
-  defp extract_domain_name(resource) when is_atom(resource) do
-    # Extract domain name from module path for template path resolution
-    # E.g., Magasin.Requests.ResellerRequest -> "requests"
-    # Takes the second-to-last module segment as the domain
-    module_parts = Module.split(resource)
-
-    case length(module_parts) do
-      n when n >= 2 ->
-        # Get second-to-last segment (domain name)
-        module_parts
-        |> Enum.at(-2)
-        |> Macro.underscore()
-
-      _ ->
-        nil
-    end
-  end
-
-  defp extract_domain_name(_), do: nil
-
-  defp extract_resource_name(resource) when is_atom(resource) do
-    # Extract resource name from module path for template path resolution
-    # E.g., Magasin.Requests.ResellerRequest -> "reseller_request"
-    # Takes the last module segment as the resource name
-    resource
-    |> Module.split()
-    |> List.last()
-    |> Macro.underscore()
-  end
-
-  defp extract_resource_name(_), do: nil
 
   defp find_action(dsl_state, action_name) do
     dsl_state
@@ -438,7 +462,7 @@ defmodule AshDispatch.Resource.Transformers.InjectDispatchChanges do
 
   # Get audiences config
   defp get_audiences_config do
-    audiences = Application.get_env(:ash_dispatch, :audiences, [])
+    audiences = Config.audiences()
 
     # Convert list format to keyword list for lookup
     # [:user, admin: [...]] -> [user: :user, admin: [...]]
@@ -473,7 +497,7 @@ defmodule AshDispatch.Resource.Transformers.InjectDispatchChanges do
 
       # No explicit module - try to find generated module
       nil ->
-        derived_module = derive_event_module_name(resource, domain_name, event.name)
+        derived_module = Naming.event_module(resource, domain_name, event.name)
 
         # Check if the derived module exists (was generated and compiled)
         if Code.ensure_loaded?(derived_module) do
@@ -483,23 +507,5 @@ defmodule AshDispatch.Resource.Transformers.InjectDispatchChanges do
           nil
         end
     end
-  end
-
-  # Derive the expected module name for an event
-  # Convention: {App}.{Domain}.Events.{EventName}.Event
-  # E.g., Magasin.Orders.Events.Created.Event
-  defp derive_event_module_name(resource, domain_name, event_name) do
-    # Get app module from resource
-    # Magasin.Orders.ProductOrder -> Magasin
-    app_module =
-      resource
-      |> Module.split()
-      |> List.first()
-
-    # Camelize domain and event names
-    domain_module = domain_name |> to_string() |> Macro.camelize()
-    event_module = event_name |> to_string() |> Macro.camelize()
-
-    Module.concat([app_module, domain_module, "Events", event_module, "Event"])
   end
 end

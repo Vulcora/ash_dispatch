@@ -891,13 +891,79 @@ test "resolved email renders correctly" do
 end
 ```
 
+## Add Real-Time Counters
+
+Counters broadcast live updates to frontend UIs. Add them to your resource:
+
+```elixir
+defmodule MyApp.Tickets.Ticket do
+  use Ash.Resource,
+    extensions: [AshDispatch.Resource]
+
+  # ... existing dispatch events ...
+
+  counters do
+    # User sees their open tickets
+    counter :open_tickets,
+      trigger_on: [:create, :resolve, :close],
+      query_filter: [status: :open],
+      audience: :user,
+      group: :tickets,
+      invalidates: ["tickets"]
+
+    # Admin sees ALL open tickets (system-wide)
+    counter :admin_open_tickets,
+      trigger_on: [:create, :resolve, :close],
+      query_filter: [status: :open],
+      audience: :admin,
+      authorize?: false,  # Bypass policies - count ALL records
+      invalidates: ["tickets"]
+  end
+end
+```
+
+### Counter Options Explained
+
+| Option | Purpose |
+|--------|---------|
+| `trigger_on` | Actions that trigger broadcast |
+| `query_filter` | Static filter for counting (e.g., `[status: :open]`) |
+| `audience` | WHO receives the broadcast (`:user`, `:admin`, custom) |
+| `authorize?` | `false` = bypass policies (admin dashboards) |
+| `scope` | Ash expression for custom filtering (see below) |
+| `invalidates` | Frontend query keys to invalidate |
+
+### Advanced: Scope Expressions
+
+For complex scoping beyond simple user_id relationships:
+
+```elixir
+# Regional admin sees only their region
+counter :regional_open_tickets,
+  trigger_on: [:create, :resolve],
+  query_filter: [status: :open],
+  audience: :admin,
+  scope: expr(region == ^actor(:region)),
+  invalidates: ["tickets"]
+
+# Admin sees their assigned tickets
+counter :my_assigned_tickets,
+  trigger_on: [:create, :resolve],
+  query_filter: [status: :open],
+  audience: :admin,
+  scope: expr(assigned_to_id == ^actor(:id)),
+  invalidates: ["tickets"]
+```
+
+See [Counter Broadcasting](../topics/counter-broadcasting.md) for complete documentation.
+
 ## Next Steps
 
 **Recommended next:** [App Integration](../topics/app-integration.md) - Set up custom resources, database, and RPC
 
 Then explore:
 - [Phoenix Integration](../topics/phoenix-integration.md) - Real-time channels and frontend
-- [Counter Broadcasting](../topics/counter-broadcasting.md) - Live UI counters
+- [Counter Broadcasting](../topics/counter-broadcasting.md) - Complete counter documentation
 - [User Preferences](../topics/user-preferences.md) - Let users control notifications
 - [DSL Reference](../dsls/DSL-AshDispatch-Resource.md) - Complete DSL documentation
 

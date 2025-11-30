@@ -11,12 +11,13 @@ defmodule AshDispatch.Resource.Dsl.Counter do
   - `:counter_name` - Counter name to broadcast (atom)
   - `:resource` - Ash resource module to query for counting (optional, defaults to current resource)
   - `:query_filter` - Ash.Query filter expression to count items
-  - `:audience` - Audience type (`:user`, `:admin`, or `:system`)
+  - `:audience` - Audience atom (any atom configured in `:ash_dispatch, :audiences`)
   - `:invalidates` - Frontend query keys to invalidate (list of strings)
   - `:user_id_path` - Relationship path to user_id (e.g., `[:cart, :user_id]` for nested relationships)
+  - `:scope` - Ash expression for scoping queries (e.g., `expr(user_id == ^actor(:id))`)
   - `:filter_by_record` - Filter counted resource by triggering record field (e.g., `[field: :cart_id]`)
   - `:group` - Counter group for TypeScript generation (e.g., `:orders`, `:tickets`)
-  - `:global?` - Whether this is a global counter (bypasses policies, no user scoping)
+  - `:authorize?` - Whether to use Ash authorization (default: true)
   - `:aggregate` - Ash aggregate name to use instead of query_filter
   """
 
@@ -29,10 +30,11 @@ defmodule AshDispatch.Resource.Dsl.Counter do
     :audience,
     :invalidates,
     :user_id_path,
+    :scope,
     :filter_by_record,
     :group,
     :aggregate,
-    global?: false,
+    authorize?: true,
     __spark_metadata__: nil
   ]
 
@@ -42,12 +44,13 @@ defmodule AshDispatch.Resource.Dsl.Counter do
           counter_name: atom(),
           resource: module() | nil,
           query_filter: any(),
-          audience: :user | :admin | :system,
+          audience: atom(),
           invalidates: [String.t()],
           user_id_path: [atom()] | nil,
+          scope: Ash.Expr.t() | nil,
           filter_by_record: keyword() | map() | nil,
           group: atom() | nil,
-          global?: boolean(),
+          authorize?: boolean(),
           aggregate: atom() | nil
         }
 end

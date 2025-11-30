@@ -695,7 +695,7 @@ defmodule AshDispatch.Event do
       def source_url(context, channel) do
         # Default implementation using configured URL builder
         # Apps configure: config :ash_dispatch, url_builder: MyApp.UrlBuilder
-        url_builder = Application.get_env(:ash_dispatch, :url_builder)
+        url_builder = AshDispatch.Config.url_builder()
 
         if url_builder do
           # Get resource key from data_key callback (use apply to avoid compile-time warning)

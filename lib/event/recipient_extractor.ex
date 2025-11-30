@@ -1,4 +1,6 @@
 defmodule AshDispatch.Event.RecipientExtractor do
+  alias AshDispatch.Config
+
   @moduledoc """
   Extracts recipient identifiers and names from recipient structs using cascading configuration.
 
@@ -181,19 +183,19 @@ defmodule AshDispatch.Event.RecipientExtractor do
 
   # Get field from audience-specific config (transport-first)
   defp get_audience_transport_field(audience, transport, field_type) do
-    config = Application.get_env(:ash_dispatch, :recipient_fields, [])
+    config = Config.recipient_fields()
     get_in(config, [:audiences, audience, transport, field_type])
   end
 
   # Get field from transport config (primary lookup)
   defp get_transport_field(transport, field_type) do
-    config = Application.get_env(:ash_dispatch, :recipient_fields, [])
+    config = Config.recipient_fields()
     get_in(config, [transport, field_type])
   end
 
   # Get generic default field (fallback for backwards compatibility)
   defp get_generic_field(field_type) do
-    config = Application.get_env(:ash_dispatch, :recipient_fields, [])
+    config = Config.recipient_fields()
     config[field_type]
   end
 

@@ -49,6 +49,7 @@ defmodule AshDispatch.Transports.Email do
   """
 
   alias AshDispatch.Channel
+  alias AshDispatch.Config
 
   require Logger
 
@@ -162,10 +163,7 @@ defmodule AshDispatch.Transports.Email do
 
       # Fallback to configured default
       true ->
-        default_from =
-          Application.get_env(:ash_dispatch, :default_from_email, "noreply@example.com")
-
-        %{"name" => "System", "email" => default_from}
+        %{"name" => "System", "email" => Config.default_from_email()}
     end
   end
 

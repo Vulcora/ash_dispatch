@@ -37,9 +37,10 @@ defmodule MyApp.Notifications.Notification do
 
   use AshDispatch.Resources.Notification.Base,
     repo: MyApp.Repo,
-    domain: MyApp.Notifications
+    domain: MyApp.Notifications,
+    extensions: [AshTypescript.Resource]  # Optional - add if using TypeScript
 
-  # Optional: TypeScript type generation
+  # TypeScript type configuration (requires AshTypescript.Resource extension above)
   typescript do
     type_name("Notification")
   end
@@ -127,15 +128,24 @@ defmodule MyApp.Deliveries.DeliveryReceipt do
 
   use AshDispatch.Resources.DeliveryReceipt.Base,
     repo: MyApp.Repo,
-    domain: MyApp.Deliveries
+    domain: MyApp.Deliveries,
+    notification_resource: MyApp.Notifications.Notification,  # Required!
+    extensions: [AshTypescript.Resource]  # Optional - add if using TypeScript
 
-  # Optional: Add relationships
-  # relationships do
-  #   belongs_to :user, MyApp.Accounts.User do
-  #     source_attribute :recipient
-  #     destination_attribute :id
-  #   end
-  # end
+  # TypeScript type configuration (requires AshTypescript.Resource extension above)
+  typescript do
+    type_name("DeliveryReceipt")
+  end
+
+  # Add your User relationship
+  relationships do
+    belongs_to :user, MyApp.Accounts.User do
+      source_attribute :user_id
+      destination_attribute :id
+      allow_nil? true
+      public? true
+    end
+  end
 end
 ```
 

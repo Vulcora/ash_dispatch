@@ -14,6 +14,9 @@ defmodule AshDispatch.Preparations.LoadObanJob do
   - max_attempts: Maximum number of attempts
   """
   use Ash.Resource.Preparation
+
+  alias AshDispatch.Config
+
   import Ecto.Query
 
   @impl true
@@ -82,7 +85,7 @@ defmodule AshDispatch.Preparations.LoadObanJob do
   end
 
   defp get_repo do
-    Application.get_env(:ash_dispatch, :repo) ||
+    Config.repo() ||
       raise """
       Missing configuration for :ash_dispatch, :repo
 

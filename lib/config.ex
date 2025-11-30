@@ -1,0 +1,371 @@
+defmodule AshDispatch.Config do
+  @moduledoc """
+  Centralized configuration access for AshDispatch.
+
+  This module provides a single source of truth for all configuration values,
+  with consistent defaults and clear documentation of each option.
+
+  ## Why This Exists
+
+  Configuration lookups were scattered across 30+ files, each with potentially
+  different default values. This module ensures:
+
+  1. **Consistent defaults** - Each config key has one canonical default
+  2. **Single source of truth** - Change defaults in one place
+  3. **Discoverability** - All config options documented together
+  4. **Type safety** - Functions return expected types
+
+  ## Usage
+
+      # Instead of:
+      Application.get_env(:ash_dispatch, :user_module)
+
+      # Use:
+      AshDispatch.Config.user_module()
+
+  ## Configuration
+
+  All options are configured under the `:ash_dispatch` application:
+
+      config :ash_dispatch,
+        user_module: MyApp.Accounts.User,
+        domains: [MyApp.Orders, MyApp.Tickets],
+        otp_app: :my_app,
+        # ... see individual functions for all options
+  """
+
+  # ============================================================================
+  # Core Resources
+  # ============================================================================
+
+  @doc """
+  The user module for recipient resolution and preferences.
+
+  Used by:
+  - `AshDispatch.Event.Helpers` for recipient resolution
+  - `AshDispatch.Dispatcher` for user extraction from context
+  - Counter calculations
+
+  ## Example
+
+      config :ash_dispatch,
+        user_module: MyApp.Accounts.User
+  """
+  @spec user_module() :: module() | nil
+  def user_module do
+    Application.get_env(:ash_dispatch, :user_module)
+  end
+
+  @doc """
+  The user resource module (alias for user_module for clarity in some contexts).
+  """
+  @spec user_resource() :: module() | nil
+  def user_resource do
+    Application.get_env(:ash_dispatch, :user_resource)
+  end
+
+  @doc """
+  The domain containing the user resource.
+  """
+  @spec user_domain() :: module() | nil
+  def user_domain do
+    Application.get_env(:ash_dispatch, :user_domain)
+  end
+
+  @doc """
+  The delivery receipt resource module.
+
+  Must be configured - returns `nil` if not set.
+
+  ## Example
+
+      config :ash_dispatch,
+        delivery_receipt_resource: MyApp.Deliveries.DeliveryReceipt
+  """
+  @spec delivery_receipt_resource() :: module() | nil
+  def delivery_receipt_resource do
+    Application.get_env(:ash_dispatch, :delivery_receipt_resource)
+  end
+
+  @doc """
+  The notification resource module.
+
+  Must be configured - returns `nil` if not set.
+
+  ## Example
+
+      config :ash_dispatch,
+        notification_resource: MyApp.Notifications.Notification
+  """
+  @spec notification_resource() :: module() | nil
+  def notification_resource do
+    Application.get_env(:ash_dispatch, :notification_resource)
+  end
+
+  # ============================================================================
+  # Domains & OTP App
+  # ============================================================================
+
+  @doc """
+  List of Ash domains that have dispatch-enabled resources.
+
+  Used for:
+  - Event discovery via DSL introspection
+  - Counter loading
+  - SDK generation
+
+  ## Example
+
+      config :ash_dispatch,
+        domains: [MyApp.Orders, MyApp.Tickets, MyApp.Requests]
+  """
+  @spec domains() :: [module()]
+  def domains do
+    Application.get_env(:ash_dispatch, :domains, [])
+  end
+
+  @doc """
+  The OTP application name.
+
+  Used for:
+  - Template resolution
+  - Event module discovery
+  """
+  @spec otp_app() :: atom() | nil
+  def otp_app do
+    Application.get_env(:ash_dispatch, :otp_app)
+  end
+
+  # ============================================================================
+  # Email Configuration
+  # ============================================================================
+
+  @doc """
+  Default from email address.
+
+  Used when no `from` is specified in event module or inline DSL.
+
+  Defaults to `"noreply@example.com"`.
+  """
+  @spec default_from_email() :: String.t()
+  def default_from_email do
+    Application.get_env(:ash_dispatch, :default_from_email, "noreply@example.com")
+  end
+
+  @doc """
+  The email backend module for sending emails.
+
+  Should implement the email backend behaviour.
+
+  ## Example
+
+      config :ash_dispatch,
+        email_backend: AshDispatch.EmailBackend.Swoosh
+  """
+  @spec email_backend() :: module() | nil
+  def email_backend do
+    Application.get_env(:ash_dispatch, :email_backend)
+  end
+
+  @doc """
+  The Swoosh mailer module (when using Swoosh backend).
+  """
+  @spec swoosh_mailer() :: module() | nil
+  def swoosh_mailer do
+    Application.get_env(:ash_dispatch, :swoosh_mailer)
+  end
+
+  # ============================================================================
+  # URL Building
+  # ============================================================================
+
+  @doc """
+  The URL builder module for generating admin/source URLs.
+
+  Should implement `admin_url/2`, `source_url/2`, and optionally `resource_label/1`.
+  """
+  @spec url_builder() :: module() | nil
+  def url_builder do
+    Application.get_env(:ash_dispatch, :url_builder)
+  end
+
+  @doc """
+  The Phoenix endpoint module for URL generation.
+  """
+  @spec endpoint() :: module() | nil
+  def endpoint do
+    Application.get_env(:ash_dispatch, :endpoint)
+  end
+
+  @doc """
+  Base URL for the application (fallback when endpoint not available).
+  """
+  @spec base_url() :: String.t() | nil
+  def base_url do
+    Application.get_env(:ash_dispatch, :base_url)
+  end
+
+  # ============================================================================
+  # Recipients & Audiences
+  # ============================================================================
+
+  @doc """
+  Audience configuration for recipient resolution.
+
+  Maps audience atoms to filter configurations.
+
+  ## Example
+
+      config :ash_dispatch,
+        audiences: [
+          admin: [admin: true],
+          user: :user,
+          support: [role: :support]
+        ]
+  """
+  @spec audiences() :: keyword()
+  def audiences do
+    Application.get_env(:ash_dispatch, :audiences, [])
+  end
+
+  @doc """
+  Recipient field configuration for extracting email/name from user structs.
+
+  ## Example
+
+      config :ash_dispatch,
+        recipient_fields: [
+          email: [
+            default: :email,
+            audiences: [admin: :work_email]
+          ],
+          name: [
+            default: :display_name
+          ]
+        ]
+  """
+  @spec recipient_fields() :: keyword()
+  def recipient_fields do
+    Application.get_env(:ash_dispatch, :recipient_fields, [])
+  end
+
+  # ============================================================================
+  # User Preferences
+  # ============================================================================
+
+  @doc """
+  The user preference checker module.
+
+  Defaults to `AshDispatch.UserPreference.Default` which allows all notifications.
+  """
+  @spec user_preference() :: module()
+  def user_preference do
+    Application.get_env(:ash_dispatch, :user_preference, AshDispatch.UserPreference.Default)
+  end
+
+  @doc """
+  The preference provider module (legacy, prefer user_preference).
+  """
+  @spec preference_provider() :: module() | nil
+  def preference_provider do
+    Application.get_env(:ash_dispatch, :preference_provider)
+  end
+
+  # ============================================================================
+  # Integrations
+  # ============================================================================
+
+  @doc """
+  The PubSub module for broadcasting notifications.
+
+  Used by in-app transport to broadcast new notifications to user channels.
+  """
+  @spec pubsub_module() :: module() | nil
+  def pubsub_module do
+    Application.get_env(:ash_dispatch, :pubsub_module)
+  end
+
+  @doc """
+  The counter broadcaster module.
+
+  Should implement `broadcast/3` for counter updates.
+  """
+  @spec counter_broadcaster() :: module() | nil
+  def counter_broadcaster do
+    Application.get_env(:ash_dispatch, :counter_broadcaster)
+  end
+
+  @doc """
+  The counter broadcast function (alternative to counter_broadcaster module).
+  """
+  @spec counter_broadcast_fn() :: function() | nil
+  def counter_broadcast_fn do
+    Application.get_env(:ash_dispatch, :counter_broadcast_fn)
+  end
+
+  @doc """
+  The permission checker module for policy checks.
+  """
+  @spec permission_checker() :: module() | nil
+  def permission_checker do
+    Application.get_env(:ash_dispatch, :permission_checker)
+  end
+
+  # ============================================================================
+  # Database
+  # ============================================================================
+
+  @doc """
+  The Ecto repo module.
+
+  Used for Oban job queries and other database operations.
+  """
+  @spec repo() :: module() | nil
+  def repo do
+    Application.get_env(:ash_dispatch, :repo)
+  end
+
+  # ============================================================================
+  # Event Modules
+  # ============================================================================
+
+  @doc """
+  List of explicitly registered event modules.
+
+  These are discovered in addition to DSL-based events.
+  """
+  @spec event_modules() :: [module()]
+  def event_modules do
+    Application.get_env(:ash_dispatch, :event_modules, [])
+  end
+
+  # ============================================================================
+  # Compilation & Development
+  # ============================================================================
+
+  @doc """
+  Whether to compile templates at build time.
+
+  Defaults to `false`.
+  """
+  @spec compile_templates?() :: boolean()
+  def compile_templates? do
+    Application.get_env(:ash_dispatch, :compile_templates, false)
+  end
+
+  @doc """
+  Custom format extensions for template resolution.
+  """
+  @spec format_extensions() :: map()
+  def format_extensions do
+    Application.get_env(:ash_dispatch, :format_extensions, %{})
+  end
+
+  @doc """
+  Output path for generated SDK files.
+  """
+  @spec sdk_output_path() :: String.t() | nil
+  def sdk_output_path do
+    Application.get_env(:ash_dispatch, :sdk_output_path)
+  end
+end

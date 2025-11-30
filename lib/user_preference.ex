@@ -74,7 +74,7 @@ defmodule AshDispatch.UserPreference do
   notifications typically shouldn't be user-configurable.
   """
 
-  alias AshDispatch.{Context, Channel}
+  alias AshDispatch.{Channel, Config, Context}
 
   @doc """
   Checks if a user allows a specific notification.
@@ -165,6 +165,6 @@ defmodule AshDispatch.UserPreference do
   defp get_user_id(_), do: nil
 
   defp get_checker do
-    Application.get_env(:ash_dispatch, :user_preference, __MODULE__.Default)
+    Config.user_preference()
   end
 end

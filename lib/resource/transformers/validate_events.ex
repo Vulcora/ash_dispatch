@@ -51,21 +51,26 @@ defmodule AshDispatch.Resource.Transformers.ValidateEvents do
     end
   end
 
-  # Validate that trigger_on actions exist
+  # Validate that trigger_on actions exist (skip :manual events)
   defp validate_trigger_actions(events, dsl_state) do
     all_actions = get_all_action_names(dsl_state)
 
     invalid_events =
       Enum.filter(events, fn event ->
-        trigger_actions =
-          case event.trigger_on do
-            name when is_atom(name) -> [name]
-            names when is_list(names) -> names
-          end
+        # Skip validation for manual-only events
+        if event.trigger_on == :manual do
+          false
+        else
+          trigger_actions =
+            case event.trigger_on do
+              name when is_atom(name) -> [name]
+              names when is_list(names) -> names
+            end
 
-        Enum.any?(trigger_actions, fn action_name ->
-          action_name not in all_actions
-        end)
+          Enum.any?(trigger_actions, fn action_name ->
+            action_name not in all_actions
+          end)
+        end
       end)
 
     case invalid_events do

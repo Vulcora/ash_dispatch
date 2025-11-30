@@ -161,9 +161,7 @@ Every dispatched event creates a `DeliveryReceipt` Ash resource record:
 
 ### 5. User Preferences
 
-**Status:** 🚧 Coming Soon
-
-Users will be able to opt out of configurable notifications:
+Users can opt out of configurable notifications:
 
 ```elixir
 %UserEmailPreferences{
@@ -173,7 +171,43 @@ Users will be able to opt out of configurable notifications:
 }
 ```
 
-AshDispatch will automatically check preferences before delivering. For now, all notifications are sent.
+AshDispatch automatically checks preferences before delivering when configured.
+
+### 6. Real-Time Counters
+
+Counters broadcast live updates to frontend UIs when data changes:
+
+```elixir
+counters do
+  # User sees their pending orders count
+  counter :pending_orders,
+    trigger_on: [:create, :complete],
+    query_filter: [status: :pending],
+    audience: :user,
+    invalidates: ["orders"]
+
+  # Admin sees ALL pending orders (system-wide)
+  counter :admin_pending_orders,
+    trigger_on: [:create, :complete],
+    query_filter: [status: :pending],
+    audience: :admin,
+    authorize?: false,
+    invalidates: ["orders"]
+end
+```
+
+**Counter Features:**
+- ✅ Auto-broadcast when actions trigger
+- ✅ Three-layer control: audience, authorization, scoping
+- ✅ `scope` expressions for flexible filtering (regional, team, etc.)
+- ✅ Frontend query invalidation
+- ✅ TypeScript type generation
+
+**Use cases:**
+- Cart item counts
+- Pending order badges
+- Unread notification counts
+- Admin dashboard metrics
 
 ## How It Works
 
@@ -346,14 +380,15 @@ AshDispatch uses Swoosh as a transport layer.
 - ✅ User-facing notifications (emails, in-app, SMS)
 - ✅ Admin alerts and reports
 - ✅ Webhook notifications to external systems
+- ✅ **Real-time counters** (cart items, pending orders, unread notifications)
 - ✅ Audit trails needed
 - ✅ User preference management required
 - ✅ Multiple delivery channels
 
 **Not a Fit:**
-- ❌ Real-time UI updates (use PubSub)
 - ❌ High-throughput event streaming (use event sourcing)
 - ❌ Complex workflows (use Oban Pro workflows)
+- ❌ General PubSub (use Phoenix.PubSub - AshDispatch is for notifications/counters)
 
 ## Next Steps
 
@@ -367,32 +402,25 @@ AshDispatch is actively being developed. Here's the current status:
 
 ### ✅ Complete
 
-- **Resource Extension** - Define events in resources via DSL
+- **Resource Extension** - Define events and counters in resources via DSL
 - **Event Validation** - Compile-time validation of event configuration
-- **Change Injection** - Automatic `DispatchEvent` change injection via transformers
+- **Change Injection** - Automatic change injection via transformers
 - **DeliveryReceipt Resource** - Full Ash resource with state machine
 - **Receipt Persistence** - ETS data layer (override with Postgres)
 - **State Tracking** - Receipt status: pending → scheduled → sending → sent/failed
 - **Info Module** - Query events: `Info.events(Resource)`, `Info.events_for_action(Resource, :create)`
-- **InApp Transport** - Status updates via Ash changesets (notifications mocked)
-- **Email Transport** - Status updates via Ash changesets (Oban jobs mocked)
+- **InApp Transport** - Real notification records with PubSub support
+- **Email Transport** - Oban job enqueueing with Swoosh delivery
 - **Error Handling** - Graceful failures don't break actions
-- **Test Coverage** - 37 tests, 100% passing
-
-### 🚧 In Progress
-
-- **Notification Resource** - Creating real Notification records for in-app transport
-- **Recipient Resolution** - Admin/user lookup helpers
-- **Template System** - HEEx template rendering for emails
+- **Recipient Resolution** - Config-based admin/user lookup with Ash introspection
+- **Template System** - HEEx template rendering with layouts
+- **Counter Broadcasting** - Real-time counter updates via Phoenix Channels
+- **Counter DSL** - `authorize?`, `scope`, `user_id_path` for flexible scoping
+- **Retry System** - Automatic retry cron job for failed deliveries
 
 ### 📋 Planned
 
-- **Oban Integration** - Real job enqueueing for async delivery
-- **Email Sending** - Swoosh integration for actual email delivery
-- **User Preferences** - Opt-out support per notification category
-- **Retry System** - Automatic retry cron job for failed deliveries
-- **Remaining Transports** - Discord, Slack, SMS, Webhook implementations
-- **Domain Extension** - Counter definitions for real-time UI updates
+- **Remaining Transports** - Slack, SMS implementations
 - **Migration Guide** - Converting existing event modules to AshDispatch
 
 ### Data Layer Flexibility

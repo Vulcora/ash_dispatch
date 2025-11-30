@@ -15,19 +15,21 @@ defmodule AshDispatch.Calculations.AdminUrl do
 
   use Ash.Resource.Calculation
 
+  alias AshDispatch.{Config, EventResolver}
+
   @impl true
   def load(_query, _opts, _context), do: [:event_id, :source_type, :source_id]
 
   @impl true
   def calculate(records, _opts, _context) do
-    event_modules = Application.get_env(:ash_dispatch, :event_modules, [])
-    url_builder = Application.get_env(:ash_dispatch, :url_builder)
-    Enum.map(records, &compute_admin_url(&1, event_modules, url_builder))
+    url_builder = Config.url_builder()
+    Enum.map(records, &compute_admin_url(&1, url_builder))
   end
 
-  defp compute_admin_url(record, event_modules, url_builder) do
-    with {:ok, _event_module} <- find_event_module(record.event_id, event_modules),
-         {:ok, data_key} <- get_data_key(record.event_id, event_modules),
+  defp compute_admin_url(record, url_builder) do
+    # Use EventResolver for consistent event lookup and callback execution
+    with {:ok, event_module} <- EventResolver.find_module(record.event_id),
+         {:ok, data_key} <- get_data_key(event_module),
          {:ok, source_id} <- get_source_id(record),
          true <- not is_nil(url_builder) do
       mock_resource = %{id: source_id}
@@ -42,27 +44,11 @@ defmodule AshDispatch.Calculations.AdminUrl do
     end
   end
 
-  defp find_event_module(event_id, event_modules) do
-    case Enum.find(event_modules, fn {id, _} -> id == event_id end) do
-      {_, module} -> {:ok, module}
-      nil -> :error
-    end
-  end
-
-  defp get_data_key(event_id, event_modules) do
-    case find_event_module(event_id, event_modules) do
-      {:ok, module} ->
-        if function_exported?(module, :data_key, 0) do
-          case module.data_key() do
-            key when is_atom(key) and not is_nil(key) -> {:ok, key}
-            _ -> :error
-          end
-        else
-          :error
-        end
-
-      :error ->
-        :error
+  # Use EventResolver for safe data_key callback execution
+  defp get_data_key(event_module) do
+    case EventResolver.data_key(event_module) do
+      key when is_atom(key) and not is_nil(key) -> {:ok, key}
+      _ -> :error
     end
   end
 
