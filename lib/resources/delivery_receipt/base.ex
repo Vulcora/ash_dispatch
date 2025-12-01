@@ -385,6 +385,30 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
             |> Ash.Changeset.change_attribute(:retry_count, retry_count + 1)
             |> Ash.Changeset.change_attribute(:last_retry_at, DateTime.utc_now())
           end
+
+          # Enqueue a new Oban job to process this retry
+          change {AshDispatch.Changes.EnqueueRetryJob, []}
+        end
+
+        update :send_now do
+          description "Manually trigger sending for a scheduled delivery (creates new Oban job)"
+          require_atomic? false
+
+          # Only allow from scheduled state (or pending if stuck)
+          validate fn changeset, _context ->
+            status = Ash.Changeset.get_attribute(changeset, :status)
+
+            if status in [:scheduled, :pending] do
+              :ok
+            else
+              {:error,
+               field: :status,
+               message: "Can only send now from scheduled or pending state, current: #{status}"}
+            end
+          end
+
+          # Enqueue a new Oban job immediately
+          change {AshDispatch.Changes.EnqueueRetryJob, []}
         end
 
         update :record_webhook_event do
