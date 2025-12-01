@@ -101,8 +101,8 @@ defmodule AshDispatch.EmailBackend.Swoosh do
     Logger.debug("""
     Sending email via Swoosh:
       Mailer: #{inspect(mailer)}
-      To: #{to}
-      From: #{from}
+      To: #{inspect(to)}
+      From: #{inspect(from)}
       Subject: #{subject}
     """)
 
@@ -123,7 +123,7 @@ defmodule AshDispatch.EmailBackend.Swoosh do
         Logger.info("""
         Email sent successfully via Swoosh
           Message ID: #{message_id}
-          To: #{to}
+          To: #{inspect(to)}
           Subject: #{subject}
         """)
 
@@ -132,7 +132,7 @@ defmodule AshDispatch.EmailBackend.Swoosh do
       {:error, reason} ->
         Logger.error("""
         Failed to send email via Swoosh
-          To: #{to}
+          To: #{inspect(to)}
           Subject: #{subject}
           Error: #{inspect(reason)}
         """)
@@ -143,7 +143,7 @@ defmodule AshDispatch.EmailBackend.Swoosh do
     error ->
       Logger.error("""
       Exception while sending email via Swoosh
-        To: #{to}
+        To: #{inspect(to)}
         Subject: #{subject}
         Error: #{inspect(error)}
       """)

@@ -157,8 +157,13 @@ defmodule AshDispatch.Transports.Email do
       is_map(receipt.content[:from]) ->
         receipt.content[:from]
 
-      # From field might be in content as a tuple or string
-      receipt.content[:from] ->
+      # From field is a tuple {name, email} - convert to map for JSON serialization
+      is_tuple(receipt.content[:from]) ->
+        {name, email} = receipt.content[:from]
+        %{"name" => name, "email" => email}
+
+      # From field is a string email address
+      is_binary(receipt.content[:from]) ->
         receipt.content[:from]
 
       # Fallback to configured default

@@ -168,6 +168,10 @@ defmodule AshDispatch.Workers.SendEmail do
   defp parse_from_field(%{"email" => email}), do: email
   defp parse_from_field(from) when is_binary(from), do: from
   defp parse_from_field({_, _} = from), do: from
+  # Handle JSON-serialized tuple (stored as array)
+  defp parse_from_field([name, email]) when is_binary(name) and is_binary(email),
+    do: {name, email}
+
   defp parse_from_field(_), do: "noreply@example.com"
 
   # Check skip_if_read policy
