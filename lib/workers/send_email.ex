@@ -102,8 +102,10 @@ defmodule AshDispatch.Workers.SendEmail do
   # Private functions
 
   defp process_email(receipt, args) do
-    # Check skip_if_read policy first
-    with :continue <- check_skip_if_read_policy(receipt),
+    # Check skip_email_delivery config first (dev mode)
+    # Then check skip_if_read policy and user preferences
+    with :continue <- check_skip_email_delivery(),
+         :continue <- check_skip_if_read_policy(receipt),
          :send <- check_user_preferences(receipt) do
       # Mark as sending
       {:ok, receipt} = ReceiptStatus.mark_sending(receipt)
@@ -174,6 +176,15 @@ defmodule AshDispatch.Workers.SendEmail do
 
   # Fallback to configured default
   defp parse_from_field(_), do: Config.default_from_email()
+
+  # Check if email delivery is disabled (dev mode)
+  defp check_skip_email_delivery do
+    if Config.skip_email_delivery?() do
+      {:skip, "email delivery disabled (dev mode)"}
+    else
+      :continue
+    end
+  end
 
   # Check skip_if_read policy
   defp check_skip_if_read_policy(receipt) do

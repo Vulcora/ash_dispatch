@@ -168,7 +168,7 @@ defmodule AshDispatch.Transports.Email do
 
       # Fallback to configured default
       true ->
-        %{"name" => "System", "email" => Config.default_from_email()}
+        %{"name" => Config.default_from_name(), "email" => Config.default_from_email()}
     end
   end
 

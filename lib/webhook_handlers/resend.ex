@@ -49,7 +49,6 @@ defmodule AshDispatch.WebhookHandlers.Resend do
   """
 
   require Logger
-  alias AshDispatch.Resources.DeliveryReceipt
 
   @doc """
   Process a Resend webhook event.
@@ -77,7 +76,7 @@ defmodule AshDispatch.WebhookHandlers.Resend do
 
     if email_id do
       # Find delivery receipt by provider_id (Resend email ID)
-      case Ash.get(DeliveryReceipt, email_id,
+      case Ash.get(delivery_receipt_resource(), email_id,
              action: :get_by_provider_id,
              authorize?: false
            ) do
@@ -101,6 +100,18 @@ defmodule AshDispatch.WebhookHandlers.Resend do
   end
 
   # Private functions
+
+  defp delivery_receipt_resource do
+    Application.get_env(:ash_dispatch, :delivery_receipt_resource) ||
+      raise """
+      AshDispatch: :delivery_receipt_resource not configured!
+
+      Add to your config/config.exs:
+
+        config :ash_dispatch,
+          delivery_receipt_resource: MyApp.Deliveries.DeliveryReceipt
+      """
+  end
 
   defp update_receipt_from_event(receipt, event_type, timestamp, data) do
     attrs = build_update_attrs(event_type, timestamp, data)

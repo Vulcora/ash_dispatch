@@ -153,6 +153,27 @@ defmodule AshDispatch.Config do
   end
 
   @doc """
+  Default from name (sender name displayed in email clients).
+
+  Used when no `from` is specified in event module or inline DSL.
+
+  Defaults to the OTP app name (titlecased) or "System" if not configured.
+
+  ## Example
+
+      config :ash_dispatch,
+        default_from_name: "Fyndgrossisten"
+  """
+  @spec default_from_name() :: String.t()
+  def default_from_name do
+    Application.get_env(:ash_dispatch, :default_from_name) ||
+      case otp_app() do
+        nil -> "System"
+        app -> app |> to_string() |> String.capitalize()
+      end
+  end
+
+  @doc """
   The email backend module for sending emails.
 
   Should implement the email backend behaviour.
@@ -342,6 +363,26 @@ defmodule AshDispatch.Config do
   # ============================================================================
   # Compilation & Development
   # ============================================================================
+
+  @doc """
+  Whether to skip actual email delivery.
+
+  When `true`, emails will not be sent and delivery receipts will be marked
+  as `:skipped` with reason "email delivery disabled". Useful for development
+  to prevent sending real emails while still testing the full dispatch flow.
+
+  Defaults to `false`.
+
+  ## Example
+
+      # config/dev.exs
+      config :ash_dispatch,
+        skip_email_delivery: true
+  """
+  @spec skip_email_delivery?() :: boolean()
+  def skip_email_delivery? do
+    Application.get_env(:ash_dispatch, :skip_email_delivery, false)
+  end
 
   @doc """
   Whether to compile templates at build time.
