@@ -513,13 +513,9 @@ defmodule AshDispatch.Dispatcher do
           # Try to render templates (convention-based or explicit path)
           {html_body, text_body} = render_inline_email_templates(context, channel, event_config)
 
-          # Build base content with required fields
-          base = %{
-            from: content_config[:from_email] || default_from_email()
-          }
-
-          # Add optional fields only if they have values (to not overwrite module callbacks in hybrid mode)
-          base
+          # Build content - only include fields with actual values (to not overwrite module callbacks in hybrid mode)
+          %{}
+          |> maybe_put(:from, content_config[:from_email])
           |> maybe_put(:subject, interpolate(content_config[:subject], context))
           |> maybe_put(:html_body, html_body)
           |> maybe_put(:text_body, text_body)
@@ -826,10 +822,6 @@ defmodule AshDispatch.Dispatcher do
   defp get_notification_type(module, context) do
     # Use EventResolver for safe callback execution with default :info
     EventResolver.notification_type(module, context)
-  end
-
-  defp default_from_email do
-    Config.default_from_email()
   end
 
   defp dispatch_to_transport(receipt, context, channel, event_config) do

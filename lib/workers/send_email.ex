@@ -172,7 +172,8 @@ defmodule AshDispatch.Workers.SendEmail do
   defp parse_from_field([name, email]) when is_binary(name) and is_binary(email),
     do: {name, email}
 
-  defp parse_from_field(_), do: "noreply@example.com"
+  # Fallback to configured default
+  defp parse_from_field(_), do: Config.default_from_email()
 
   # Check skip_if_read policy
   defp check_skip_if_read_policy(receipt) do
