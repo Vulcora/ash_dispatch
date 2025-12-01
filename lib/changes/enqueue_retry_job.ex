@@ -18,8 +18,10 @@ defmodule AshDispatch.Changes.EnqueueRetryJob do
         {:ok, job} ->
           Logger.info("EnqueueRetryJob: Created Oban job #{job.id} for receipt #{receipt.id}")
 
-          # Update the receipt with the new job ID
-          {:ok, %{receipt | oban_job_id: job.id}}
+          # Actually persist the new job ID to the database
+          receipt
+          |> Ash.Changeset.for_update(:update, %{oban_job_id: job.id}, authorize?: false)
+          |> Ash.update(authorize?: false)
 
         {:error, reason} ->
           Logger.error(

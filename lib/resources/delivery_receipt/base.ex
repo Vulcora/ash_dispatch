@@ -339,11 +339,13 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
 
         update :mark_sent do
           require_atomic? false
-          accept [:provider_id, :provider_response, :notification_id]
+          accept [:provider_id, :provider_response, :notification_id, :oban_job_id]
           change transition_state(:sent)
 
           change fn changeset, _ ->
-            Ash.Changeset.change_attribute(changeset, :sent_at, DateTime.utc_now())
+            changeset
+            |> Ash.Changeset.change_attribute(:sent_at, DateTime.utc_now())
+            |> Ash.Changeset.change_attribute(:error_message, nil)
           end
         end
 
