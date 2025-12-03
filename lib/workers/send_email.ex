@@ -25,6 +25,17 @@ defmodule AshDispatch.Workers.SendEmail do
         "text_body" => "Order #1234 created"
       }
 
+  ## Idempotency
+
+  This worker is designed to be idempotent and handles duplicate jobs gracefully:
+
+  - **Unique jobs**: Only one job per `receipt_id` can be in available/scheduled/executing
+    state at a time. This prevents duplicate jobs from "send now" while original is queued.
+  - **Terminal state check**: If receipt is already in `:sent`, `:skipped`, or `:failed_permanent`
+    state, the job completes successfully without retrying.
+  - **Race condition handling**: If state transition fails due to concurrent processing,
+    the job completes successfully (another job already handled it).
+
   ## Retries
 
   Oban handles retries automatically:
@@ -58,7 +69,10 @@ defmodule AshDispatch.Workers.SendEmail do
 
   use Oban.Worker,
     queue: :emails,
-    max_attempts: 5
+    max_attempts: 5,
+    # Prevent duplicate jobs for the same receipt (e.g., from "send now" while original is queued)
+    # Only one job per receipt_id can be in available/scheduled/executing state
+    unique: [keys: [:receipt_id], states: [:available, :scheduled, :executing]]
 
   alias AshDispatch.Config
   alias AshDispatch.ReceiptStatus
@@ -102,34 +116,63 @@ defmodule AshDispatch.Workers.SendEmail do
   # Private functions
 
   defp process_email(receipt, args) do
-    # Check skip_email_delivery config first (dev mode)
-    # Then check skip_if_read policy and user preferences
-    with :continue <- check_skip_email_delivery(),
-         :continue <- check_skip_if_read_policy(receipt),
-         :send <- check_user_preferences(receipt) do
-      # Mark as sending
-      {:ok, receipt} = ReceiptStatus.mark_sending(receipt)
+    # Early exit for terminal states - handles duplicate job scenarios gracefully
+    # This can happen when "send now" creates a new job while original is processing
+    if receipt.status in [:sent, :skipped, :failed_permanent] do
+      Logger.info(
+        "Receipt #{receipt.id} already in terminal state #{receipt.status}, job completing as success"
+      )
 
-      # Send email (pass receipt for field fallback)
-      case send_email(receipt, args) do
-        {:ok, provider_response} ->
-          # Mark as sent
-          ReceiptStatus.mark_sent(receipt, provider_response)
-          Logger.info("Email sent successfully for receipt #{receipt.id}")
-          :ok
-
-        {:error, reason} ->
-          # Mark as failed (will be retried by Oban)
-          ReceiptStatus.mark_failed(receipt, reason)
-          Logger.error("Email failed for receipt #{receipt.id}: #{inspect(reason)}")
-          {:error, reason}
-      end
+      :ok
     else
-      {:skip, reason} ->
-        # Either policy check failed - mark as skipped
-        ReceiptStatus.mark_skipped(receipt, reason)
-        Logger.info("Email skipped for receipt #{receipt.id}: #{reason}")
-        :ok
+      # Check skip_email_delivery config first (dev mode)
+      # Then check skip_if_read policy and user preferences
+      with :continue <- check_skip_email_delivery(),
+           :continue <- check_skip_if_read_policy(receipt),
+           :send <- check_user_preferences(receipt) do
+        # Mark as sending - handle race condition gracefully
+        case ReceiptStatus.mark_sending(receipt) do
+          {:ok, receipt} ->
+            # Send email (pass receipt for field fallback)
+            case send_email(receipt, args) do
+              {:ok, provider_response} ->
+                # Mark as sent
+                ReceiptStatus.mark_sent(receipt, provider_response)
+                Logger.info("Email sent successfully for receipt #{receipt.id}")
+                :ok
+
+              {:error, reason} ->
+                # Mark as failed (will be retried by Oban)
+                ReceiptStatus.mark_failed(receipt, reason)
+                Logger.error("Email failed for receipt #{receipt.id}: #{inspect(reason)}")
+                {:error, reason}
+            end
+
+          {:error, %Ash.Error.Invalid{errors: errors}} ->
+            # Check if it's a state machine transition error (duplicate job scenario)
+            if Enum.any?(errors, &match?(%AshStateMachine.Errors.NoMatchingTransition{}, &1)) do
+              Logger.info(
+                "Receipt #{receipt.id} state transition conflict (likely duplicate job), completing as success"
+              )
+
+              :ok
+            else
+              # Some other validation error - let Oban retry
+              Logger.error("Receipt #{receipt.id} update failed: #{inspect(errors)}")
+              {:error, errors}
+            end
+
+          {:error, reason} ->
+            Logger.error("Receipt #{receipt.id} mark_sending failed: #{inspect(reason)}")
+            {:error, reason}
+        end
+      else
+        {:skip, reason} ->
+          # Either policy check failed - mark as skipped
+          ReceiptStatus.mark_skipped(receipt, reason)
+          Logger.info("Email skipped for receipt #{receipt.id}: #{reason}")
+          :ok
+      end
     end
   end
 

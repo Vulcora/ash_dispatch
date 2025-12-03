@@ -441,5 +441,6 @@ receipt.status
 ## Next Steps
 
 - [Configuration](configuration.md) - All available configuration options
+- [Delivery Receipts](delivery-receipts.md) - Receipt management and admin actions
 - [Getting Started](../tutorials/getting-started.md) - Build your first event
 - [Manual Dispatch](../tutorials/manual-dispatch-and-events.md) - Event modules and preview

@@ -442,6 +442,64 @@ config :ash_dispatch,
 - Integrate with existing audit/logging systems
 - Custom policies or validations
 
+### Send Now Authorizer
+
+Configure authorization for the `send_now` action on delivery receipts. This action allows manually triggering email delivery for scheduled receipts from an admin UI.
+
+```elixir
+config :ash_dispatch,
+  send_now_authorizer: MyApp.Deliveries.SendNowAuthorizer
+```
+
+**Default:** `nil` (any authenticated actor can use `send_now`)
+
+**Why needed:**
+- Restrict manual email triggering to specific user roles (e.g., super admins only)
+- Prevent accidental mass email sends by regular admins
+- Audit control over who can bypass normal scheduling
+
+**Implementing an authorizer:**
+
+Your authorizer module must implement an `authorize/1` function that receives the actor and returns `:ok` or `{:error, message}`:
+
+```elixir
+defmodule MyApp.Deliveries.SendNowAuthorizer do
+  @moduledoc """
+  Authorizes send_now action for delivery receipts.
+  Only super admins can manually trigger email sending.
+  """
+
+  @doc """
+  Check if actor is authorized to use send_now.
+
+  Returns:
+  - `:ok` if authorized
+  - `{:error, message}` if not authorized
+  """
+  def authorize(%{super_admin: true}), do: :ok
+  def authorize(_actor), do: {:error, "Only super admins can manually trigger email sending"}
+end
+```
+
+**Behavior:**
+- When `nil`: Any authenticated actor can use `send_now`
+- When configured: The authorizer is called with the actor
+- System calls (no actor): Always allowed regardless of authorizer
+
+**Important:** The actor must be passed to `Ash.Changeset.for_update/3` for the authorizer to receive it:
+
+```elixir
+# Correct - actor passed to for_update
+receipt
+|> Ash.Changeset.for_update(:send_now, %{}, actor: current_user)
+|> Ash.update(authorize?: true)
+
+# Incorrect - actor won't reach the validation
+receipt
+|> Ash.Changeset.for_update(:send_now, %{})
+|> Ash.update(actor: current_user, authorize?: true)
+```
+
 ### Audience Resolution
 
 Configure how recipients are resolved for each audience using `recipient_filters`:
@@ -503,6 +561,9 @@ config :ash_dispatch,
   # Custom resources
   notification_resource: MyApp.Notifications.Notification,
   delivery_receipt_resource: MyApp.Deliveries.DeliveryReceipt,
+
+  # Action authorization (restrict send_now to super admins)
+  send_now_authorizer: MyApp.Deliveries.SendNowAuthorizer,
 
   # User preferences
   preference_provider: MyApp.NotificationPreferences,
@@ -577,5 +638,6 @@ AshDispatch validates configuration at compile time and runtime. You'll see warn
 ## Next Steps
 
 - [Getting Started](../tutorials/getting-started.md) - Basic setup
+- [Delivery Receipts](delivery-receipts.md) - Receipt management and admin actions
 - [User Preferences](user-preferences.md) - Implement preference checking
 - [Oban Configuration](oban-configuration.md) - Configure job queue

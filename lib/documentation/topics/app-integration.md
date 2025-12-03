@@ -559,6 +559,7 @@ It's a few lines of setup for significant flexibility.
 
 ## Next Steps
 
+- [Delivery Receipts](delivery-receipts.md) - Receipt management and admin actions
 - [Phoenix Integration](phoenix-integration.md) - Set up real-time channels
 - [Counter Broadcasting](counter-broadcasting.md) - Define counters for live UI
 - [User Preferences](user-preferences.md) - Let users control notifications

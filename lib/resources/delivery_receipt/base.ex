@@ -396,6 +396,29 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
           description "Manually trigger sending for a scheduled delivery (creates new Oban job)"
           require_atomic? false
 
+          # Check configured authorizer (if any)
+          validate fn _changeset, context ->
+            actor = context.actor
+            authorizer = AshDispatch.Config.send_now_authorizer()
+
+            cond do
+              # No actor (system/worker call) - always allow
+              is_nil(actor) ->
+                :ok
+
+              # No authorizer configured - allow any authenticated actor
+              is_nil(authorizer) ->
+                :ok
+
+              # Call configured authorizer
+              true ->
+                case authorizer.authorize(actor) do
+                  :ok -> :ok
+                  {:error, message} -> {:error, field: :base, message: message}
+                end
+            end
+          end
+
           # Only allow from scheduled state (or pending if stuck)
           validate fn changeset, _context ->
             status = Ash.Changeset.get_attribute(changeset, :status)

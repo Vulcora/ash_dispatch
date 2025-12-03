@@ -409,4 +409,36 @@ defmodule AshDispatch.Config do
   def sdk_output_path do
     Application.get_env(:ash_dispatch, :sdk_output_path)
   end
+
+  # ============================================================================
+  # Action Authorization
+  # ============================================================================
+
+  @doc """
+  Authorizer module for the `send_now` action on delivery receipts.
+
+  The module should implement `authorize/1` which receives the actor and returns:
+  - `:ok` if authorized
+  - `{:error, message}` if not authorized
+
+  When `nil` (default), `send_now` is allowed for any authenticated actor.
+  System calls (no actor) are always allowed regardless of this setting.
+
+  ## Example
+
+      # Define authorizer module
+      defmodule MyApp.SendNowAuthorizer do
+        def authorize(nil), do: :ok  # System calls always allowed
+        def authorize(%{super_admin: true}), do: :ok
+        def authorize(_), do: {:error, "Only super admins can trigger send now"}
+      end
+
+      # Configure in config.exs
+      config :ash_dispatch,
+        send_now_authorizer: MyApp.SendNowAuthorizer
+  """
+  @spec send_now_authorizer() :: module() | nil
+  def send_now_authorizer do
+    Application.get_env(:ash_dispatch, :send_now_authorizer)
+  end
 end
