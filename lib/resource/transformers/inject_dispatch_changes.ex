@@ -235,6 +235,7 @@ defmodule AshDispatch.Resource.Transformers.InjectDispatchChanges do
         metadata: event.metadata,
         module: event_module,
         data_key: event.data_key,
+        include_actor_as: event.include_actor_as,
         recipient_filter: recipient_filter,
         # For template path resolution
         domain: domain_name,

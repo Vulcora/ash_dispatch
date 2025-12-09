@@ -93,7 +93,11 @@ defmodule AshDispatch.Event.Helpers do
         dynamic_filter = func.(resource)
         resolve_by_filter(dynamic_filter, context)
 
-      # MFA tuple = call module function to get dynamic filter
+      # MFA tuple = call module function to get dynamic recipients or filter
+      # The function can return:
+      # - A keyword filter like [admin: true] → query users matching filter
+      # - A list of user structs/maps with :id field → use directly as recipients
+      # - A list of user IDs → wrap each in %{id: id}
       {module, function, args} when is_atom(module) and is_atom(function) and is_list(args) ->
         resource = extract_primary_resource(context)
         # Replace :resource placeholder with actual resource
@@ -106,8 +110,8 @@ defmodule AshDispatch.Event.Helpers do
         arity = length(resolved_args)
 
         if function_exported?(module, function, arity) do
-          dynamic_filter = apply(module, function, resolved_args)
-          resolve_by_filter(dynamic_filter, context)
+          result = apply(module, function, resolved_args)
+          handle_mfa_result(result, context)
         else
           Logger.warning(
             "[AshDispatch] Dynamic filter function #{inspect(module)}.#{function}/#{arity} not found"
@@ -316,6 +320,40 @@ defmodule AshDispatch.Event.Helpers do
   end
 
   defp follow_relationship_chain(_, _), do: nil
+
+  # Handle result from MFA function - can be a filter, list of users, or list of user IDs
+  defp handle_mfa_result(result, context) when is_list(result) do
+    cond do
+      # Empty list - no recipients
+      result == [] ->
+        []
+
+      # List of user structs/maps with :id field - use directly
+      is_map(hd(result)) && Map.has_key?(hd(result), :id) ->
+        result
+
+      # List of UUIDs/strings - wrap as user maps
+      is_binary(hd(result)) ->
+        Enum.map(result, fn id -> %{id: id} end)
+
+      # Keyword list filter - query users
+      Keyword.keyword?(result) ->
+        resolve_by_filter(result, context)
+
+      # Unknown format - try as filter
+      true ->
+        Logger.warning(
+          "[AshDispatch] Unknown MFA result format: #{inspect(result)}, treating as filter"
+        )
+
+        resolve_by_filter(result, context)
+    end
+  end
+
+  defp handle_mfa_result(result, context) do
+    # Non-list result - assume it's a filter
+    resolve_by_filter(result, context)
+  end
 
   # Extract a value from context data using a path like [:user, :region]
   defp extract_value_from_path(data, path) when is_map(data) and is_list(path) do

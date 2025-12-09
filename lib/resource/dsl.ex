@@ -187,6 +187,31 @@ defmodule AshDispatch.Resource.Dsl do
           This is useful when event modules expect specific data keys.
           """
         ],
+        include_actor_as: [
+          type: :atom,
+          required: false,
+          doc: """
+          Alias key for the actor in context.data.
+
+          The actor (user who triggered the action) is always included in `context.data`
+          as `:actor`. Use this option to also include it under a semantic alias.
+
+          Example:
+
+              event :invited,
+                trigger_on: :invite,
+                data_key: :invited_user,
+                include_actor_as: :invited_by,
+                channels: [[transport: :email, audience: :user]]
+
+          This makes the actor available as both:
+          - `context.data.actor` (always)
+          - `context.data.invited_by` (alias)
+
+          Useful for clearer template access when the actor has a specific role
+          in the event (inviter, approver, assignee, etc.).
+          """
+        ],
         template_path: [
           type: :string,
           required: false,

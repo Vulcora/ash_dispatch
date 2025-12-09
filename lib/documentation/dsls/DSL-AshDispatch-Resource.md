@@ -6,6 +6,7 @@ The `AshDispatch.Resource` extension adds event dispatching capabilities to Ash 
 
 - [dispatch](#dispatch) - Top-level section for defining events
   - [event](#dispatch-event) - Define an event that dispatches when actions occur
+- [Actor Access](#actor-access) - Accessing the actor (user who triggered the action) in events
 
 ---
 
@@ -56,6 +57,7 @@ Defines an event that is automatically dispatched when specified actions occur.
 | `module` | `atom` | `nil` | ❌ | Optional callback module implementing `AshDispatch.Event` behaviour |
 | `event_id` | `string` | auto-generated | ❌ | Explicit event ID. Auto-generated as `{resource_name}.{event_name}` if not specified |
 | `data_key` | `atom` | `:record` | ❌ | Key to use for the resource in context.data |
+| `include_actor_as` | `atom` | `nil` | ❌ | Alias key for the actor in context.data (see [Actor Access](#actor-access)) |
 | `manual_trigger_filter` | `keyword` | `nil` | ❌ | Filter for showing event in manual trigger UI (e.g., `[confirmed_at: nil]`) |
 | `load` | `[atom]` | `[]` | ❌ | Relationships to preload before dispatching |
 | `domain` | `atom` | `nil` | ❌ | Event domain (e.g., `:orders`, `:tickets`). Defaults to resource domain |
@@ -127,6 +129,33 @@ dispatch do
     ]
 end
 ```
+
+#### Event with actor alias
+
+Use `include_actor_as` to give the actor (user who triggered the action) a semantic alias in `context.data`:
+
+```elixir
+dispatch do
+  # Invitation event - actor is the admin who invited the user
+  event :invited,
+    trigger_on: :invite,
+    data_key: :invited_user,
+    include_actor_as: :invited_by,
+    module: MyApp.Accounts.Events.Invited,
+    channels: [[transport: :email, audience: :user]]
+
+  # Assignment event - actor is the person who assigned
+  event :assigned,
+    trigger_on: :assign,
+    data_key: :ticket,
+    include_actor_as: :assigned_by,
+    channels: [[transport: :in_app, audience: :user]]
+end
+```
+
+In your event module or templates, access the actor as:
+- `context.data.actor` (always available)
+- `context.data.invited_by` or `context.data.assigned_by` (semantic alias)
 
 #### Manual-only events
 
@@ -292,6 +321,73 @@ metadata: [
   notification_type: :info,
   user_configurable: true
 ]
+```
+
+---
+
+## Actor Access
+
+When events are triggered by Ash actions, the **actor** (user who performed the action) is automatically included in `context.data`.
+
+### Default Behavior
+
+The actor is always available as `context.data.actor`:
+
+```elixir
+def prepare_template_assigns(context, _channel) do
+  %{
+    performed_by: context.data.actor.name,
+    performer_email: context.data.actor.email
+  }
+end
+```
+
+### Semantic Aliases with `include_actor_as`
+
+For clearer code, use `include_actor_as` to add a semantic alias:
+
+```elixir
+dispatch do
+  event :invited,
+    trigger_on: :invite,
+    data_key: :invited_user,
+    include_actor_as: :invited_by,
+    channels: [[transport: :email, audience: :user]]
+end
+```
+
+Now the actor is available as both:
+- `context.data.actor` (always)
+- `context.data.invited_by` (alias)
+
+### Common Actor Alias Patterns
+
+| Event Type | Alias | Description |
+|------------|-------|-------------|
+| Invitation | `:invited_by` | Admin or owner who sent the invite |
+| Assignment | `:assigned_by` | User who assigned the task/ticket |
+| Approval | `:approved_by` | User who approved the request |
+| Cancellation | `:cancelled_by` | User who cancelled the order |
+| Comment | `:commented_by` | User who left the comment |
+
+### Using Actor in Templates
+
+In HEEx templates, access the actor via assigns:
+
+```heex
+<p>This invitation was sent by <%= @invited_by.name %>.</p>
+<p>Contact them at <%= @invited_by.email %> if you have questions.</p>
+```
+
+In your event module's `prepare_template_assigns/2`:
+
+```elixir
+def prepare_template_assigns(context, _channel) do
+  %{
+    invited_by: context.data.invited_by,
+    invited_user: context.data.invited_user
+  }
+end
 ```
 
 ---

@@ -166,6 +166,36 @@ config :ash_dispatch,
 This copies templates to `priv/ash_dispatch/templates/` with a manifest, ensuring
 template rendering (emails, previews) works in production.
 
+#### How Template Compilation Works
+
+The compiler uses a **manifest-driven approach**:
+
+1. **On compile**:
+   - Discovers templates in `lib/`
+   - Compares with existing manifest to detect changes
+   - Copies new/updated templates to `priv/ash_dispatch/templates/`
+   - Removes stale templates (files that no longer exist in source)
+   - Writes updated manifest
+
+2. **On clean** (`mix clean`):
+   - Reads `priv/ash_dispatch/manifest.json`
+   - Deletes **only** the files listed in the manifest
+   - Never touches user files like `priv/ash_dispatch/layouts/`
+
+This ensures your custom layouts and other user files are always preserved.
+
+#### Directory Structure
+
+```
+priv/ash_dispatch/
+├── layouts/              # User-created (NEVER deleted)
+│   ├── email.html.heex   # Your branded HTML email layout
+│   └── email.text.eex    # Your branded text email layout
+├── templates/            # Generated (managed by compiler)
+│   └── ...               # Copied from lib/ event templates
+└── manifest.json         # Tracks what was generated
+```
+
 ---
 
 ## How It Works

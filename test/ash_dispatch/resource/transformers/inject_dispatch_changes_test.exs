@@ -125,6 +125,51 @@ defmodule AshDispatch.Resource.Transformers.InjectDispatchChangesTest do
       assert event_config.content[:notification_title] == "Ticket Created"
       assert event_config.content[:notification_message] == "Ticket {{title}} was created"
     end
+
+    test "include_actor_as is passed through to event_config" do
+      action = Ash.Resource.Info.action(AshDispatch.Test.Ticket, :assign)
+
+      dispatch_change =
+        Enum.find(action.changes, fn change ->
+          match?(%Ash.Resource.Change{change: {DispatchEvent, _}}, change)
+        end)
+
+      {DispatchEvent, opts} = dispatch_change.change
+      event_config = Keyword.get(opts, :event_config)
+
+      # assigned event has include_actor_as: :assigned_by
+      assert event_config.include_actor_as == :assigned_by
+    end
+
+    test "data_key is passed through to event_config" do
+      action = Ash.Resource.Info.action(AshDispatch.Test.Ticket, :assign)
+
+      dispatch_change =
+        Enum.find(action.changes, fn change ->
+          match?(%Ash.Resource.Change{change: {DispatchEvent, _}}, change)
+        end)
+
+      {DispatchEvent, opts} = dispatch_change.change
+      event_config = Keyword.get(opts, :event_config)
+
+      # assigned event has data_key: :ticket
+      assert event_config.data_key == :ticket
+    end
+
+    test "include_actor_as defaults to nil when not specified" do
+      action = Ash.Resource.Info.action(AshDispatch.Test.Ticket, :create)
+
+      dispatch_change =
+        Enum.find(action.changes, fn change ->
+          match?(%Ash.Resource.Change{change: {DispatchEvent, _}}, change)
+        end)
+
+      {DispatchEvent, opts} = dispatch_change.change
+      event_config = Keyword.get(opts, :event_config)
+
+      # created event does not have include_actor_as
+      assert event_config.include_actor_as == nil
+    end
   end
 
   describe "derive_event_module_name" do

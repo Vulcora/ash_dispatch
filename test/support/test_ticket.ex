@@ -44,6 +44,8 @@ defmodule AshDispatch.Test.Ticket do
     # Inline event with email - should generate module with templates
     event :assigned,
       trigger_on: :assign,
+      data_key: :ticket,
+      include_actor_as: :assigned_by,
       channels: [
         [transport: :in_app, audience: :user],
         [transport: :email, audience: :user]
