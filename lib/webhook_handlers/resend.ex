@@ -76,16 +76,21 @@ defmodule AshDispatch.WebhookHandlers.Resend do
 
     if email_id do
       # Find delivery receipt by provider_id (Resend email ID)
-      case Ash.get(delivery_receipt_resource(), email_id,
-             action: :get_by_provider_id,
-             authorize?: false
-           ) do
-        {:ok, receipt} ->
+      result =
+        delivery_receipt_resource()
+        |> Ash.Query.for_read(:get_by_provider_id, %{provider_id: email_id})
+        |> Ash.read_one(authorize?: false)
+
+      case result do
+        {:ok, %{} = receipt} ->
           update_receipt_from_event(receipt, event_type, created_at, data)
+
+        {:ok, nil} ->
+          Logger.warning("Resend webhook: delivery receipt not found for email_id=#{email_id}")
+          {:error, :not_found}
 
         {:error, _} ->
           Logger.warning("Resend webhook: delivery receipt not found for email_id=#{email_id}")
-
           {:error, :not_found}
       end
     else

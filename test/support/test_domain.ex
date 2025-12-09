@@ -5,5 +5,6 @@ defmodule AshDispatch.Test.Domain do
   resources do
     resource AshDispatch.Test.Ticket
     resource AshDispatch.Test.Order
+    resource AshDispatch.Test.DeliveryReceipt
   end
 end
