@@ -92,11 +92,47 @@ defmodule Mix.Tasks.Compile.AshDispatch do
 
   @doc false
   def clean do
+    # Read the JSON manifest to know exactly what files we generated
+    # This is surgical - we only delete what we created, never user files
+    json_manifest_path = "priv/ash_dispatch/manifest.json"
+
+    if File.exists?(json_manifest_path) do
+      case File.read(json_manifest_path) do
+        {:ok, content} ->
+          case Jason.decode(content) do
+            {:ok, manifest} ->
+              # Delete only the files we generated (listed in manifest)
+              priv_path = "priv/ash_dispatch/templates"
+
+              manifest
+              |> Map.values()
+              |> Enum.flat_map(&Map.values/1)
+              |> Enum.each(fn filename ->
+                file_path = Path.join(priv_path, filename)
+                File.rm(file_path)
+              end)
+
+              # Remove templates dir only if empty
+              case File.ls(priv_path) do
+                {:ok, []} -> File.rmdir(priv_path)
+                _ -> :ok
+              end
+
+            {:error, _} ->
+              :ok
+          end
+
+        {:error, _} ->
+          :ok
+      end
+
+      # Delete the manifest itself
+      File.rm(json_manifest_path)
+    end
+
+    # Delete the binary manifest
     manifest_path = Path.join(Mix.Project.manifest_path(), @manifest)
     File.rm(manifest_path)
-
-    # Remove priv templates directory
-    File.rm_rf("priv/ash_dispatch")
 
     :ok
   end
@@ -197,16 +233,38 @@ defmodule Mix.Tasks.Compile.AshDispatch do
   end
 
   # Copy templates to priv/ directory and generate manifest
+  # Also removes stale templates that no longer exist in source
   defp copy_templates_to_priv(templates, _otp_app) do
     priv_path = "priv/ash_dispatch/templates"
+    json_manifest_path = "priv/ash_dispatch/manifest.json"
+
     File.mkdir_p!(priv_path)
 
+    # Load existing manifest to detect stale files
+    old_generated_files =
+      if File.exists?(json_manifest_path) do
+        case File.read!(json_manifest_path) |> Jason.decode() do
+          {:ok, old_manifest} ->
+            old_manifest
+            |> Map.values()
+            |> Enum.flat_map(&Map.values/1)
+            |> MapSet.new()
+
+          {:error, _} ->
+            MapSet.new()
+        end
+      else
+        MapSet.new()
+      end
+
     # Copy each template and build manifest
-    manifest =
-      Enum.reduce(templates, %{}, fn {lookup_key, template_map}, acc ->
+    {manifest, new_generated_files} =
+      Enum.reduce(templates, {%{}, MapSet.new()}, fn {lookup_key, template_map},
+                                                     {acc_manifest, acc_files} ->
         # Build filename mapping for this lookup key
-        template_files =
-          Enum.map(template_map, fn {filename, {content, _source_path}} ->
+        {template_files, generated} =
+          Enum.reduce(template_map, {%{}, acc_files}, fn {filename, {content, _source_path}},
+                                                         {files_acc, gen_acc} ->
             # Create unique destination filename
             # event_id: "reseller_request.new.email.html.heex"
             # module: "Elixir.Magasin.Accounts.Events.Invited.Event.email.html.heex"
@@ -219,21 +277,31 @@ defmodule Mix.Tasks.Compile.AshDispatch do
             dest_path = Path.join(priv_path, dest_filename)
             File.write!(dest_path, content)
 
-            {filename, dest_filename}
+            {Map.put(files_acc, filename, dest_filename), MapSet.put(gen_acc, dest_filename)}
           end)
-          |> Map.new()
 
         # Add to manifest with string key for JSON serialization
         manifest_key = format_manifest_key(lookup_key)
-        Map.put(acc, manifest_key, template_files)
+        {Map.put(acc_manifest, manifest_key, template_files), generated}
       end)
 
+    # Remove stale files (were in old manifest but not in current)
+    stale_files = MapSet.difference(old_generated_files, new_generated_files)
+
+    Enum.each(stale_files, fn filename ->
+      file_path = Path.join(priv_path, filename)
+
+      if File.exists?(file_path) do
+        File.rm!(file_path)
+        IO.puts("  Removed stale template: #{filename}")
+      end
+    end)
+
     # Write manifest as JSON for easy lookup
-    manifest_path = "priv/ash_dispatch/manifest.json"
-    File.write!(manifest_path, Jason.encode!(manifest, pretty: true))
+    File.write!(json_manifest_path, Jason.encode!(manifest, pretty: true))
 
     IO.puts("  Copied templates to #{priv_path}")
-    IO.puts("  Generated manifest at #{manifest_path}")
+    IO.puts("  Generated manifest at #{json_manifest_path}")
   end
 
   # Format lookup key for manifest (string-based for JSON)

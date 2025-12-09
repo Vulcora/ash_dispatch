@@ -205,6 +205,7 @@ defmodule AshDispatch.Changes.BroadcastCounterUpdate do
   # The audience configuration determines recipient resolution:
   # - Relationship-based (bare atom like :user) → extract from record
   # - Filter-based (tuple like {:admin, [...]}) → query all matching users
+  # - MFA-based → call function with record to get dynamic recipients
   #
   # This aligns with the Ash philosophy of deriving behavior from configuration.
   defp resolve_recipients_for_counter(record, audience, opts) do
@@ -216,10 +217,13 @@ defmodule AshDispatch.Changes.BroadcastCounterUpdate do
         user -> [user]
       end
     else
-      # Filter-based: query all users matching the audience filter
+      # Filter-based or MFA-based: query all users matching the audience filter
       # e.g., :admin → all users where admin: true
+      # e.g., :company_members → {Module, :resolve, [:resource]} → dynamic resolution
+      # Build a context with the record so MFA functions can access it
+      context = %{data: %{record: record}}
       channel = %{audience: audience}
-      AshDispatch.Event.Helpers.resolve_recipients_for_audience(nil, channel)
+      AshDispatch.Event.Helpers.resolve_recipients_for_audience(context, channel)
     end
   end
 

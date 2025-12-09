@@ -116,14 +116,15 @@ defmodule AshDispatch.Changes.DispatchEvent do
     load = Keyword.get(opts, :load, [])
     data_key = Map.get(event_config, :data_key)
     event_module = Map.get(event_config, :module)
+    include_actor_as = Map.get(event_config, :include_actor_as)
 
     Logger.debug("[DispatchEvent] dispatch_dsl_event starting for event_id: #{event_id}")
 
     # Load relationships if specified
     record = maybe_load_relationships(record, load, changeset)
 
-    # Build base context with the record
-    context = build_context(event_id, record, changeset, ash_context, data_key)
+    # Build base context with the record and actor
+    context = build_context(event_id, record, changeset, ash_context, data_key, include_actor_as)
 
     # Call prepare_data if event module defines it (non-default implementation)
     # This allows events to enrich context.data with additional data (e.g., created_user)
@@ -205,15 +206,21 @@ defmodule AshDispatch.Changes.DispatchEvent do
     end
   end
 
-  defp build_context(event_id, record, changeset, ash_context, data_key) do
+  defp build_context(event_id, record, changeset, ash_context, data_key, include_actor_as) do
     # Use data_key if provided, otherwise fall back to table name
     resource_key = data_key || record.__struct__.__schema__(:source)
+    actor = Map.get(ash_context, :actor)
+
+    # Build base data with record and always include actor
+    data =
+      %{resource_key => record, :actor => actor}
+      |> maybe_add_actor_alias(actor, include_actor_as)
 
     %Context{
       event_id: event_id,
-      data: %{resource_key => record},
+      data: data,
       resource_key: resource_key,
-      user: Map.get(ash_context, :actor),
+      user: actor,
       source: :resource_action,
       locale: "en",
       base_url: get_base_url(),
@@ -224,6 +231,9 @@ defmodule AshDispatch.Changes.DispatchEvent do
       }
     }
   end
+
+  defp maybe_add_actor_alias(data, _actor, nil), do: data
+  defp maybe_add_actor_alias(data, actor, alias_key), do: Map.put(data, alias_key, actor)
 
   # Call prepare_data on event module if it exists and returns non-empty data
   # This allows events to enrich context.data with additional data from the changeset

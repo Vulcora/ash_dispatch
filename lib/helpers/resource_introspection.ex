@@ -106,25 +106,31 @@ defmodule AshDispatch.Helpers.ResourceIntrospection do
         # Try to disambiguate using audience name
         matching_rel = Enum.find(multiple, fn rel -> rel.name == audience end)
 
-        if matching_rel do
+        cond do
           # Audience matches a relationship name - use it
-          [matching_rel.source_attribute]
-        else
-          # No match - warn with helpful guidance
-          rel_names = Enum.map(multiple, & &1.name)
+          matching_rel ->
+            [matching_rel.source_attribute]
 
-          Logger.warning("""
-          [ResourceIntrospection] Ambiguous user relationships on #{inspect(resource)}.
-          Found multiple belongs_to relationships to user module: #{inspect(rel_names)}
+          # MFA-based audiences handle their own user resolution - no user_id_path needed
+          is_mfa_audience?(audience) ->
+            nil
 
-          To fix, add explicit user_id_path in your counter DSL:
+          # No match and not MFA - warn with helpful guidance
+          true ->
+            rel_names = Enum.map(multiple, & &1.name)
 
-              counter :my_counter,
-                audience: :user,
-                user_id_path: [:user_id]  # or [:#{Enum.at(rel_names, 1)}_id], etc.
-          """)
+            Logger.warning("""
+            [ResourceIntrospection] Ambiguous user relationships on #{inspect(resource)}.
+            Found multiple belongs_to relationships to user module: #{inspect(rel_names)}
 
-          nil
+            To fix, add explicit user_id_path in your counter DSL:
+
+                counter :my_counter,
+                  audience: :user,
+                  user_id_path: [:user_id]  # or [:#{Enum.at(rel_names, 1)}_id], etc.
+            """)
+
+            nil
         end
     end
   rescue
@@ -328,6 +334,53 @@ defmodule AshDispatch.Helpers.ResourceIntrospection do
       # Not in config - assume relationship-based (backward compatibility)
       # This allows custom audiences to work without explicit config
       true -> true
+    end
+  end
+
+  @doc """
+  Checks if an audience is configured as an MFA (Module, Function, Args) tuple.
+
+  MFA-based audiences handle their own user resolution via the configured function,
+  so they don't need `user_id_path` for scoping. This is used to suppress
+  "ambiguous user relationships" warnings for resources with multiple user
+  relationships when using MFA audiences.
+
+  ## Audience Config Pattern
+
+  MFA audiences are configured as 3-tuples in the audiences config:
+
+      audiences: [
+        :user,                                                    # Bare atom - relationship-based
+        admin: [:user, admin: true],                              # List - filter-based
+        company_members: {MyApp.AudienceResolver, :company_members, [:resource]}  # MFA tuple
+      ]
+
+  ## Examples
+
+      is_mfa_audience?(:company_members)
+      #=> true  (configured as MFA tuple)
+
+      is_mfa_audience?(:user)
+      #=> false (bare atom)
+
+      is_mfa_audience?(:admin)
+      #=> false (filter-based list)
+
+      is_mfa_audience?(:unknown)
+      #=> false (not in config)
+  """
+  @spec is_mfa_audience?(atom() | nil) :: boolean()
+  def is_mfa_audience?(nil), do: false
+
+  def is_mfa_audience?(audience_name) do
+    audiences_config = Config.audiences()
+
+    case Keyword.get(audiences_config, audience_name) do
+      {module, function, args} when is_atom(module) and is_atom(function) and is_list(args) ->
+        true
+
+      _ ->
+        false
     end
   end
 

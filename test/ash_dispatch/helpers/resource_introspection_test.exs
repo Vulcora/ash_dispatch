@@ -71,6 +71,66 @@ defmodule AshDispatch.Helpers.ResourceIntrospectionTest do
     end
   end
 
+  describe "is_mfa_audience?/1" do
+    test "returns true for MFA tuple audiences" do
+      Application.put_env(:ash_dispatch, :audiences, [
+        :user,
+        admin: [:user, admin: true],
+        company_members: {MyApp.AudienceResolver, :company_members, [:resource]},
+        order_stakeholders: {MyApp.AudienceResolver, :order_stakeholders, [:resource]}
+      ])
+
+      assert ResourceIntrospection.is_mfa_audience?(:company_members) == true
+      assert ResourceIntrospection.is_mfa_audience?(:order_stakeholders) == true
+    end
+
+    test "returns false for bare atom audiences" do
+      Application.put_env(:ash_dispatch, :audiences, [
+        :user,
+        :partner,
+        company_members: {MyApp.AudienceResolver, :company_members, [:resource]}
+      ])
+
+      assert ResourceIntrospection.is_mfa_audience?(:user) == false
+      assert ResourceIntrospection.is_mfa_audience?(:partner) == false
+    end
+
+    test "returns false for filter-based audiences (list config)" do
+      Application.put_env(:ash_dispatch, :audiences, [
+        :user,
+        admin: [:user, admin: true],
+        super_admin: [:user, super_admin: true]
+      ])
+
+      assert ResourceIntrospection.is_mfa_audience?(:admin) == false
+      assert ResourceIntrospection.is_mfa_audience?(:super_admin) == false
+    end
+
+    test "returns false for unknown audiences not in config" do
+      Application.put_env(:ash_dispatch, :audiences, [
+        :user,
+        company_members: {MyApp.AudienceResolver, :company_members, [:resource]}
+      ])
+
+      assert ResourceIntrospection.is_mfa_audience?(:unknown) == false
+      assert ResourceIntrospection.is_mfa_audience?(:custom) == false
+    end
+
+    test "returns false for nil" do
+      Application.put_env(:ash_dispatch, :audiences,
+        company_members: {MyApp.AudienceResolver, :company_members, [:resource]}
+      )
+
+      assert ResourceIntrospection.is_mfa_audience?(nil) == false
+    end
+
+    test "handles empty config" do
+      Application.put_env(:ash_dispatch, :audiences, [])
+
+      assert ResourceIntrospection.is_mfa_audience?(:company_members) == false
+    end
+  end
+
   describe "get_audience_relationship/1" do
     test "returns audience name for bare atom audiences" do
       Application.put_env(:ash_dispatch, :audiences, [
