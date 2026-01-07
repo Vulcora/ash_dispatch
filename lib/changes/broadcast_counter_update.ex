@@ -308,11 +308,16 @@ defmodule AshDispatch.Changes.BroadcastCounterUpdate do
        when is_list(query_filter) and query_filter != [] do
     # Convert keyword list to expr() filters
     # Example: [status: :pending] -> filter(query, status == :pending)
+    # Example: [status: [:a, :b]] -> filter(query, status in [:a, :b])
     Enum.reduce(query_filter, query, fn {field, value}, acc_query ->
       import Ash.Query
       import Ash.Expr
 
-      filter(acc_query, ^ref(field) == ^value)
+      if is_list(value) do
+        filter(acc_query, ^ref(field) in ^value)
+      else
+        filter(acc_query, ^ref(field) == ^value)
+      end
     end)
   end
 

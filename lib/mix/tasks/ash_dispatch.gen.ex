@@ -1492,11 +1492,11 @@ defmodule Mix.Tasks.AshDispatch.Gen do
 
     // Flexible RPC function types - compatible with ash_typescript generated functions
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    type ListNotificationsFn = (config: { input: { userId: string }; fields: any[] }) => Promise<{ success: boolean; data?: any }>
+    type ListNotificationsFn = (config: { input: { userId: string }; fields: any[]; headers?: Record<string, string> }) => Promise<{ success: boolean; data?: any }>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    type MarkAsReadFn = (config: { identity: string; fields?: any[] }) => Promise<{ success: boolean; data?: any }>
+    type MarkAsReadFn = (config: { identity: string; fields?: any[]; headers?: Record<string, string> }) => Promise<{ success: boolean; data?: any }>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    type MarkAllAsReadFn = (config: { input: { userId: string } }) => Promise<{ success: boolean }>
+    type MarkAllAsReadFn = (config: { input: { userId: string }; headers?: Record<string, string> }) => Promise<{ success: boolean }>
 
     // ============================================================================
     // Hook Implementation
@@ -1579,6 +1579,7 @@ defmodule Mix.Tasks.AshDispatch.Gen do
 
         try {
           const result = await listNotifications({
+            headers: buildCSRFHeaders(),
             fields: [
               'id',
               'title',
@@ -1609,13 +1610,14 @@ defmodule Mix.Tasks.AshDispatch.Gen do
         } finally {
           setIsLoading(false)
         }
-      }, [enabled, userId, listNotifications, setCounter])
+      }, [enabled, userId, listNotifications, buildCSRFHeaders, setCounter])
 
       // Mark single notification as read
       const markAsRead = useCallback(
         async (notificationId: string) => {
           try {
             const result = await markNotificationAsRead({
+              headers: buildCSRFHeaders(),
               identity: notificationId,
               fields: ['id', 'read'],
             })
@@ -1631,7 +1633,7 @@ defmodule Mix.Tasks.AshDispatch.Gen do
             console.error('[AshDispatch] Failed to mark notification as read:', err)
           }
         },
-        [markNotificationAsRead, setCounter, unreadCount]
+        [markNotificationAsRead, buildCSRFHeaders, setCounter, unreadCount]
       )
 
       // Mark all notifications as read
@@ -1640,6 +1642,7 @@ defmodule Mix.Tasks.AshDispatch.Gen do
 
         try {
           const result = await markAllNotificationsAsRead({
+            headers: buildCSRFHeaders(),
             input: { userId },
           })
 
@@ -1650,7 +1653,7 @@ defmodule Mix.Tasks.AshDispatch.Gen do
         } catch (err) {
           console.error('[AshDispatch] Failed to mark all notifications as read:', err)
         }
-      }, [userId, markAllNotificationsAsRead, setCounter])
+      }, [userId, markAllNotificationsAsRead, buildCSRFHeaders, setCounter])
 
       // Connect to Phoenix channel for real-time updates
       const connectChannel = useCallback(async () => {
