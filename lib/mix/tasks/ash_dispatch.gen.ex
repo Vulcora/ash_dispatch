@@ -1247,6 +1247,10 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     if base, do: Path.join(base, filename), else: nil
   end
 
+  defp channel_topic do
+    Application.get_env(:ash_dispatch, :channel_topic, "user")
+  end
+
   # ============================================================================
   # SDK Content Generators
   # ============================================================================
@@ -1308,7 +1312,7 @@ defmodule Mix.Tasks.AshDispatch.Gen do
 
       socket.connect()
 
-      const channel = socket.channel(`user:${config.userId}`, {})
+      const channel = socket.channel(`#{channel_topic()}:${config.userId}`, {})
 
       return channel
     }
@@ -1442,6 +1446,7 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     import { useCallback, useEffect, useRef, useState } from 'react'
     import { Socket, Channel } from 'phoenix'
     import { useCounterStore, type CounterState } from '../store'
+    import { isValidCounter, type CounterName } from '../types'
 
     // ============================================================================
     // Types
@@ -1687,8 +1692,8 @@ defmodule Mix.Tasks.AshDispatch.Gen do
           socket.connect()
           socketRef.current = socket
 
-          // Join the user channel for notifications
-          const channel = socket.channel(`user:${userId}`, {})
+          // Join the channel for notifications (configurable via :channel_topic)
+          const channel = socket.channel(`#{channel_topic()}:${userId}`, {})
 
           // Listen for new notifications
           channel.on('new_notification', (notification: Notification) => {
@@ -1698,9 +1703,11 @@ defmodule Mix.Tasks.AshDispatch.Gen do
             }
           })
 
-          // Listen for counter updates
-          channel.on('counter_update', (payload: { unread_notifications: number }) => {
-            setCounter('unread_notifications', payload.unread_notifications)
+          // Listen for counter updates (from UserChannel.broadcast_counter or custom broadcast)
+          channel.on('counter_updated', (payload: { counter: string; value: number; metadata?: { invalidate_queries?: string[] } }) => {
+            if (isValidCounter(payload.counter)) {
+              setCounter(payload.counter as CounterName, payload.value)
+            }
           })
 
           channel
