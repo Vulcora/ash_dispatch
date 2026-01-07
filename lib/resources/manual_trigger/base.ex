@@ -55,7 +55,7 @@ defmodule AshDispatch.Resources.ManualTrigger.Base do
         defaults []
 
         read :list_events do
-          description "List all available email events with their metadata, optionally filtered by user state"
+          description "List manually triggerable events (trigger_on: :manual)"
 
           argument :user_id, :string do
             allow_nil? true
@@ -67,6 +67,21 @@ defmodule AshDispatch.Resources.ManualTrigger.Base do
             # For now, we list all events without user-based filtering
             _user_id = Ash.Query.get_argument(query, :user_id)
             events = Helpers.list_available_events(nil)
+
+            records =
+              Enum.map(events, fn event_data ->
+                struct(__MODULE__, event_data)
+              end)
+
+            Ash.DataLayer.Simple.set_data(query, records)
+          end
+        end
+
+        read :list_all_events do
+          description "List ALL events for template preview (regardless of trigger_on setting)"
+
+          prepare fn query, _context ->
+            events = Helpers.list_all_events()
 
             records =
               Enum.map(events, fn event_data ->

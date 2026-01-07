@@ -63,12 +63,17 @@ When `ash_typescript` is configured, generates a complete SDK in `ash-dispatch/`
 |------|-------------|
 | `types.ts` | Counter types, defaults, metadata, and camelCase accessors |
 | `events.ts` | Event ID types and metadata |
-| `store.ts` | Zustand store for counter state |
+| `store.ts` | Zustand store for counter state (with exported `CounterState` type) |
 | `channel.ts` | Phoenix channel utilities |
 | `index.ts` | Re-exports all SDK modules |
 | `hooks/use-channel.ts` | Channel connection hook |
 | `hooks/use-counter.ts` | Single counter access hook |
-| `hooks/use-notifications.ts` | Notification actions hook |
+| `hooks/use-notifications.ts` | **Complete** notification hook with RPC + Phoenix channel support |
+| `notification-provider.tsx` | React context provider for notifications |
+| `notification-bell.tsx` | Drop-in notification bell component with badge |
+| `README.md` | Usage documentation with examples |
+
+The generator also checks for required peer dependencies (`zustand`, `phoenix`) and warns if they're missing.
 
 #### Counter Types (`types.ts`)
 
@@ -360,24 +365,43 @@ Visa detaljer: <%= @source_url %>
 
 ## Troubleshooting
 
-### "No events found"
+### "No AshDispatch events or counters found"
 
-**Problem:** Generator reports 0 events.
+**Problem:** Generator shows warning about no events or counters found.
+
+**Cause:** Resources using `AshDispatch.Resource` must be in domains listed in your `:ash_domains` config. This is the most common issue when setting up AshDispatch.
+
+**Solution:**
+
+```elixir
+# config/config.exs
+config :my_app, :ash_domains, [
+  # Your existing domains
+  MyApp.Orders,
+  MyApp.Accounts,
+
+  # ADD THESE if using AshDispatch's built-in resources:
+  MyApp.Notifications,  # For in-app notifications (Notification resource)
+  MyApp.Deliveries,     # For delivery tracking (DeliveryReceipt resource)
+]
+```
+
+> **Important:** If you're using `use AshDispatch.Notification, ...` or `use AshDispatch.DeliveryReceipt, ...`
+> in your resources, the domains containing those resources MUST be in `:ash_domains` for the generator
+> to discover counters and events.
+
+The generator will show which domains are currently configured to help debug this issue.
+
+### "No events found" (but have dispatch blocks)
+
+**Problem:** Generator reports 0 events even though you have `dispatch do` blocks.
 
 **Causes:**
-1. No resources with `AshDispatch.Resource` extension
-2. No `dispatch do` blocks in resources
-3. Resources not in configured Ash domains
+1. Resources not in configured Ash domains (see above)
+2. No `AshDispatch.Resource` extension on the resource
 
 **Solution:**
 ```elixir
-# Ensure your app has ash_domains configured
-config :my_app, :ash_domains, [
-  MyApp.Orders,
-  MyApp.Accounts,
-  MyApp.Tickets
-]
-
 # Ensure resources use the extension
 use Ash.Resource,
   extensions: [AshDispatch.Resource]

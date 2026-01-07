@@ -200,9 +200,22 @@ end
 
 ## Testing
 
-### Disable Oban in Tests
+### Test Mode Options
 
-To avoid async job processing in tests:
+Oban provides three testing modes. **Choose carefully** - this significantly affects how your dispatch tests behave:
+
+| Mode | Behavior | Use When |
+|------|----------|----------|
+| `:inline` | Jobs execute **synchronously** in the same process | Testing full dispatch flow end-to-end |
+| `:manual` | Jobs enqueued but **not executed** | Testing job arguments without side effects |
+| (none) | Jobs execute **async** as normal | Integration tests with real timing |
+
+### Recommended: Use `:inline` for Dispatch Tests
+
+For testing AshDispatch events, **`:inline` mode is recommended** because it ensures:
+- Events dispatch synchronously during tests
+- Delivery receipts are created immediately
+- Notifications appear right after the action completes
 
 ```elixir
 # config/test.exs
@@ -210,7 +223,26 @@ config :my_app, Oban,
   testing: :inline  # Jobs execute synchronously in tests
 ```
 
-Or use manual testing mode:
+**Why not `:manual`?** With `:manual` mode, your tests may see events as "pending" because the Oban job hasn't run. You'd need to manually execute jobs to see the full flow.
+
+### Common Testing Pitfall
+
+**Problem:** Tests pass individually but fail when run together.
+
+**Cause:** Usually happens when using `:manual` mode - jobs from previous tests interfere with later tests.
+
+**Solution:** Use `:inline` mode for most dispatch tests:
+
+```elixir
+# config/test.exs
+config :my_app, Oban,
+  testing: :inline,
+  queues: false  # Disable queue polling in tests
+```
+
+### Using Manual Testing Mode
+
+Use `:manual` when you want to test job arguments without executing side effects:
 
 ```elixir
 config :my_app, Oban,

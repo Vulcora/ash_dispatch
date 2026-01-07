@@ -57,6 +57,7 @@ end
 - **🎨 Template Interpolation** - `{{variable}}` syntax for dynamic content
 - **📈 Real-Time Counters** - Declarative counter DSL with automatic Phoenix Channel broadcasting
 - **⚡ Zero-Config Helpers** - `ChannelState`, `CounterLoader`, `NotificationLoader` for Phoenix integration
+- **⚛️ Generated TypeScript SDK** - Ready-to-use React hooks, NotificationProvider, and NotificationBell components
 - **🔌 Extensible** - Add custom transports and event modules
 - **🧪 Test-Friendly** - Factory integration for testing templates
 
@@ -70,6 +71,7 @@ end
 - [What is AshDispatch?](lib/documentation/topics/what-is-ash-dispatch.md)
 - [Phoenix Channel Integration](lib/documentation/topics/phoenix-integration.md) - Zero-config helpers for real-time updates
 - [Counter Broadcasting](lib/documentation/topics/counter-broadcasting.md) - Declarative counter DSL with auto-discovery
+- [TypeScript SDK](lib/documentation/topics/typescript-sdk.md) - Generated React hooks, components, and Zustand store
 - [User Preferences](lib/documentation/topics/user-preferences.md)
 - [Recipient Resolution](lib/documentation/topics/recipient-resolution.md)
 - [Configuration](lib/documentation/topics/configuration.md)
@@ -98,6 +100,21 @@ graph TB
 
 ## Installation
 
+### Quick Start (Recommended)
+
+```bash
+mix igniter.install ash_dispatch
+```
+
+This creates all required resources, domains, and configuration automatically. Then run migrations:
+
+```bash
+mix ash.codegen add_ash_dispatch
+mix ash.migrate
+```
+
+### Manual Installation
+
 ```elixir
 def deps do
   [
@@ -105,6 +122,8 @@ def deps do
   ]
 end
 ```
+
+See [Getting Started](lib/documentation/tutorials/getting-started.md) for complete manual setup instructions.
 
 ## Quick Example
 

@@ -11,7 +11,50 @@ This guide assumes you're familiar with:
 - Ash resources and actions
 - Basic Elixir
 
-## Installation
+## Quick Start with Igniter (Recommended)
+
+The fastest way to get started is using the Igniter installer:
+
+```bash
+mix igniter.install ash_dispatch
+```
+
+This will automatically:
+- Create `Notification` and `DeliveryReceipt` resources
+- Create `Notifications` and `Deliveries` domains
+- Add domains to your `:ash_domains` configuration
+- Set up email layout templates
+- Configure Phoenix channels for real-time updates (if Phoenix detected)
+- Configure Oban for async delivery
+- Generate TypeScript SDK (if any domain uses `AshTypescript.Rpc` extension)
+
+After installation, run migrations and you're ready to add events:
+
+```bash
+mix ash.codegen add_ash_dispatch
+mix ash.migrate
+```
+
+Then skip to [Add Your First Event](#add-your-first-event).
+
+### Installer Options
+
+```bash
+# Skip Phoenix channel setup
+mix igniter.install ash_dispatch --no-phoenix
+
+# Skip email backend configuration
+mix igniter.install ash_dispatch --no-email
+
+# Skip TypeScript SDK generation (runs automatically if any domain uses AshTypescript.Rpc)
+mix igniter.install ash_dispatch --no-typescript
+```
+
+---
+
+## Manual Installation
+
+If you prefer manual setup or need more control, follow the steps below.
 
 ### 1. Add dependency
 
@@ -101,7 +144,31 @@ config :ash_dispatch,
 
 If you don't configure an email backend, AshDispatch will log emails instead of sending them (useful for development).
 
-### 4. Configure URL Builder (optional)
+### 4. Ensure domains are configured
+
+**Important:** AshDispatch discovers events and counters by introspecting resources in your configured Ash domains. If you use `AshDispatch.Notification` or `AshDispatch.DeliveryReceipt` base resources, their domains must be in your `:ash_domains` config.
+
+```elixir
+# config/config.exs
+config :my_app, :ash_domains, [
+  # Your existing domains
+  MyApp.Tickets,
+  MyApp.Accounts,
+
+  # ADD these if using AshDispatch's built-in resources:
+  MyApp.Notifications,  # Contains your Notification resource
+  MyApp.Deliveries,     # Contains your DeliveryReceipt resource
+]
+```
+
+**Why this matters:**
+- The TypeScript SDK generator reads events/counters from domains
+- Without proper domain config, `mix ash_dispatch.gen` finds 0 events
+- The generator will warn you if no events/counters are found
+
+See [Code Generation - Troubleshooting](../topics/code-generation.md#troubleshooting) for more details.
+
+### 5. Configure URL Builder (optional)
 
 For automatic source URL generation on delivery receipts (linking receipts back to their source resources), configure a URL builder module:
 
@@ -404,7 +471,9 @@ View Ticket: <%= @action_url %>
 
 ### 2. Add the event with callback module
 
-For complex events with templates, use a callback module:
+For complex events with templates, use a callback module.
+
+**IMPORTANT:** You **must** specify the `module:` option explicitly for the event module's callbacks to be found:
 
 ```elixir
 dispatch do
@@ -412,9 +481,11 @@ dispatch do
 
   event :resolved,
     trigger_on: :resolve,
-    module: MyApp.Events.Tickets.Resolved
+    module: MyApp.Events.Tickets.Resolved  # Required! Without this, callbacks won't be called
 end
 ```
+
+**Why is `module:` required?** Without the explicit `module:` option, the DSL config's `module` field is `nil`, which means AshDispatch cannot look up callbacks like `prepare_data/2`, `recipients/2`, etc. Always specify the module when using callback-based events.
 
 ### 3. Create the event module
 
@@ -480,6 +551,122 @@ defmodule MyApp.Events.Tickets.Resolved do
   end
 end
 ```
+
+## Resource-Triggered Events with `prepare_data`
+
+When events are triggered by resource actions (via `trigger_on`), you often need to prepare additional data that's not directly on the record. The `prepare_data/2` callback is essential for this.
+
+### Why `prepare_data` Matters
+
+For **in-app notifications** to be created correctly, AshDispatch needs to know which user should receive the notification. This is done via `context.data.user`. The `prepare_data` callback lets you populate this.
+
+### The `prepare_data/2` Callback
+
+```elixir
+defmodule MyApp.Events.Leads.ProjectOwnerAssigned do
+  use AshDispatch.Event
+
+  @impl true
+  def prepare_data(changeset, _record) do
+    # Extract the user who should receive this notification
+    user_id = Ash.Changeset.get_argument(changeset, :project_owner_id)
+
+    if user_id do
+      case Ash.get(MyApp.Accounts.User, user_id, authorize?: false, load: [:full_name]) do
+        {:ok, user} when not is_nil(user) ->
+          # CRITICAL: Return with :user key for notification recipient
+          %{user: user}
+
+        _ ->
+          %{}
+      end
+    else
+      %{}
+    end
+  end
+
+  # ... other callbacks
+end
+```
+
+### Required Return Structure
+
+**CRITICAL:** For in-app notifications to work, `prepare_data` must return a map with a `:user` key:
+
+```elixir
+# ✅ Correct - notification will be created for this user
+%{user: %{id: "user-id", email: "user@example.com"}}
+
+# ❌ Wrong - notification won't know who to send to
+%{project_owner: %{id: "user-id", email: "user@example.com"}}
+```
+
+The `:user` key is what AshDispatch uses to:
+1. Create the notification with the correct `user_id`
+2. Resolve recipients via the `recipients/2` callback
+3. Check user preferences
+
+### Using `data_key` with `prepare_data`
+
+When you define `data_key` in your event, it determines how the main record is stored in context:
+
+```elixir
+# In DSL:
+event :project_owner_assigned,
+  trigger_on: :assign_project_owner,
+  data_key: :lead,  # Record stored as context.data.lead
+  module: MyApp.Events.Leads.ProjectOwnerAssigned
+
+# In event module:
+@impl true
+def data_key, do: :lead
+
+@impl true
+def prepare_data(changeset, record) do
+  # record is the Lead that triggered the event
+  # Return additional data to merge into context.data
+  %{user: load_project_owner(changeset)}
+end
+
+# After prepare_data, context.data contains:
+# %{
+#   lead: %Lead{...},      # From data_key
+#   user: %User{...}       # From prepare_data
+# }
+```
+
+### Common Pattern: Loading Related Users
+
+```elixir
+@impl true
+def prepare_data(changeset, _record) do
+  # Get user ID from changeset argument
+  user_id = Ash.Changeset.get_argument(changeset, :assigned_to_id)
+
+  # Or get from an attribute being set
+  user_id = user_id || Ash.Changeset.get_attribute(changeset, :owner_id)
+
+  if user_id do
+    case Ash.get(MyApp.Accounts.User, user_id, authorize?: false, load: [:full_name]) do
+      {:ok, user} -> %{user: user}
+      _ -> %{}
+    end
+  else
+    %{}
+  end
+end
+```
+
+### When `prepare_data` is Called
+
+`prepare_data/2` is called:
+- **During resource action dispatch** - When `trigger_on` fires
+- **Before channel resolution** - So `context.data` is populated for `recipients/2`
+- **With changeset and record** - Giving access to both before and after state
+
+It is **NOT** called during:
+- Manual triggers (use `generate_send_variables/2` instead)
+- Preview mode (uses `sample_data/0` instead)
 
 ## Add Multiple Triggers
 
@@ -1021,6 +1208,137 @@ event :payment_overdue,
 1. Ensure variable exists on the resource
 2. Preload relationships with `load: [...]`
 3. Check spelling (case-sensitive!)
+
+### Callbacks not being called (prepare_data, recipients, etc.)
+
+**Problem:** Your event module's callbacks like `prepare_data/2` or `recipients/2` are not being executed.
+
+**Cause 1: Missing `module:` option**
+
+Without an explicit `module:` option in your DSL config, the event module is `nil`:
+
+```elixir
+# ❌ Wrong - module is nil, callbacks won't be found
+event :assigned,
+  trigger_on: :assign
+
+# ✅ Correct - explicit module reference
+event :assigned,
+  trigger_on: :assign,
+  module: MyApp.Events.Tickets.Assigned
+```
+
+**Cause 2: Module not loaded**
+
+If you're testing callbacks manually, ensure the module is loaded first:
+
+```elixir
+# Check if module exports the callback
+Code.ensure_loaded?(MyApp.Events.Tickets.Assigned)
+function_exported?(MyApp.Events.Tickets.Assigned, :prepare_data, 2)
+```
+
+### Notifications not created (in-app)
+
+**Problem:** The event fires but no notification appears in the database.
+
+**Cause: Missing `:user` key in prepare_data**
+
+For in-app notifications, `context.data.user` must contain the recipient:
+
+```elixir
+# ❌ Wrong - no :user key
+def prepare_data(changeset, _record) do
+  %{assignee: load_user(changeset)}
+end
+
+# ✅ Correct - :user key present
+def prepare_data(changeset, _record) do
+  user = load_user(changeset)
+  %{user: user, assignee: user}  # Use :user for notification recipient
+end
+```
+
+### Tests pass individually but fail together
+
+**Problem:** Running `mix test` fails but individual test files pass.
+
+**Cause: Wrong Oban testing mode**
+
+With `:manual` mode, jobs from previous tests can interfere. Use `:inline`:
+
+```elixir
+# config/test.exs
+config :my_app, Oban,
+  testing: :inline  # Jobs execute synchronously
+```
+
+See [Oban Configuration - Testing](../topics/oban-configuration.md#testing) for details.
+
+### Delivery receipts show "pending" forever
+
+**Problem:** Receipts are created but status never changes from `:pending`.
+
+**Solutions:**
+
+1. **Check Oban is running:**
+   ```elixir
+   Oban.check_queue(:emails)
+   ```
+
+2. **In tests, use `:inline` mode:**
+   ```elixir
+   config :my_app, Oban, testing: :inline
+   ```
+
+3. **Check for job errors:**
+   ```elixir
+   Oban.Job
+   |> Ash.Query.filter(state == "retryable" or state == "discarded")
+   |> Ash.read!()
+   ```
+
+### Event module callbacks return defaults instead of expected values
+
+**Problem:** Callbacks like `subject/2` or `notification_title/2` return `nil` or default values.
+
+**Cause: Module not properly loaded at runtime**
+
+AshDispatch uses `Code.ensure_loaded?` before checking `function_exported?`. If you see unexpected defaults:
+
+1. Verify module compiles without errors
+2. Check module is in your application's load path
+3. In tests, ensure module is compiled before the test runs
+
+```elixir
+# Force module to load
+Code.ensure_loaded!(MyApp.Events.Tickets.Assigned)
+
+# Now check the callback
+MyApp.Events.Tickets.Assigned.subject(context, channel)
+```
+
+### Preview shows sample data but real send uses wrong data
+
+**Problem:** Preview looks correct but actual emails have wrong/missing data.
+
+**Cause: `generate_send_variables/2` not implemented**
+
+For events that need to generate data at send time (tokens, codes, etc.), implement `generate_send_variables/2`:
+
+```elixir
+@impl true
+def generate_send_variables(context, opts) do
+  if not Map.has_key?(opts, :reset_token) do
+    case generate_real_token(context.data.user) do
+      {:ok, token} -> {:ok, Map.put(opts, :reset_token, token)}
+      {:error, reason} -> {:error, reason}  # Fail! Don't send with sample data
+    end
+  else
+    {:ok, opts}
+  end
+end
+```
 
 ## Help & Support
 

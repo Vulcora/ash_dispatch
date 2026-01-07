@@ -48,6 +48,87 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
   defp to_string_or_nil(nil), do: nil
   defp to_string_or_nil(value), do: to_string(value)
 
+  @doc """
+  Lists ALL events (for template preview purposes).
+
+  Unlike list_available_events/1 which only returns manually triggerable events,
+  this function returns all events that have email channels defined, regardless
+  of their trigger_on setting. This is useful for admin template preview pages.
+  """
+  def list_all_events do
+    alias AshDispatch.ChannelResolver
+
+    # Include ALL DSL events (not just manual triggers)
+    dsl_events = list_all_dsl_events()
+
+    dsl_events
+    |> Enum.filter(fn {event_id, event_module, event_config} ->
+      has_any_channels?(event_id, event_module, event_config)
+    end)
+    |> Enum.map(fn {event_id, event_module, event_config} ->
+      # Use EventResolver for building sample context
+      sample_context = EventResolver.build_sample_context(event_id, event_module)
+
+      # Use centralized ChannelResolver for consistent priority logic
+      channels =
+        ChannelResolver.resolve(
+          event_id,
+          event_module,
+          sample_context,
+          dsl_channels: event_config && event_config.channels
+        )
+
+      # Get user_configurable from metadata if available
+      user_configurable = get_in(event_config.metadata || [], [:user_configurable])
+      category = get_in(event_config.metadata || [], [:category]) |> to_string_or_nil()
+
+      %{
+        event_id: event_id,
+        description: get_event_description(event_module, event_id),
+        domain: (event_config && event_config.domain) |> to_string_or_nil(),
+        channels: format_channels(channels),
+        required_context: get_required_context(event_id),
+        example_context: get_example_context(event_id, event_module),
+        required_resources:
+          EventResolver.required_resources(event_module) |> format_required_resources(),
+        user_configurable: user_configurable,
+        category: category
+      }
+    end)
+    |> Enum.sort_by(& &1.event_id)
+  end
+
+  # List ALL DSL events (for template preview)
+  defp list_all_dsl_events do
+    domains = Config.domains()
+
+    Enum.flat_map(domains, fn domain ->
+      try do
+        domain
+        |> Ash.Domain.Info.resources()
+        |> Enum.flat_map(fn resource ->
+          if AshDispatch.Resource.Info.dispatch_enabled?(resource) do
+            resource
+            |> AshDispatch.Resource.Info.events()
+            |> Enum.map(fn event ->
+              {event.event_id, event.module, event}
+            end)
+          else
+            []
+          end
+        end)
+      rescue
+        _ -> []
+      end
+    end)
+  end
+
+  # Check if event has any channels (email or in_app)
+  defp has_any_channels?(_event_id, _event_module, event_config) do
+    channels = event_config && event_config.channels
+    is_list(channels) && length(channels) > 0
+  end
+
   defp list_dsl_events do
     domains = Config.domains()
 
@@ -372,26 +453,53 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
           # Get data_key from config or derive from resource using Naming
           data_key = event_config.data_key || Naming.data_key(resource)
           id_field = String.to_atom("#{data_key}_id")
+          load_opts = event_config.load || []
 
-          # Load primary resource if ID is provided
-          if Map.has_key?(context_data, id_field) do
-            resource_id = context_data[id_field]
-            load_opts = event_config.load || []
+          # Load primary resource if ID is provided, or auto-load sample for preview
+          cond do
+            Map.has_key?(context_data, id_field) ->
+              # ID provided - load that specific record
+              resource_id = context_data[id_field]
 
-            case load_resource(resource, resource_id, load_opts) do
-              {:ok, record} ->
-                {:ok, %{data_key => record}}
+              case load_resource(resource, resource_id, load_opts) do
+                {:ok, record} ->
+                  {:ok, %{data_key => record}}
 
-              {:error, error} ->
-                Logger.error(
-                  "Failed to load #{inspect(resource)} with id #{inspect(resource_id)}: #{inspect(error)}"
-                )
+                {:error, error} ->
+                  Logger.error(
+                    "Failed to load #{inspect(resource)} with id #{inspect(resource_id)}: #{inspect(error)}"
+                  )
 
-                {:error, "Failed to load #{inspect(resource)} with id #{inspect(resource_id)}"}
-            end
-          else
-            {:error,
-             "Missing required field: #{id_field}. Provide the ID of the #{data_key} to preview."}
+                  {:error, "Failed to load #{inspect(resource)} with id #{inspect(resource_id)}"}
+              end
+
+            map_size(context_data) == 0 ->
+              # No context provided - try sample_data from module first, then auto-load from DB
+              module_sample_data = EventResolver.sample_data(event_module)
+
+              if map_size(module_sample_data) > 0 do
+                # Use sample_data from event module
+                {:ok, module_sample_data}
+              else
+                # Fall back to auto-loading a sample record from DB
+                case load_sample_record(resource, load_opts) do
+                  {:ok, record} ->
+                    {:ok, %{data_key => record}}
+
+                  {:error, :no_records} ->
+                    {:error,
+                     "No #{inspect(resource)} records found in database and no sample_data/0 defined in event module. " <>
+                       "Either create a record or add sample_data/0 to #{inspect(event_module)}."}
+
+                  {:error, error} ->
+                    Logger.error("Failed to load sample #{inspect(resource)}: #{inspect(error)}")
+                    {:error, "Failed to load sample record for preview"}
+                end
+              end
+
+            true ->
+              {:error,
+               "Missing required field: #{id_field}. Provide the ID of the #{data_key} to preview."}
           end
 
         :not_found ->
@@ -405,6 +513,28 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
 
       {:ok, base_data} ->
         build_context_success(event_id, event_module, base_data, context_data, actor)
+    end
+  end
+
+  # Load a sample record from the database for preview purposes
+  defp load_sample_record(resource, load_opts) do
+    domain = Ash.Resource.Info.domain(resource)
+
+    case Ash.read(resource, domain: domain, authorize?: false, load: load_opts, page: [limit: 1]) do
+      {:ok, %{results: [record | _]}} ->
+        {:ok, record}
+
+      {:ok, %{results: []}} ->
+        {:error, :no_records}
+
+      {:ok, [record | _]} ->
+        {:ok, record}
+
+      {:ok, []} ->
+        {:error, :no_records}
+
+      {:error, error} ->
+        {:error, error}
     end
   end
 
@@ -465,23 +595,50 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
         # Get load options from event module's channels
         channel_load_opts = get_channel_load_opts(event_module)
 
-        if Map.has_key?(context_data, id_field) do
-          resource_id = context_data[id_field]
+        cond do
+          Map.has_key?(context_data, id_field) ->
+            # ID provided - load that specific record
+            resource_id = context_data[id_field]
 
-          case load_resource_with_domain(resource, resource_id, channel_load_opts, domain) do
-            {:ok, record} ->
-              {:ok, %{data_key => record}}
+            case load_resource_with_domain(resource, resource_id, channel_load_opts, domain) do
+              {:ok, record} ->
+                {:ok, %{data_key => record}}
 
-            {:error, error} ->
-              Logger.error(
-                "Failed to load #{inspect(resource)} with id #{inspect(resource_id)}: #{inspect(error)}"
-              )
+              {:error, error} ->
+                Logger.error(
+                  "Failed to load #{inspect(resource)} with id #{inspect(resource_id)}: #{inspect(error)}"
+                )
 
-              {:error, "Failed to load #{inspect(resource)} with id #{inspect(resource_id)}"}
-          end
-        else
-          {:error,
-           "Missing required field: #{id_field}. Provide the ID of the #{data_key} to preview."}
+                {:error, "Failed to load #{inspect(resource)} with id #{inspect(resource_id)}"}
+            end
+
+          map_size(context_data) == 0 ->
+            # No context provided - try sample_data first, then fall back to DB
+            sample_data = EventResolver.sample_data(event_module)
+
+            if map_size(sample_data) > 0 do
+              # Use sample_data from event module
+              {:ok, sample_data}
+            else
+              # Fall back to loading a sample record from DB
+              case load_sample_record_with_domain(resource, channel_load_opts, domain) do
+                {:ok, record} ->
+                  {:ok, %{data_key => record}}
+
+                {:error, :no_records} ->
+                  {:error,
+                   "No #{inspect(resource)} records found in database and no sample_data/0 defined. " <>
+                     "Either create a record or add sample_data/0 to the event module."}
+
+                {:error, error} ->
+                  Logger.error("Failed to load sample #{inspect(resource)}: #{inspect(error)}")
+                  {:error, "Failed to load sample record for preview"}
+              end
+            end
+
+          true ->
+            {:error,
+             "Missing required field: #{id_field}. Provide the ID of the #{data_key} to preview."}
         end
       rescue
         e ->
@@ -489,15 +646,47 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
           {:error, "Failed to load resource: #{Exception.message(e)}"}
       end
     else
-      # No resource/0 defined, use context_data directly
-      if map_size(context_data) > 0 do
-        {:ok, context_data}
-      else
-        {:error,
-         "Event module has no resource/0 callback and no context data provided. " <>
-           "Add resource/0 to specify the primary resource, e.g.:\n\n" <>
-           "  def resource, do: MyApp.Accounts.User"}
+      # No resource/0 defined - try sample_data or use context_data
+      sample_data = EventResolver.sample_data(event_module)
+
+      cond do
+        map_size(sample_data) > 0 ->
+          {:ok, sample_data}
+
+        map_size(context_data) > 0 ->
+          {:ok, context_data}
+
+        true ->
+          {:error,
+           "Event module has no resource/0 callback, no sample_data/0, and no context data provided. " <>
+             "Add sample_data/0 to provide preview data, e.g.:\n\n" <>
+             "  def sample_data do\n" <>
+             "    %{user: %{id: Ash.UUID.generate(), email: \"test@example.com\"}}\n" <>
+             "  end"}
       end
+    end
+  end
+
+  # Load a sample record with explicit domain
+  defp load_sample_record_with_domain(resource, load_opts, domain) do
+    actual_domain =
+      domain || (function_exported?(resource, :__domain__, 0) && resource.__domain__())
+
+    if actual_domain do
+      case Ash.read(resource,
+             domain: actual_domain,
+             authorize?: false,
+             load: load_opts,
+             page: [limit: 1]
+           ) do
+        {:ok, %{results: [record | _]}} -> {:ok, record}
+        {:ok, %{results: []}} -> {:error, :no_records}
+        {:ok, [record | _]} -> {:ok, record}
+        {:ok, []} -> {:error, :no_records}
+        {:error, error} -> {:error, error}
+      end
+    else
+      {:error, "Could not determine domain for resource #{inspect(resource)}"}
     end
   end
 
@@ -571,10 +760,19 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
   defp get_preview_recipient(event_module, context, channel) do
     # Use EventResolver for safe callback execution
     case EventResolver.recipients(event_module, context, channel) do
-      [first | _] -> first
+      [first | _] -> format_recipient(first)
       [] -> "preview@example.com"
     end
   end
+
+  defp format_recipient(%{display_name: name, email: email})
+       when is_binary(name) and name != "" do
+    "#{name} <#{email}>"
+  end
+
+  defp format_recipient(%{email: email}) when is_binary(email), do: email
+  defp format_recipient(email) when is_binary(email), do: email
+  defp format_recipient(_), do: "preview@example.com"
 
   defp render_templates(event_module, transport, variant, assigns) do
     # Get otp_app from config - needed for priv manifest lookup

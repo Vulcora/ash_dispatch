@@ -104,6 +104,9 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     events = AshDispatch.Introspection.all_events(otp_app)
     counters = discover_counters(otp_app)
 
+    # Warn if no events or counters found (common misconfiguration)
+    warn_if_no_dispatch_resources(otp_app, events, counters)
+
     if opts[:verbose] do
       Mix.shell().info("Found #{length(events)} events, #{length(counters)} counters")
 
@@ -156,9 +159,118 @@ defmodule Mix.Tasks.AshDispatch.Gen do
 
       if generated_count > 0 do
         Mix.shell().info("\nGenerated #{generated_count} file(s)")
+
+        # Check for required dependencies and warn if missing
+        check_frontend_dependencies(otp_app)
       end
 
       {:ok, []}
+    end
+  end
+
+  # ============================================================================
+  # Dependency Checking
+  # ============================================================================
+
+  defp check_frontend_dependencies(otp_app) do
+    sdk_base = sdk_base_path(otp_app)
+
+    if sdk_base do
+      frontend_root = find_frontend_root(sdk_base)
+
+      if frontend_root do
+        package_json_path = Path.join(frontend_root, "package.json")
+
+        if File.exists?(package_json_path) do
+          case File.read(package_json_path) do
+            {:ok, content} ->
+              case Jason.decode(content) do
+                {:ok, package} ->
+                  deps = Map.get(package, "dependencies", %{})
+                  dev_deps = Map.get(package, "devDependencies", %{})
+                  all_deps = Map.merge(deps, dev_deps)
+
+                  missing = []
+
+                  missing =
+                    if Map.has_key?(all_deps, "zustand") do
+                      missing
+                    else
+                      ["zustand" | missing]
+                    end
+
+                  missing =
+                    if Map.has_key?(all_deps, "phoenix") do
+                      missing
+                    else
+                      ["phoenix" | missing]
+                    end
+
+                  if length(missing) > 0 do
+                    missing_str = Enum.join(missing, " ")
+
+                    Mix.shell().info([
+                      "\n",
+                      :yellow,
+                      "⚠ Missing peer dependencies:",
+                      :reset,
+                      " #{missing_str}\n",
+                      "  Install with: ",
+                      :cyan,
+                      "npm install #{missing_str}",
+                      :reset,
+                      "\n"
+                    ])
+                  end
+
+                _ ->
+                  :ok
+              end
+
+            _ ->
+              :ok
+          end
+        end
+      end
+    end
+  end
+
+  # ============================================================================
+  # Warnings and Diagnostics
+  # ============================================================================
+
+  defp warn_if_no_dispatch_resources(otp_app, events, counters) do
+    # Only warn if we have no events AND no counters - likely misconfiguration
+    if length(events) == 0 and length(counters) == 0 do
+      configured_domains = get_domains(otp_app)
+
+      Mix.shell().info([
+        "\n",
+        :yellow,
+        "⚠ No AshDispatch events or counters found.",
+        :reset,
+        "\n\n",
+        "  If you have resources using ",
+        :cyan,
+        "AshDispatch.Resource",
+        :reset,
+        ", ensure their domains\n",
+        "  are listed in your config:\n\n",
+        :faint,
+        "    # config/config.exs\n",
+        "    config :#{otp_app}, :ash_domains, [\n",
+        "      # ... your existing domains ...\n",
+        "      MyApp.Notifications,  # If using AshDispatch notifications\n",
+        "      MyApp.Deliveries,     # If using AshDispatch delivery receipts\n",
+        "    ]\n",
+        :reset,
+        "\n",
+        "  Currently configured domains: ",
+        :cyan,
+        if(configured_domains == [], do: "(none)", else: inspect(configured_domains)),
+        :reset,
+        "\n"
+      ])
     end
   end
 
@@ -284,7 +396,10 @@ defmodule Mix.Tasks.AshDispatch.Gen do
         {"index.ts", &generate_index_content/0},
         {"hooks/use-channel.ts", &generate_use_channel_content/0},
         {"hooks/use-counter.ts", &generate_use_counter_content/0},
-        {"hooks/use-notifications.ts", &generate_use_notifications_content/0}
+        {"hooks/use-notifications.ts", &generate_use_notifications_content/0},
+        {"notification-provider.tsx", &generate_notification_provider_content/0},
+        {"notification-bell.tsx", &generate_notification_bell_content/0},
+        {"README.md", &generate_readme_content/0}
       ]
 
       Enum.filter(sdk_files, fn {filename, _generator} ->
@@ -778,8 +893,11 @@ defmodule Mix.Tasks.AshDispatch.Gen do
       by_source
       |> Enum.sort_by(fn {source, _} -> source end)
       |> Enum.map(fn {source, source_counters} ->
+        # Deduplicate counters by name within each source
+        unique_source_counters = Enum.uniq_by(source_counters, & &1.name)
+
         fields =
-          Enum.map_join(source_counters, "\n", fn c ->
+          Enum.map_join(unique_source_counters, "\n", fn c ->
             "    #{c.name}: \"#{c.name}\","
           end)
 
@@ -1056,10 +1174,14 @@ defmodule Mix.Tasks.AshDispatch.Gen do
   # Path Helpers
   # ============================================================================
 
+  # Default output path matching ash_typescript's installer default
+  @default_ash_typescript_output "assets/js/ash_rpc.ts"
+
   defp typescript_sdk_enabled?(otp_app) do
     # SDK generation requires either:
     # 1. Explicit sdk_output_path in ash_dispatch config
     # 2. Valid ash_typescript :output_file configuration
+    # 3. Any domain using AshTypescript.Rpc (uses default path)
     explicit_path =
       Application.get_env(:ash_dispatch, :sdk_output_path) ||
         Application.get_env(otp_app, :ash_dispatch)[:sdk_output_path]
@@ -1069,6 +1191,7 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     cond do
       explicit_path != nil -> true
       ash_ts_output != nil and is_binary(ash_ts_output) and ash_ts_output != "" -> true
+      ash_typescript_in_use?(otp_app) -> true
       true -> false
     end
   end
@@ -1081,7 +1204,10 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     if explicit_path do
       explicit_path
     else
-      ash_ts_output = Application.get_env(:ash_typescript, :output_file)
+      # Use configured output_file, or default if ash_typescript is in use
+      ash_ts_output =
+        Application.get_env(:ash_typescript, :output_file) ||
+          if(ash_typescript_in_use?(otp_app), do: @default_ash_typescript_output)
 
       if ash_ts_output do
         base_dir = Path.dirname(ash_ts_output)
@@ -1089,6 +1215,30 @@ defmodule Mix.Tasks.AshDispatch.Gen do
       else
         nil
       end
+    end
+  end
+
+  defp ash_typescript_in_use?(otp_app) do
+    # Check if any domain uses the AshTypescript.Rpc extension
+    if Code.ensure_loaded?(AshTypescript.Rpc) do
+      domains = Application.get_env(otp_app, :ash_domains, [])
+
+      Enum.any?(domains, fn domain ->
+        Code.ensure_loaded?(domain) and
+          function_exported?(domain, :spark_dsl_config, 0) and
+          has_ash_typescript_extension?(domain)
+      end)
+    else
+      false
+    end
+  end
+
+  defp has_ash_typescript_extension?(domain) do
+    try do
+      extensions = Spark.extensions(domain)
+      AshTypescript.Rpc in extensions
+    rescue
+      _ -> false
     end
   end
 
@@ -1109,7 +1259,7 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     import { create } from 'zustand'
     import { DEFAULT_COUNTERS, type AllCounters, type CounterName } from './types'
 
-    interface CounterState {
+    export interface CounterState {
       counters: AllCounters
       setCounters: (counters: Partial<AllCounters>) => void
       setCounter: (key: CounterName, value: number) => void
@@ -1119,14 +1269,14 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     export const useCounterStore = create<CounterState>()((set) => ({
       counters: DEFAULT_COUNTERS,
 
-      setCounters: (newCounters) => {
-        set((state) => ({
+      setCounters: (newCounters: Partial<AllCounters>) => {
+        set((state: CounterState) => ({
           counters: { ...state.counters, ...newCounters },
         }))
       },
 
-      setCounter: (key, value) => {
-        set((state) => ({
+      setCounter: (key: CounterName, value: number) => {
+        set((state: CounterState) => ({
           counters: { ...state.counters, [key]: value },
         }))
       },
@@ -1170,12 +1320,19 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     // Auto-generated by mix ash_dispatch.gen
     // Do not edit manually
 
+    // Core types and store
     export * from './types'
     export * from './store'
     export * from './channel'
+
+    // Hooks
     export { useChannel } from './hooks/use-channel'
     export { useCounter } from './hooks/use-counter'
-    export { useNotifications } from './hooks/use-notifications'
+    export { useNotifications, type Notification, type UseNotificationsOptions, type UseNotificationsReturn } from './hooks/use-notifications'
+
+    // Components
+    export { NotificationProvider, useNotificationContext, type NotificationProviderProps } from './notification-provider'
+    export { NotificationBell, type NotificationBellProps } from './notification-bell'
     """
   end
 
@@ -1186,23 +1343,32 @@ defmodule Mix.Tasks.AshDispatch.Gen do
 
     import { useEffect, useRef } from 'react'
     import { Channel } from 'phoenix'
-    import { useCounterStore } from '../store'
-    import { isValidCounter } from '../types'
+    import { useCounterStore, type CounterState } from '../store'
+    import { isValidCounter, type AllCounters } from '../types'
 
     interface UseChannelOptions {
       channel: Channel | null
       onNotification?: (notification: unknown) => void
     }
 
+    interface ChannelJoinResponse {
+      counters?: Partial<AllCounters>
+    }
+
+    interface CounterUpdatePayload {
+      counter: string
+      value: number
+    }
+
     export function useChannel({ channel, onNotification }: UseChannelOptions) {
-      const setCounter = useCounterStore((state) => state.setCounter)
+      const setCounter = useCounterStore((state: CounterState) => state.setCounter)
       const joinedRef = useRef(false)
 
       useEffect(() => {
         if (!channel || joinedRef.current) return
 
         channel.join()
-          .receive('ok', (response) => {
+          .receive('ok', (response: ChannelJoinResponse) => {
             console.log('[AshDispatch] Channel joined', response)
             joinedRef.current = true
 
@@ -1215,20 +1381,20 @@ defmodule Mix.Tasks.AshDispatch.Gen do
               })
             }
           })
-          .receive('error', (err) => {
+          .receive('error', (err: unknown) => {
             console.error('[AshDispatch] Channel join error', err)
           })
 
         // Listen for counter updates
-        channel.on('counter_updated', (payload) => {
-          const counterName = payload.counter as string
+        channel.on('counter_updated', (payload: CounterUpdatePayload) => {
+          const counterName = payload.counter
           if (isValidCounter(counterName)) {
             setCounter(counterName, payload.value)
           }
         })
 
         // Listen for notifications
-        channel.on('notification', (payload) => {
+        channel.on('notification', (payload: unknown) => {
           onNotification?.(payload)
         })
 
@@ -1248,11 +1414,19 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     // Auto-generated by mix ash_dispatch.gen
     // Hook for accessing a single counter value
 
-    import { useCounterStore } from '../store'
+    import { useCounterStore, type CounterState } from '../store'
     import type { CounterName } from '../types'
 
+    /**
+     * Access a single counter value from the store.
+     *
+     * @example
+     * ```tsx
+     * const unreadCount = useCounter('unread_notifications')
+     * ```
+     */
     export function useCounter(name: CounterName): number {
-      return useCounterStore((state) => state.counters[name])
+      return useCounterStore((state: CounterState) => state.counters[name])
     }
     """
   end
@@ -1260,35 +1434,679 @@ defmodule Mix.Tasks.AshDispatch.Gen do
   defp generate_use_notifications_content do
     """
     // Auto-generated by mix ash_dispatch.gen
-    // Hook for notification state and actions
+    // Complete hook for notification state and actions
+    // Connects to your Ash RPC notifications and Phoenix channel
 
-    import { useCallback } from 'react'
-    import { useCounterStore } from '../store'
+    "use client"
 
-    // NOTE: This is a minimal implementation.
-    // You'll need to integrate with your notification store and RPC calls.
+    import { useCallback, useEffect, useRef, useState } from 'react'
+    import { Socket, Channel } from 'phoenix'
+    import { useCounterStore, type CounterState } from '../store'
 
-    export function useNotifications() {
-      const unreadCount = useCounterStore((state) => state.counters.unread_notifications)
+    // ============================================================================
+    // Types
+    // ============================================================================
 
-      const markAsRead = useCallback(async (notificationId: string) => {
-        // TODO: Call your RPC action
-        // await markNotificationAsRead({ primaryKey: notificationId, fields: ["id", "read"] })
-        console.log('markAsRead:', notificationId)
-      }, [])
+    /**
+     * Notification type from the backend.
+     * Matches the Ash Notification resource fields.
+     */
+    export interface Notification {
+      id: string
+      title: string
+      message: string
+      type: 'info' | 'success' | 'warning' | 'error'
+      actionUrl: string | null
+      actionLabel: string | null
+      read: boolean
+      readAt: string | null
+      occurredAt: string
+      insertedAt: string
+    }
 
+    export interface UseNotificationsOptions {
+      /** User ID for fetching notifications. Required. */
+      userId: string | null
+      /** Whether to enable the hook. Defaults to true. */
+      enabled?: boolean
+      /** RPC function to list notifications - pass your ash_typescript generated function directly */
+      listNotifications: ListNotificationsFn
+      /** RPC function to mark a notification as read - pass your ash_typescript generated function directly */
+      markNotificationAsRead: MarkAsReadFn
+      /** RPC function to mark all notifications as read - pass your ash_typescript generated function directly */
+      markAllNotificationsAsRead: MarkAllAsReadFn
+      /** Function to build CSRF headers */
+      buildCSRFHeaders: () => Record<string, string>
+    }
+
+    export interface UseNotificationsReturn {
+      notifications: Notification[]
+      unreadCount: number
+      isLoading: boolean
+      error: string | null
+      isConnected: boolean
+      markAsRead: (notificationId: string) => Promise<void>
+      markAllAsRead: () => Promise<void>
+      refresh: () => Promise<void>
+    }
+
+    // Flexible RPC function types - compatible with ash_typescript generated functions
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    type ListNotificationsFn = (config: { input: { userId: string }; fields: any[] }) => Promise<{ success: boolean; data?: any }>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    type MarkAsReadFn = (config: { identity: string; fields?: any[] }) => Promise<{ success: boolean; data?: any }>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    type MarkAllAsReadFn = (config: { input: { userId: string } }) => Promise<{ success: boolean }>
+
+    // ============================================================================
+    // Hook Implementation
+    // ============================================================================
+
+    /**
+     * Complete notification management hook.
+     *
+     * Handles:
+     * - Fetching notifications via RPC
+     * - Real-time updates via Phoenix channel
+     * - Mark as read / mark all as read
+     * - Unread counter synchronization
+     *
+     * @example
+     * ```tsx
+     * import { useNotifications } from '@/lib/generated/ash-dispatch'
+     * import {
+     *   listNotifications,
+     *   markNotificationAsRead,
+     *   markAllNotificationsAsRead,
+     *   buildCSRFHeaders,
+     * } from '@/lib/generated/ash_rpc'
+     *
+     * function NotificationList() {
+     *   const { user } = useAuth()
+     *   const {
+     *     notifications,
+     *     unreadCount,
+     *     isLoading,
+     *     markAsRead,
+     *     markAllAsRead,
+     *   } = useNotifications({
+     *     userId: user?.id ?? null,
+     *     listNotifications,
+     *     markNotificationAsRead,
+     *     markAllNotificationsAsRead,
+     *     buildCSRFHeaders,
+     *   })
+     *
+     *   return (
+     *     <div>
+     *       <span>Unread: {unreadCount}</span>
+     *       {notifications.map((n) => (
+     *         <div key={n.id} onClick={() => markAsRead(n.id)}>
+     *           {n.title}
+     *         </div>
+     *       ))}
+     *     </div>
+     *   )
+     * }
+     * ```
+     */
+    export function useNotifications({
+      userId,
+      enabled = true,
+      listNotifications,
+      markNotificationAsRead,
+      markAllNotificationsAsRead,
+      buildCSRFHeaders,
+    }: UseNotificationsOptions): UseNotificationsReturn {
+      const [notifications, setNotifications] = useState<Notification[]>([])
+      const [isLoading, setIsLoading] = useState(true)
+      const [error, setError] = useState<string | null>(null)
+      const [isConnected, setIsConnected] = useState(false)
+
+      const socketRef = useRef<Socket | null>(null)
+      const channelRef = useRef<Channel | null>(null)
+
+      // Use the Zustand counter store
+      const setCounter = useCounterStore((state: CounterState) => state.setCounter)
+      const unreadCount = useCounterStore((state: CounterState) => state.counters.unread_notifications)
+
+      // Fetch notifications from backend
+      const fetchNotifications = useCallback(async () => {
+        if (!enabled || !userId) return
+
+        setIsLoading(true)
+        setError(null)
+
+        try {
+          const result = await listNotifications({
+            fields: [
+              'id',
+              'title',
+              'message',
+              'type',
+              'actionUrl',
+              'actionLabel',
+              'read',
+              'readAt',
+              'occurredAt',
+              'insertedAt',
+            ],
+            input: { userId },
+          })
+
+          if (result.success) {
+            const data = result.data
+            setNotifications(data)
+
+            // Update the unread counter
+            const unread = data.filter((n: Notification) => !n.read).length
+            setCounter('unread_notifications', unread)
+          } else {
+            setError('Failed to fetch notifications')
+          }
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Failed to fetch notifications')
+        } finally {
+          setIsLoading(false)
+        }
+      }, [enabled, userId, listNotifications, setCounter])
+
+      // Mark single notification as read
+      const markAsRead = useCallback(
+        async (notificationId: string) => {
+          try {
+            const result = await markNotificationAsRead({
+              identity: notificationId,
+              fields: ['id', 'read'],
+            })
+
+            if (result.success) {
+              setNotifications((prev) =>
+                prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n))
+              )
+              // Decrement counter
+              setCounter('unread_notifications', Math.max(0, unreadCount - 1))
+            }
+          } catch (err) {
+            console.error('[AshDispatch] Failed to mark notification as read:', err)
+          }
+        },
+        [markNotificationAsRead, setCounter, unreadCount]
+      )
+
+      // Mark all notifications as read
       const markAllAsRead = useCallback(async () => {
-        // TODO: Call your RPC action
-        // await markAllNotificationsAsRead({ input: { userId } })
-        console.log('markAllAsRead')
-      }, [])
+        if (!userId) return
+
+        try {
+          const result = await markAllNotificationsAsRead({
+            input: { userId },
+          })
+
+          if (result.success) {
+            setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
+            setCounter('unread_notifications', 0)
+          }
+        } catch (err) {
+          console.error('[AshDispatch] Failed to mark all notifications as read:', err)
+        }
+      }, [userId, markAllNotificationsAsRead, setCounter])
+
+      // Connect to Phoenix channel for real-time updates
+      const connectChannel = useCallback(async () => {
+        if (!userId || !enabled) return
+
+        try {
+          // Fetch socket token from your API
+          const response = await fetch('/api/inbox/socket-token', {
+            headers: buildCSRFHeaders(),
+            credentials: 'include',
+          })
+
+          if (!response.ok) {
+            return // Socket connection is optional
+          }
+
+          const data = await response.json()
+          if (!data.success) {
+            return
+          }
+
+          const token = data.data.token
+
+          // Create socket connection
+          const socket = new Socket('/socket', {
+            params: { token },
+          })
+
+          socket.onError(() => setIsConnected(false))
+          socket.onClose(() => setIsConnected(false))
+          socket.connect()
+          socketRef.current = socket
+
+          // Join the user channel for notifications
+          const channel = socket.channel(`user:${userId}`, {})
+
+          // Listen for new notifications
+          channel.on('new_notification', (notification: Notification) => {
+            setNotifications((prev) => [notification, ...prev])
+            if (!notification.read) {
+              setCounter('unread_notifications', unreadCount + 1)
+            }
+          })
+
+          // Listen for counter updates
+          channel.on('counter_update', (payload: { unread_notifications: number }) => {
+            setCounter('unread_notifications', payload.unread_notifications)
+          })
+
+          channel
+            .join()
+            .receive('ok', () => setIsConnected(true))
+            .receive('error', () => setIsConnected(false))
+
+          channelRef.current = channel
+        } catch {
+          // Socket connection is optional
+        }
+      }, [userId, enabled, buildCSRFHeaders, setCounter, unreadCount])
+
+      // Initial fetch
+      useEffect(() => {
+        fetchNotifications()
+      }, [fetchNotifications])
+
+      // Connect to channel
+      useEffect(() => {
+        connectChannel()
+
+        return () => {
+          if (channelRef.current) {
+            channelRef.current.leave()
+            channelRef.current = null
+          }
+          if (socketRef.current) {
+            socketRef.current.disconnect()
+            socketRef.current = null
+          }
+        }
+      }, [connectChannel])
 
       return {
+        notifications,
         unreadCount,
+        isLoading,
+        error,
+        isConnected,
         markAsRead,
         markAllAsRead,
+        refresh: fetchNotifications,
       }
     }
+    """
+  end
+
+  # ============================================================================
+  # Additional SDK Generators (Provider, UI Components, README)
+  # ============================================================================
+
+  defp generate_notification_provider_content do
+    """
+    // Auto-generated by mix ash_dispatch.gen
+    // Provider component that initializes notification state
+
+    "use client"
+
+    import { createContext, useContext, type ReactNode } from 'react'
+    import { useNotifications, type UseNotificationsReturn, type UseNotificationsOptions } from './hooks/use-notifications'
+
+    // ============================================================================
+    // Context
+    // ============================================================================
+
+    const NotificationContext = createContext<UseNotificationsReturn | null>(null)
+
+    /**
+     * Hook to access notification context.
+     * Must be used within a NotificationProvider.
+     */
+    export function useNotificationContext(): UseNotificationsReturn {
+      const context = useContext(NotificationContext)
+      if (!context) {
+        throw new Error('useNotificationContext must be used within a NotificationProvider')
+      }
+      return context
+    }
+
+    // ============================================================================
+    // Provider
+    // ============================================================================
+
+    export interface NotificationProviderProps extends UseNotificationsOptions {
+      children: ReactNode
+    }
+
+    /**
+     * Provider component that initializes notification state and Phoenix channel connection.
+     *
+     * Wrap your app (or authenticated layout) with this provider to enable
+     * notification features throughout your application.
+     *
+     * @example
+     * ```tsx
+     * // In your app layout or authenticated wrapper:
+     * import { NotificationProvider } from '@/lib/generated/ash-dispatch/notification-provider'
+     * import {
+     *   listNotifications,
+     *   markNotificationAsRead,
+     *   markAllNotificationsAsRead,
+     *   buildCSRFHeaders,
+     * } from '@/lib/generated/ash_rpc'
+     *
+     * function AuthenticatedLayout({ children }) {
+     *   const { user } = useAuth()
+     *
+     *   return (
+     *     <NotificationProvider
+     *       userId={user?.id ?? null}
+     *       listNotifications={listNotifications}
+     *       markNotificationAsRead={markNotificationAsRead}
+     *       markAllNotificationsAsRead={markAllNotificationsAsRead}
+     *       buildCSRFHeaders={buildCSRFHeaders}
+     *     >
+     *       {children}
+     *     </NotificationProvider>
+     *   )
+     * }
+     * ```
+     */
+    export function NotificationProvider({
+      children,
+      ...options
+    }: NotificationProviderProps) {
+      const notificationState = useNotifications(options)
+
+      return (
+        <NotificationContext.Provider value={notificationState}>
+          {children}
+        </NotificationContext.Provider>
+      )
+    }
+    """
+  end
+
+  defp generate_notification_bell_content do
+    """
+    // Auto-generated by mix ash_dispatch.gen
+    // Drop-in notification bell component
+
+    "use client"
+
+    import { useState } from 'react'
+    import { useNotificationContext } from './notification-provider'
+
+    // ============================================================================
+    // Types
+    // ============================================================================
+
+    export interface NotificationBellProps {
+      /** Custom class name for the container */
+      className?: string
+      /** Custom icon component (defaults to bell SVG) */
+      icon?: React.ReactNode
+      /** Whether to show the notification count badge */
+      showBadge?: boolean
+      /** Maximum count to display (shows "99+" if exceeded) */
+      maxCount?: number
+      /** Callback when bell is clicked */
+      onClick?: () => void
+    }
+
+    // ============================================================================
+    // Default Icon
+    // ============================================================================
+
+    function BellIcon({ className }: { className?: string }) {
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={className}
+        >
+          <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+          <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+        </svg>
+      )
+    }
+
+    // ============================================================================
+    // Component
+    // ============================================================================
+
+    /**
+     * Drop-in notification bell component with unread badge.
+     *
+     * Uses the NotificationContext, so must be placed within a NotificationProvider.
+     *
+     * @example
+     * ```tsx
+     * // Simple usage in header:
+     * <NotificationBell onClick={() => setShowPanel(true)} />
+     *
+     * // With custom styling:
+     * <NotificationBell
+     *   className="text-gray-600 hover:text-gray-900"
+     *   maxCount={99}
+     * />
+     *
+     * // With custom icon (e.g., from @tabler/icons-react):
+     * import { IconBell } from '@tabler/icons-react'
+     * <NotificationBell icon={<IconBell className="size-5" />} />
+     * ```
+     */
+    export function NotificationBell({
+      className = '',
+      icon,
+      showBadge = true,
+      maxCount = 99,
+      onClick,
+    }: NotificationBellProps) {
+      const { unreadCount } = useNotificationContext()
+
+      const displayCount = unreadCount > maxCount ? `${maxCount}+` : unreadCount
+
+      return (
+        <button
+          type="button"
+          onClick={onClick}
+          className={`relative inline-flex items-center justify-center ${className}`}
+          aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
+        >
+          {icon || <BellIcon className="size-5" />}
+
+          {showBadge && unreadCount > 0 && (
+            <span
+              className="absolute -top-1 -right-1 flex items-center justify-center min-w-[1.25rem] h-5 px-1 text-xs font-medium text-white bg-red-500 rounded-full"
+              aria-hidden="true"
+            >
+              {displayCount}
+            </span>
+          )}
+        </button>
+      )
+    }
+    """
+  end
+
+  defp generate_readme_content do
+    """
+    # AshDispatch TypeScript SDK
+
+    Auto-generated TypeScript SDK for AshDispatch notifications and counters.
+
+    ## Installation
+
+    This SDK requires the following peer dependencies:
+
+    ```bash
+    npm install zustand phoenix
+    # or
+    pnpm add zustand phoenix
+    # or
+    yarn add zustand phoenix
+    ```
+
+    ## Quick Start
+
+    ### 1. Wrap your app with the NotificationProvider
+
+    ```tsx
+    // app/layout.tsx or your authenticated layout
+    import { NotificationProvider } from '@/lib/generated/ash-dispatch/notification-provider'
+    import {
+      listNotifications,
+      markNotificationAsRead,
+      markAllNotificationsAsRead,
+      buildCSRFHeaders,
+    } from '@/lib/generated/ash_rpc'
+
+    export default function Layout({ children }) {
+      const { user } = useAuth() // Your auth hook
+
+      return (
+        <NotificationProvider
+          userId={user?.id ?? null}
+          listNotifications={listNotifications}
+          markNotificationAsRead={markNotificationAsRead}
+          markAllNotificationsAsRead={markAllNotificationsAsRead}
+          buildCSRFHeaders={buildCSRFHeaders}
+        >
+          {children}
+        </NotificationProvider>
+      )
+    }
+    ```
+
+    ### 2. Add the NotificationBell to your header
+
+    ```tsx
+    import { NotificationBell } from '@/lib/generated/ash-dispatch/notification-bell'
+
+    function Header() {
+      const [showPanel, setShowPanel] = useState(false)
+
+      return (
+        <header>
+          <NotificationBell onClick={() => setShowPanel(true)} />
+        </header>
+      )
+    }
+    ```
+
+    ### 3. Access notifications anywhere
+
+    ```tsx
+    import { useNotificationContext } from '@/lib/generated/ash-dispatch/notification-provider'
+
+    function NotificationList() {
+      const { notifications, markAsRead, markAllAsRead, isLoading } = useNotificationContext()
+
+      if (isLoading) return <div>Loading...</div>
+
+      return (
+        <div>
+          <button onClick={markAllAsRead}>Mark all as read</button>
+          {notifications.map((n) => (
+            <div key={n.id} onClick={() => markAsRead(n.id)}>
+              <strong>{n.title}</strong>
+              <p>{n.message}</p>
+            </div>
+          ))}
+        </div>
+      )
+    }
+    ```
+
+    ## Using Counters Directly
+
+    For simple counter access without the full notification system:
+
+    ```tsx
+    import { useCounter } from '@/lib/generated/ash-dispatch'
+
+    function Badge() {
+      const unreadCount = useCounter('unread_notifications')
+      return <span>{unreadCount}</span>
+    }
+    ```
+
+    Or use the Zustand store directly:
+
+    ```tsx
+    import { useCounterStore } from '@/lib/generated/ash-dispatch/store'
+
+    function CounterDisplay() {
+      const counters = useCounterStore((state) => state.counters)
+      return <pre>{JSON.stringify(counters, null, 2)}</pre>
+    }
+    ```
+
+    ## Real-time Updates
+
+    The SDK automatically connects to Phoenix channels when using `useNotifications` or `NotificationProvider`. Ensure your backend has:
+
+    1. A socket endpoint at `/socket`
+    2. A user channel at `user:{userId}`
+    3. An endpoint at `/api/inbox/socket-token` that returns `{ success: true, data: { token: "..." } }`
+
+    ## API Reference
+
+    ### Hooks
+
+    | Hook | Description |
+    |------|-------------|
+    | `useNotifications(options)` | Full notification management with RPC and channels |
+    | `useCounter(name)` | Single counter value |
+    | `useChannel(options)` | Low-level Phoenix channel connection |
+
+    ### Components
+
+    | Component | Description |
+    |-----------|-------------|
+    | `NotificationProvider` | Context provider for notification state |
+    | `NotificationBell` | Drop-in bell icon with badge |
+
+    ### Types
+
+    | Type | Description |
+    |------|-------------|
+    | `Notification` | Notification object from backend |
+    | `CounterName` | Union of all counter names |
+    | `AllCounters` | Object type with all counter values |
+
+    ## Generated Files
+
+    | File | Description |
+    |------|-------------|
+    | `types.ts` | Counter types, defaults, and metadata |
+    | `events.ts` | Event IDs and metadata |
+    | `store.ts` | Zustand store for counters |
+    | `channel.ts` | Phoenix channel utilities |
+    | `hooks/use-channel.ts` | Channel connection hook |
+    | `hooks/use-counter.ts` | Single counter hook |
+    | `hooks/use-notifications.ts` | Complete notification hook |
+    | `notification-provider.tsx` | React context provider |
+    | `notification-bell.tsx` | Drop-in UI component |
+    | `index.ts` | Re-exports |
+
+    ---
+
+    Generated by `mix ash_dispatch.gen`
     """
   end
 end

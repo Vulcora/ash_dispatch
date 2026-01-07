@@ -27,7 +27,7 @@ defmodule AshDispatch.Event.Interpolation do
   1. Variables are looked up in template assigns first
   2. Fallback to context.data with same key
   3. Missing variables render as empty string (no errors)
-  4. Nested access not supported (use prepare_template_assigns)
+  4. Nested access is supported with dot notation: {{project.name}}
   """
 
   alias AshDispatch.{Channel, Context}
@@ -52,19 +52,60 @@ defmodule AshDispatch.Event.Interpolation do
     # Get template assigns from event module
     assigns = event_module.prepare_template_assigns(context, channel)
 
-    # Find all {{variable}} patterns and replace them
-    Regex.replace(~r/\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\}/, string, fn _, var_name ->
-      var_atom = String.to_atom(var_name)
-
-      # Try assigns first, then context.data
-      case Map.get(assigns, var_atom) do
-        nil -> get_from_context_data(context, var_atom)
-        value -> to_string_safe(value)
-      end
+    # Find all {{variable}} or {{variable.path}} patterns and replace them
+    # Supports both simple {{name}} and nested {{user.name}} or {{project.name}}
+    Regex.replace(~r/\{\{([a-zA-Z_][a-zA-Z0-9_.]*)\}\}/, string, fn _, var_path ->
+      resolve_variable_path(var_path, assigns, context)
     end)
   end
 
   # Private helpers
+
+  # Resolve a variable path like "project.name" or simple "name"
+  defp resolve_variable_path(var_path, assigns, context) do
+    path_parts = String.split(var_path, ".")
+
+    case path_parts do
+      [simple_key] ->
+        # Simple variable like {{name}}
+        var_atom = String.to_atom(simple_key)
+
+        case Map.get(assigns, var_atom) do
+          nil -> get_from_context_data(context, var_atom)
+          value -> to_string_safe(value)
+        end
+
+      [first | rest] ->
+        # Nested path like {{project.name}} or {{user.email}}
+        first_atom = String.to_atom(first)
+        rest_atoms = Enum.map(rest, &String.to_atom/1)
+
+        # Try assigns first
+        case Map.get(assigns, first_atom) do
+          nil ->
+            # Try context.data
+            case Map.get(context.data, first_atom) do
+              nil -> ""
+              root_value -> get_nested_value(root_value, rest_atoms)
+            end
+
+          root_value ->
+            get_nested_value(root_value, rest_atoms)
+        end
+    end
+  end
+
+  # Navigate nested struct/map path
+  defp get_nested_value(value, []), do: to_string_safe(value)
+
+  defp get_nested_value(value, [key | rest]) when is_map(value) do
+    case Map.get(value, key) do
+      nil -> ""
+      nested -> get_nested_value(nested, rest)
+    end
+  end
+
+  defp get_nested_value(_value, _path), do: ""
 
   defp get_from_context_data(%Context{data: data}, key) do
     case Map.get(data, key) do
@@ -94,16 +135,16 @@ defmodule AshDispatch.Event.Interpolation do
   """
   @spec validate(String.t()) :: {:ok, [String.t()]} | {:error, String.t()}
   def validate(string) when is_binary(string) do
-    # Extract all {{variable}} patterns
+    # Extract all {{variable}} or {{variable.path}} patterns
     variables =
-      Regex.scan(~r/\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\}/, string)
+      Regex.scan(~r/\{\{([a-zA-Z_][a-zA-Z0-9_.]*)\}\}/, string)
       |> Enum.map(fn [_, var] -> var end)
 
-    # Check for invalid patterns
+    # Check for invalid patterns (must be valid identifier or dot-separated identifiers)
     invalid =
       Regex.scan(~r/\{\{([^}]*)\}\}/, string)
       |> Enum.map(fn [_, var] -> var end)
-      |> Enum.reject(fn var -> var =~ ~r/^[a-zA-Z_][a-zA-Z0-9_]*$/ end)
+      |> Enum.reject(fn var -> var =~ ~r/^[a-zA-Z_][a-zA-Z0-9_.]*$/ end)
 
     case invalid do
       [] -> {:ok, variables}

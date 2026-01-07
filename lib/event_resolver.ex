@@ -118,7 +118,8 @@ defmodule AshDispatch.EventResolver do
     default = Keyword.get(opts, :default, nil)
     arity = length(args)
 
-    if function_exported?(module, function, arity) do
+    # Ensure module is loaded before checking exports
+    if Code.ensure_loaded?(module) && function_exported?(module, function, arity) do
       try do
         apply(module, function, args)
       rescue
@@ -204,11 +205,26 @@ defmodule AshDispatch.EventResolver do
 
   @doc """
   Get the email subject for a channel.
+
+  Falls back to DSL content from the registry if the module returns the default value.
   """
   @spec subject(module(), Context.t(), AshDispatch.Channel.t(), keyword()) :: String.t() | nil
   def subject(module, context, channel, opts \\ []) do
     default = Keyword.get(opts, :default, nil)
-    call_if_exported(module, :subject, [context, channel], default: default)
+    result = call_if_exported(module, :subject, [context, channel], default: default)
+
+    # If module returned the static default "Notification", try to get from DSL registry
+    if result == "Notification" || result == default do
+      case get_dsl_content(context.event_id, :subject) do
+        nil ->
+          result
+
+        dsl_subject ->
+          AshDispatch.Event.Interpolation.interpolate(dsl_subject, context, channel, module)
+      end
+    else
+      result
+    end
   end
 
   @doc """
@@ -245,18 +261,48 @@ defmodule AshDispatch.EventResolver do
 
   @doc """
   Get notification title for in-app notifications.
+
+  Falls back to DSL content from the registry if the module returns the default value.
   """
   @spec notification_title(module(), Context.t(), AshDispatch.Channel.t()) :: String.t() | nil
   def notification_title(module, context, channel) do
-    call_if_exported(module, :notification_title, [context, channel], default: nil)
+    result = call_if_exported(module, :notification_title, [context, channel], default: nil)
+
+    # If module returned the static default, try to get from DSL registry
+    if result == "Notification" || result == nil do
+      case get_dsl_content(context.event_id, :notification_title) do
+        nil ->
+          result
+
+        dsl_title ->
+          AshDispatch.Event.Interpolation.interpolate(dsl_title, context, channel, module)
+      end
+    else
+      result
+    end
   end
 
   @doc """
   Get notification message for in-app notifications.
+
+  Falls back to DSL content from the registry if the module returns the default value.
   """
   @spec notification_message(module(), Context.t(), AshDispatch.Channel.t()) :: String.t() | nil
   def notification_message(module, context, channel) do
-    call_if_exported(module, :notification_message, [context, channel], default: nil)
+    result = call_if_exported(module, :notification_message, [context, channel], default: nil)
+
+    # If module returned the static default, try to get from DSL registry
+    if result == "You have a new notification" || result == nil do
+      case get_dsl_content(context.event_id, :notification_message) do
+        nil ->
+          result
+
+        dsl_message ->
+          AshDispatch.Event.Interpolation.interpolate(dsl_message, context, channel, module)
+      end
+    else
+      result
+    end
   end
 
   @doc """
@@ -371,4 +417,24 @@ defmodule AshDispatch.EventResolver do
   def source_url(module, context, channel) do
     call_if_exported(module, :source_url, [context, channel], default: nil)
   end
+
+  # ===========================================================================
+  # Private Helpers
+  # ===========================================================================
+
+  # Look up DSL content field from the event registry
+  defp get_dsl_content(event_id, field) when is_binary(event_id) and is_atom(field) do
+    case AshDispatch.EventRegistry.find_event(event_id) do
+      {:ok, %{content: content}} when is_map(content) ->
+        Map.get(content, field)
+
+      {:ok, %{content: content}} when is_list(content) ->
+        Keyword.get(content, field)
+
+      _ ->
+        nil
+    end
+  end
+
+  defp get_dsl_content(_, _), do: nil
 end

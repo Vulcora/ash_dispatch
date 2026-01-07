@@ -1,7 +1,7 @@
 defmodule AshDispatch.MixProject do
   use Mix.Project
 
-  @version "0.2.8"
+  @version "0.2.9"
   @description "Event-driven notification system for Ash Framework with multiple transport types"
   @source_url "https://github.com/Vulcora/ash_dispatch"
 
@@ -50,6 +50,9 @@ defmodule AshDispatch.MixProject do
       {:hackney, "~> 1.9", optional: true},
       {:req, "~> 0.5", optional: true},
       {:ash_typescript, "~> 0.2", optional: true},
+
+      # Igniter for code generation/installation
+      {:igniter, "~> 0.5", optional: true},
 
       # Development and testing
       {:ex_doc, "~> 0.34", only: [:dev, :test], runtime: false},
