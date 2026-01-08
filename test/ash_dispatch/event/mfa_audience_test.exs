@@ -131,7 +131,7 @@ defmodule AshDispatch.Event.MfaAudienceTest do
       )
 
       context = %{data: %{order: %{id: "order-1"}}}
-      channel = %{audience: :empty_audience}
+      channel = %{audience: :empty_audience, optional: true}
 
       result = Helpers.resolve_recipients_for_audience(context, channel)
 

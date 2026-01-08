@@ -123,10 +123,8 @@ defmodule AshDispatch.Dispatcher do
             }
 
             # Dispatch to all channels
-            results =
-              Enum.map(channels, fn channel ->
-                dispatch_channel(context, channel, event_config)
-              end)
+            # Deduplication is opt-in via deduplicate_in_app: true in event config
+            results = dispatch_all_channels(channels, context, event_config)
 
             # Return success if any dispatch succeeded
             if Enum.any?(results, fn
@@ -191,6 +189,78 @@ defmodule AshDispatch.Dispatcher do
     else
       {:error, :all_dispatches_failed}
     end
+  end
+
+  # Dispatch to all channels with optional deduplication based on deduplicate_group
+  # Channels with the same deduplicate_group are deduplicated - user gets max one notification per group
+  defp dispatch_all_channels(channels, context, event_config) do
+    # Check if any channels have deduplicate_group set
+    has_dedup_groups? = Enum.any?(channels, & &1.deduplicate_group)
+
+    if has_dedup_groups? do
+      dispatch_with_deduplication(channels, context, event_config)
+    else
+      # No deduplication - dispatch each channel independently (default)
+      Enum.map(channels, fn channel ->
+        dispatch_channel(context, channel, event_config)
+      end)
+    end
+  end
+
+  # Dispatch channels with deduplication based on deduplicate_group
+  defp dispatch_with_deduplication(channels, context, event_config) do
+    # Collect all recipients from all channels with their channel info
+    recipients_with_channels =
+      Enum.flat_map(channels, fn channel ->
+        channel_context = apply_channel_load(context, channel)
+        recipients = resolve_recipients_for_channel(channel_context, channel, event_config)
+
+        Enum.map(recipients, fn recipient ->
+          {recipient, channel}
+        end)
+      end)
+
+    # Apply deduplication - users in the same deduplicate_group get max one notification
+    deduplicated_recipients = apply_group_deduplication(recipients_with_channels)
+
+    # Dispatch to each recipient using their associated channel
+    Enum.map(deduplicated_recipients, fn {recipient, channel} ->
+      channel_context = apply_channel_load(context, channel)
+      dispatch_to_recipient(channel_context, channel, event_config, recipient)
+    end)
+  end
+
+  # Apply deduplication based on channel's deduplicate_group
+  # Channels with same group are deduplicated - first channel (by DSL order) wins
+  # Channels without a group are never deduplicated
+  defp apply_group_deduplication(recipients_with_channels) do
+    # Track which user IDs we've seen per dedup group
+    {result, _seen} =
+      Enum.reduce(recipients_with_channels, {[], %{}}, fn {recipient, channel} = item,
+                                                          {acc, seen} ->
+        user_id = get_user_id(recipient)
+        dedup_group = channel.deduplicate_group
+
+        cond do
+          # No dedup group - always include
+          is_nil(dedup_group) ->
+            {[item | acc], seen}
+
+          # Check if we've already seen this user in this dedup group
+          MapSet.member?(Map.get(seen, dedup_group, MapSet.new()), user_id) ->
+            # Skip - user already received notification for this group
+            {acc, seen}
+
+          true ->
+            # First time seeing this user in this group - include and mark as seen
+            new_seen =
+              Map.update(seen, dedup_group, MapSet.new([user_id]), &MapSet.put(&1, user_id))
+
+            {[item | acc], new_seen}
+        end
+      end)
+
+    Enum.reverse(result)
   end
 
   # Private function that dispatches to a specific recipient

@@ -137,12 +137,32 @@ defmodule AshDispatch.Transports.Email do
   end
 
   # Update receipt with oban_job_id and mark as scheduled
+  # NOTE: In Oban inline testing mode, the job executes immediately within insert(),
+  # so the receipt may already be in a terminal state (sent/failed) when we return.
   defp update_receipt_with_job(receipt, result, _channel) do
     case result do
       {:ok, job} ->
-        receipt
-        |> Ash.Changeset.for_update(:schedule, %{oban_job_id: job.id})
-        |> Ash.update!()
+        # Refetch to get current state (may have changed in inline mode)
+        case Ash.get(receipt.__struct__, receipt.id, authorize?: false) do
+          {:ok, current_receipt} ->
+            if current_receipt.status in [:pending] do
+              # Only schedule if still pending
+              current_receipt
+              |> Ash.Changeset.for_update(:schedule, %{oban_job_id: job.id})
+              |> Ash.update!()
+            else
+              # Already processed (inline mode) - just return current state
+              Logger.debug(
+                "Receipt #{receipt.id} already in #{current_receipt.status} state, skipping schedule"
+              )
+
+              current_receipt
+            end
+
+          {:error, _} ->
+            # Receipt not found, return original
+            receipt
+        end
 
       {:error, reason} ->
         receipt

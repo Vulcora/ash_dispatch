@@ -71,8 +71,20 @@ defmodule AshDispatch.Event.Interpolation do
         var_atom = String.to_atom(simple_key)
 
         case Map.get(assigns, var_atom) do
-          nil -> get_from_context_data(context, var_atom)
-          value -> to_string_safe(value)
+          nil ->
+            # Try context.data directly
+            case Map.get(context.data, var_atom) do
+              nil ->
+                # Try via the main resource (context.resource_key)
+                # e.g., for {{name}} in project events, tries context.data.project.name
+                get_simple_from_resource(context, var_atom)
+
+              value ->
+                to_string_safe(value)
+            end
+
+          value ->
+            to_string_safe(value)
         end
 
       [first | rest] ->
@@ -83,10 +95,15 @@ defmodule AshDispatch.Event.Interpolation do
         # Try assigns first
         case Map.get(assigns, first_atom) do
           nil ->
-            # Try context.data
+            # Try context.data directly
             case Map.get(context.data, first_atom) do
-              nil -> ""
-              root_value -> get_nested_value(root_value, rest_atoms)
+              nil ->
+                # Try via the main resource (context.resource_key)
+                # e.g., for phase events, look in context.data.phase.project
+                get_from_resource_path(context, first_atom, rest_atoms)
+
+              root_value ->
+                get_nested_value(root_value, rest_atoms)
             end
 
           root_value ->
@@ -107,12 +124,40 @@ defmodule AshDispatch.Event.Interpolation do
 
   defp get_nested_value(_value, _path), do: ""
 
-  defp get_from_context_data(%Context{data: data}, key) do
-    case Map.get(data, key) do
-      nil -> ""
-      value -> to_string_safe(value)
+  # Try to resolve a path via the main resource
+  # e.g., for {{project.name}} in phase events, tries context.data.phase.project.name
+  defp get_from_resource_path(
+         %Context{data: data, resource_key: resource_key},
+         first_key,
+         rest_keys
+       )
+       when not is_nil(resource_key) do
+    case Map.get(data, resource_key) do
+      nil ->
+        ""
+
+      resource ->
+        # Try to get first_key from the resource, then continue with rest_keys
+        case Map.get(resource, first_key) do
+          nil -> ""
+          nested_value -> get_nested_value(nested_value, rest_keys)
+        end
     end
   end
+
+  defp get_from_resource_path(_context, _first_key, _rest_keys), do: ""
+
+  # Try to resolve a simple variable via the main resource
+  # e.g., for {{name}} in project events, tries context.data.project.name
+  defp get_simple_from_resource(%Context{data: data, resource_key: resource_key}, key)
+       when not is_nil(resource_key) do
+    case Map.get(data, resource_key) do
+      nil -> ""
+      resource -> to_string_safe(Map.get(resource, key))
+    end
+  end
+
+  defp get_simple_from_resource(_context, _key), do: ""
 
   defp to_string_safe(value) when is_binary(value), do: value
   defp to_string_safe(value) when is_integer(value), do: Integer.to_string(value)

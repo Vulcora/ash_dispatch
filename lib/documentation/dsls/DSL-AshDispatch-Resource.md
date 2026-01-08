@@ -204,6 +204,89 @@ Channels define how and where the event is delivered.
 | `delay` | `integer` | ❌ | Delay in seconds before delivering (default: 0) |
 | `policy` | `atom` | ❌ | Delivery policy: `:always` or `:skip_if_read` (default: `:always`) |
 | `webhook_url` | `string` | ❌ | Webhook URL (required for `:webhook` transport) |
+| `deduplicate_group` | `atom` | ❌ | Group channels for deduplication (see below) |
+| `optional` | `boolean` | ❌ | Suppress warnings when no recipients found (default: `false`) |
+
+### Deduplication with `deduplicate_group`
+
+When audiences overlap (e.g., `:admin` and `:stakeholders` both contain some users), a user might receive duplicate notifications. The `deduplicate_group` option lets you control this.
+
+Channels sharing the same `deduplicate_group` are deduplicated - if a user matches multiple audiences in the same group, they receive only ONE notification. The first matching channel (by DSL order) wins.
+
+```elixir
+channels: [
+  # These two share a group - user in both gets only one in_app notification
+  [transport: :in_app, audience: :stakeholders, deduplicate_group: :internal],
+  [transport: :in_app, audience: :admin, deduplicate_group: :internal],
+
+  # These share a different group - deduplication applies within this group
+  [transport: :email, audience: :admin, deduplicate_group: :admin_emails],
+  [transport: :email, audience: :finance, deduplicate_group: :admin_emails],
+
+  # No group = no deduplication - customer always gets notification
+  [transport: :in_app, audience: :customer]
+]
+```
+
+**Important notes:**
+- Channels without `deduplicate_group` are never deduplicated
+- Deduplication is opt-in (off by default)
+- Order matters: first channel in DSL order wins when deduplicating
+- Groups are per-transport-agnostic: you can group `:email` and `:in_app` channels together if needed
+
+### Optional Channels
+
+Use `optional: true` when an audience may legitimately have no recipients. This suppresses warnings that would otherwise be logged when recipient resolution returns empty.
+
+**Common use cases:**
+- Dynamic audiences that may not exist yet (e.g., `:lead_owner` before a lead is assigned)
+- Conditional audiences based on workflow state
+- MFA-based audiences that may return empty lists in certain scenarios
+
+```elixir
+channels: [
+  # Primary notification - always has a recipient
+  [transport: :in_app, audience: :user],
+
+  # Optional - lead owner may not be assigned yet
+  [transport: :in_app, audience: :lead_owner, optional: true],
+  [transport: :email, audience: :lead_owner, optional: true],
+
+  # Optional - KAMs may not exist in the system
+  [transport: :in_app, audience: :kam, optional: true]
+]
+```
+
+When `optional: true` is set, no warning is logged if:
+- The MFA resolver function doesn't exist for this audience
+- The MFA resolver returns an empty list (no recipients)
+- No recipient configuration is found for the audience
+
+**Without `optional: true`**, you'll see warnings like:
+
+When the resolver function returns empty (most common case):
+```
+[warning] [AshDispatch] Audience resolver for :lead_owner returned no recipients.
+
+The resolver function was called successfully but returned an empty list.
+This may be expected (e.g., no lead owner assigned yet).
+
+Tip: To silence this warning, add `optional: true` to the channel:
+     [transport: :in_app, audience: :lead_owner, optional: true]
+```
+
+When the resolver function doesn't exist:
+```
+[warning] [AshDispatch] Audience resolver function MyApp.AudienceResolver.lead_owner/1 not found for audience :lead_owner.
+
+The function is not exported. Check that:
+1. The module exists and is compiled
+2. The function is public (def, not defp)
+3. The arity matches the args in your config
+
+Tip: If this audience is expected to have no recipients sometimes, add `optional: true` to the channel:
+     [transport: :in_app, audience: :lead_owner, optional: true]
+```
 
 ### Channel Examples
 

@@ -118,6 +118,17 @@ Channels combine a transport with an audience and timing:
 
 This means: "Send an email to the user, 5 minutes from now"
 
+Channels can also be grouped for deduplication when audiences overlap:
+
+```elixir
+channels: [
+  [transport: :in_app, audience: :stakeholders, deduplicate_group: :internal],
+  [transport: :in_app, audience: :admin, deduplicate_group: :internal]
+]
+```
+
+Users matching multiple audiences in the same group receive only one notification.
+
 ### 4. Delivery Receipts
 
 Every dispatched event creates a `DeliveryReceipt` Ash resource record:

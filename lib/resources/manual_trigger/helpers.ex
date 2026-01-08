@@ -293,7 +293,9 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
               from_result = EventResolver.from(event_module, context, channel)
               from_address = if from_result, do: elem(from_result, 1), else: ""
               recipient = recipient_email || get_preview_recipient(event_module, context, channel)
-              variant = EventResolver.template_variant(event_module, context, channel)
+              # Prefer channel.variant (from DSL) over EventResolver callback
+              variant =
+                channel.variant || EventResolver.template_variant(event_module, context, channel)
 
               # Prepare template assigns using EventResolver (with special error handling for previews)
               assigns_result =
@@ -560,12 +562,12 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
       end
 
     {:ok,
-     %Context{
+     Context.new(
        event_id: event_id,
        data: enriched_data,
        resource_key: resource_key,
        metadata: %{actor: actor}
-     }}
+     )}
   end
 
   defp load_resource(resource, id, load_opts) do

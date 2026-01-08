@@ -42,6 +42,7 @@ AshDispatch supports six audience formats, from simple to powerful:
 | **Chain** | `lead: [:user, :team, :lead]` | Follow relationship chain |
 | **Template** | `regional: [:user, region: {:resource, [...]}]` | Dynamic filter values |
 | **MFA** | `company: {Mod, :fun, [:resource]}` | Full custom logic |
+| **MFA + Context** | `participants: {Mod, :fun, [:context]}` | Access full context |
 | **System** | `system_recipients: [...]` | Static recipients |
 
 ### Choosing the Right Format
@@ -183,7 +184,9 @@ audiences: [
 ### How MFA Works
 
 1. AshDispatch calls your function with resolved args
-2. `:resource` placeholder is replaced with the actual record
+2. Placeholders are replaced with actual values:
+   - `:resource` → the primary resource (extracted from context)
+   - `:context` → the full context map (includes `data`, `resource`, `actor`, etc.)
 3. Your function returns recipients (users, IDs, or filters)
 
 ### MFA Return Types
@@ -336,6 +339,35 @@ def regional_support(record) do
 end
 ```
 
+**Meeting participants (using `:context`):**
+```elixir
+# Config - use :context when you need more than just the primary resource
+participants: {MyApp.AudienceResolver, :participants, [:context]}
+
+# Resolver - receives the full context map
+def participants(%{data: %{meeting: meeting}}) do
+  meeting.participants
+  |> Enum.filter(&(&1.user && &1.user.id))
+  |> Enum.map(& &1.user)
+end
+
+def participants(_), do: []
+```
+
+**Assignee from context data:**
+```elixir
+# Config
+assignee: {MyApp.AudienceResolver, :assignee, [:context]}
+
+# Resolver - access any data passed in context.data
+def assignee(%{data: data}) do
+  case Map.get(data, :user) || Map.get(data, :assignee) do
+    user when is_struct(user) -> [user]
+    _ -> []
+  end
+end
+```
+
 ---
 
 ## Format 6: System (Static Recipients)
@@ -356,7 +388,11 @@ config :ash_dispatch,
 
 ## How Context Flows to MFA
 
-When AshDispatch calls your MFA function, the `:resource` placeholder receives:
+When AshDispatch calls your MFA function, placeholders are replaced:
+
+### Using `:resource` (most common)
+
+The `:resource` placeholder receives the primary resource:
 
 **For Events:**
 ```elixir
@@ -370,7 +406,24 @@ When AshDispatch calls your MFA function, the `:resource` placeholder receives:
 order = Ash.create!(Order, ...)  # → order is passed to MFA
 ```
 
-This enables MFA functions to make decisions based on the actual data.
+### Using `:context` (full context access)
+
+The `:context` placeholder receives the entire context map:
+
+```elixir
+# Context structure
+%{
+  data: %{order: order, user: user, meeting: meeting, ...},
+  resource: order,  # primary resource
+  actor: current_user,
+  ...
+}
+```
+
+**When to use `:context`:**
+- Access non-primary data (e.g., `context.data.meeting` when resource is a `Lead`)
+- Access the actor (current user who triggered the action)
+- Access multiple data fields at once
 
 ---
 
@@ -476,11 +529,45 @@ company: {MyApp.Resolver, :members, [:resource]}
 def members(resource), do: ...
 ```
 
-### No recipients resolved
+You'll see a warning like:
 
-1. Check MFA function returns proper format (user maps, IDs, or filter)
-2. Verify `:resource` placeholder if using it
-3. Add logging to your resolver to debug
+```
+[warning] [AshDispatch] Audience resolver function MyApp.Resolver.members/1 not found for audience :company.
+
+The function is not exported. Check that:
+1. The module exists and is compiled
+2. The function is public (def, not defp)
+3. The arity matches the args in your config
+```
+
+### Resolver returns empty list
+
+If your MFA function is found but returns an empty list, you'll see:
+
+```
+[warning] [AshDispatch] Audience resolver for :lead_owner returned no recipients.
+
+The resolver function was called successfully but returned an empty list.
+This may be expected (e.g., no lead owner assigned yet).
+```
+
+**Common causes:**
+1. No users match the criteria (e.g., no KAMs in the system)
+2. Dynamic condition not met (e.g., lead has no owner assigned yet)
+3. Query returned empty results
+
+### Expected empty recipients (optional channels)
+
+If an audience legitimately may have no recipients (e.g., lead owner before assignment), add `optional: true` to suppress warnings:
+
+```elixir
+channels: [
+  [transport: :in_app, audience: :lead_owner, optional: true],
+  [transport: :email, audience: :kam, optional: true]
+]
+```
+
+See [Optional Channels](../dsls/DSL-AshDispatch-Resource.md#optional-channels) in the DSL documentation.
 
 ### Counter not broadcasting to all members
 

@@ -463,7 +463,9 @@ defmodule AshDispatch.Resources.ManualTrigger do
               from_result = EventResolver.from(event_module, context, channel)
               from_address = if from_result, do: elem(from_result, 1), else: ""
               recipient = recipient_email || get_preview_recipient(event_module, context, channel)
-              variant = EventResolver.template_variant(event_module, context, channel)
+              # Prefer channel.variant (from DSL) over EventResolver callback
+              variant =
+                channel.variant || EventResolver.template_variant(event_module, context, channel)
 
               # Prepare template assigns using EventResolver
               base_assigns =

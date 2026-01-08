@@ -60,6 +60,7 @@ end
 - **⚛️ Generated TypeScript SDK** - Ready-to-use React hooks, NotificationProvider, and NotificationBell components
 - **🔌 Extensible** - Add custom transports and event modules
 - **🧪 Test-Friendly** - Factory integration for testing templates
+- **🔀 Smart Deduplication** - Optional `deduplicate_group` to prevent duplicate notifications when audiences overlap
 
 ## Tutorials
 

@@ -1176,6 +1176,27 @@ channels: [
 ]
 ```
 
+### Deduplicating Overlapping Audiences
+
+When audiences overlap (e.g., an admin who is also a stakeholder), use `deduplicate_group`:
+
+```elixir
+channels: [
+  # User always gets in_app notification (no group)
+  [transport: :in_app, audience: :customer],
+
+  # Internal staff share a group - each person gets only ONE in_app notification
+  [transport: :in_app, audience: :stakeholders, deduplicate_group: :internal],
+  [transport: :in_app, audience: :admin, deduplicate_group: :internal],
+
+  # Email also deduplicated separately
+  [transport: :email, audience: :stakeholders, deduplicate_group: :internal_email],
+  [transport: :email, audience: :admin, deduplicate_group: :internal_email]
+]
+```
+
+The first matching channel in DSL order wins when a user matches multiple audiences in the same group.
+
 ### Progressive Reminders
 
 ```elixir

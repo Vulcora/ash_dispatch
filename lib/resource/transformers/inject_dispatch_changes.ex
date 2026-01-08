@@ -170,6 +170,7 @@ defmodule AshDispatch.Resource.Transformers.InjectDispatchChanges do
         policy: get_val.(:policy, :always),
         variant: get_val.(:variant, nil),
         webhook_url: get_val.(:webhook_url, nil),
+        deduplicate_group: get_val.(:deduplicate_group, nil),
         opts: get_val.(:opts, %{})
       }
     end)

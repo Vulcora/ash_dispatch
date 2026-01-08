@@ -251,6 +251,56 @@ defmodule AshDispatch.Resource.Dsl do
           - `webhook_url`: For webhook transport
           - `content`: Transport-specific content (see below)
           - `metadata`: Transport-specific metadata (see below)
+          - `deduplicate_group`: Atom for grouping channels for deduplication (see below)
+          - `optional`: Suppress warnings when no recipients found (default: false)
+
+          ## Deduplication with deduplicate_group
+
+          Channels sharing the same `deduplicate_group` are deduplicated - if a user
+          matches multiple audiences in the same group, they receive only ONE notification.
+          First matching channel (by DSL order) wins.
+
+          This is useful when audiences overlap (e.g., :admin and :stakeholders both
+          contain some users) but you only want each user notified once.
+
+              channels: [
+                # These two share a group - user in both gets only one in_app notification
+                [transport: :in_app, audience: :stakeholders, deduplicate_group: :internal],
+                [transport: :in_app, audience: :admin, deduplicate_group: :internal],
+
+                # These share a different group - deduplication applies within this group
+                [transport: :email, audience: :admin, deduplicate_group: :admin_emails],
+                [transport: :email, audience: :finance, deduplicate_group: :admin_emails],
+
+                # No group = no deduplication - customer always gets notification
+                [transport: :in_app, audience: :customer]
+              ]
+
+          Note: Channels without `deduplicate_group` are never deduplicated.
+
+          ## Optional Channels
+
+          Use `optional: true` when it's expected that an audience may have no recipients.
+          This suppresses warnings that would otherwise be logged.
+
+          This is useful for:
+          - Dynamic audiences that may not exist yet (e.g., :lead_owner before assignment)
+          - Conditional audiences based on workflow state
+          - MFA-based audiences that return empty lists in certain scenarios
+
+              channels: [
+                # Primary notification - always has a recipient
+                [transport: :in_app, audience: :user],
+
+                # Optional - lead owner may not be assigned yet
+                [transport: :in_app, audience: :lead_owner, optional: true],
+                [transport: :email, audience: :lead_owner, optional: true]
+              ]
+
+          When `optional: true`, no warning is logged if:
+          - The MFA resolver function returns an empty list (no recipients found)
+          - The MFA resolver function doesn't exist
+          - No recipient configuration is found for the audience
 
           ## Transport-Specific Content & Metadata
 

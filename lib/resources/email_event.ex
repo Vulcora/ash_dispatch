@@ -217,7 +217,8 @@ defmodule AshDispatch.Resources.EmailEvent do
 
   defp serialize_channel(%AshDispatch.Channel{} = channel, event_module, context) do
     # Use EventResolver for all callback lookups (handles function_exported? and error handling)
-    variant = EventResolver.template_variant(event_module, context, channel)
+    # Prefer channel.variant (from DSL) over EventResolver callback
+    variant = channel.variant || EventResolver.template_variant(event_module, context, channel)
     additional_assigns = EventResolver.prepare_template_assigns(event_module, context, channel)
     subject = EventResolver.subject(event_module, context, channel)
 

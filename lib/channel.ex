@@ -46,7 +46,9 @@ defmodule AshDispatch.Channel do
           content: map(),
           metadata: map(),
           opts: map(),
-          load: [atom() | {atom(), any()}]
+          load: [atom() | {atom(), any()}],
+          deduplicate_group: atom() | nil,
+          optional: boolean()
         }
 
   @enforce_keys [:transport, :audience]
@@ -55,8 +57,10 @@ defmodule AshDispatch.Channel do
     :audience,
     :variant,
     :webhook_url,
+    :deduplicate_group,
     time: {:in, 0},
     policy: :always,
+    optional: false,
     content: %{},
     metadata: %{},
     opts: %{},

@@ -1267,6 +1267,7 @@ defmodule Mix.Tasks.AshDispatch.Gen do
       counters: AllCounters
       setCounters: (counters: Partial<AllCounters>) => void
       setCounter: (key: CounterName, value: number) => void
+      incrementCounter: (key: CounterName, delta?: number) => void
       resetCounters: () => void
     }
 
@@ -1282,6 +1283,12 @@ defmodule Mix.Tasks.AshDispatch.Gen do
       setCounter: (key: CounterName, value: number) => {
         set((state: CounterState) => ({
           counters: { ...state.counters, [key]: value },
+        }))
+      },
+
+      incrementCounter: (key: CounterName, delta: number = 1) => {
+        set((state: CounterState) => ({
+          counters: { ...state.counters, [key]: Math.max(0, state.counters[key] + delta) },
         }))
       },
 
@@ -1573,6 +1580,7 @@ defmodule Mix.Tasks.AshDispatch.Gen do
 
       // Use the Zustand counter store
       const setCounter = useCounterStore((state: CounterState) => state.setCounter)
+      const incrementCounter = useCounterStore((state: CounterState) => state.incrementCounter)
       const unreadCount = useCounterStore((state: CounterState) => state.counters.unread_notifications)
 
       // Fetch notifications from backend
@@ -1631,14 +1639,14 @@ defmodule Mix.Tasks.AshDispatch.Gen do
               setNotifications((prev) =>
                 prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n))
               )
-              // Decrement counter
-              setCounter('unread_notifications', Math.max(0, unreadCount - 1))
+              // Decrement counter (uses functional update, no stale closure)
+              incrementCounter('unread_notifications', -1)
             }
           } catch (err) {
             console.error('[AshDispatch] Failed to mark notification as read:', err)
           }
         },
-        [markNotificationAsRead, buildCSRFHeaders, setCounter, unreadCount]
+        [markNotificationAsRead, buildCSRFHeaders, incrementCounter]
       )
 
       // Mark all notifications as read
@@ -1699,7 +1707,8 @@ defmodule Mix.Tasks.AshDispatch.Gen do
           channel.on('new_notification', (notification: Notification) => {
             setNotifications((prev) => [notification, ...prev])
             if (!notification.read) {
-              setCounter('unread_notifications', unreadCount + 1)
+              // Use incrementCounter to avoid stale closure issues
+              incrementCounter('unread_notifications', 1)
             }
           })
 
@@ -1719,7 +1728,7 @@ defmodule Mix.Tasks.AshDispatch.Gen do
         } catch {
           // Socket connection is optional
         }
-      }, [userId, enabled, buildCSRFHeaders, setCounter, unreadCount])
+      }, [userId, enabled, buildCSRFHeaders, setCounter, incrementCounter])
 
       // Initial fetch
       useEffect(() => {

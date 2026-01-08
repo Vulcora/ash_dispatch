@@ -100,22 +100,39 @@ defmodule AshDispatch.Event.Helpers do
       # - A list of user IDs → wrap each in %{id: id}
       {module, function, args} when is_atom(module) and is_atom(function) and is_list(args) ->
         resource = extract_primary_resource(context)
-        # Replace :resource placeholder with actual resource
+        # Replace placeholders with actual values
         resolved_args =
           Enum.map(args, fn
             :resource -> resource
+            :context -> context
             other -> other
           end)
 
         arity = length(resolved_args)
 
+        # Ensure module is loaded before checking function_exported?
+        # function_exported?/3 returns false for unloaded modules
+        Code.ensure_loaded(module)
+
         if function_exported?(module, function, arity) do
           result = apply(module, function, resolved_args)
-          handle_mfa_result(result, context)
+          # Pass channel and audience for optional warning handling
+          handle_mfa_result(result, context, channel, audience)
         else
-          Logger.warning(
-            "[AshDispatch] Dynamic filter function #{inspect(module)}.#{function}/#{arity} not found"
-          )
+          # Only warn if channel is not marked as optional
+          unless Map.get(channel, :optional, false) do
+            Logger.warning("""
+            [AshDispatch] Audience resolver function #{inspect(module)}.#{function}/#{arity} not found for audience :#{audience}.
+
+            The function is not exported. Check that:
+            1. The module exists and is compiled
+            2. The function is public (def, not defp)
+            3. The arity matches the args in your config
+
+            Tip: If this audience is expected to have no recipients sometimes, add `optional: true` to the channel:
+                 [transport: :#{Map.get(channel, :transport, :your_transport)}, audience: :#{audience}, optional: true]
+            """)
+          end
 
           []
         end
@@ -140,7 +157,16 @@ defmodule AshDispatch.Event.Helpers do
 
       # Not configured
       nil ->
-        Logger.warning("No recipient configuration for audience: #{inspect(audience)}")
+        # Only warn if channel is not marked as optional
+        unless Map.get(channel, :optional, false) do
+          Logger.warning("""
+          [AshDispatch] No recipient configuration for audience :#{audience}.
+
+          Tip: If this audience is expected to have no recipients sometimes, add `optional: true` to the channel:
+               [transport: :#{Map.get(channel, :transport, :your_transport)}, audience: :#{audience}, optional: true]
+          """)
+        end
+
         []
     end
   end
@@ -322,10 +348,23 @@ defmodule AshDispatch.Event.Helpers do
   defp follow_relationship_chain(_, _), do: nil
 
   # Handle result from MFA function - can be a filter, list of users, or list of user IDs
-  defp handle_mfa_result(result, context) when is_list(result) do
+  defp handle_mfa_result(result, context, channel, audience) when is_list(result) do
     cond do
       # Empty list - no recipients
       result == [] ->
+        # Warn if channel is not optional
+        unless Map.get(channel, :optional, false) do
+          Logger.warning("""
+          [AshDispatch] Audience resolver for :#{audience} returned no recipients.
+
+          The resolver function was called successfully but returned an empty list.
+          This may be expected (e.g., no lead owner assigned yet).
+
+          Tip: To silence this warning, add `optional: true` to the channel:
+               [transport: :#{Map.get(channel, :transport, :your_transport)}, audience: :#{audience}, optional: true]
+          """)
+        end
+
         []
 
       # List of user structs/maps with :id field - use directly
@@ -350,7 +389,7 @@ defmodule AshDispatch.Event.Helpers do
     end
   end
 
-  defp handle_mfa_result(result, context) do
+  defp handle_mfa_result(result, context, _channel, _audience) do
     # Non-list result - assume it's a filter
     resolve_by_filter(result, context)
   end
