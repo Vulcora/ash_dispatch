@@ -500,6 +500,9 @@ defmodule AshDispatch.TemplateResolver do
     |> convert_standalone_patterns()
   end
 
+  # Elixir keywords/macros that should be converted when used in HEEx {} syntax
+  @elixir_keywords ~w(if unless case cond for with)
+
   # Convert standalone {@ and #{@ patterns, but NOT inside <%= ... %> tags
   defp convert_standalone_patterns(template) do
     parts = Regex.split(~r/<%=|%>/, template, include_captures: true)
@@ -518,38 +521,124 @@ defmodule AshDispatch.TemplateResolver do
 
         # Otherwise, convert {@ and #{@ patterns
         true ->
-          Regex.replace(~r/(?<![=])(#)?\{([^}]+)\}/, part, fn
-            full_match, "", expr ->
-              cond do
-                String.starts_with?(expr, "@") ->
-                  "<%= #{expr} %>"
-
-                String.match?(expr, ~r/^[a-zA-Z_][a-zA-Z0-9_]*[.\(]/) ->
-                  "<%= #{expr} %>"
-
-                String.match?(expr, ~r/^[a-z_][a-z0-9_]*$/) ->
-                  full_match
-
-                true ->
-                  full_match
-              end
-
-            full_match, "#", expr ->
-              cond do
-                String.starts_with?(expr, "@") or
-                    String.match?(expr, ~r/^[a-zA-Z_][a-zA-Z0-9_]*[.\(]/) ->
-                  "#<%= #{expr} %>"
-
-                String.match?(expr, ~r/^[a-z_][a-z0-9_]*$/) ->
-                  full_match
-
-                true ->
-                  full_match
-              end
-          end)
+          convert_heex_expressions(part)
       end
     end)
     |> Enum.join("")
+  end
+
+  # Convert HEEx curly-brace expressions to EEx <%= %> syntax
+  # Handles nested braces correctly by using a stateful parser
+  defp convert_heex_expressions(text) do
+    do_convert_heex_expressions(text, "")
+  end
+
+  defp do_convert_heex_expressions("", acc), do: acc
+
+  defp do_convert_heex_expressions(<<?\#, ?\{, rest::binary>>, acc) do
+    # String interpolation - skip it
+    do_convert_heex_expressions(rest, acc <> "\#{")
+  end
+
+  defp do_convert_heex_expressions(<<?{::utf8, rest::binary>>, acc) do
+    # Found opening brace - try to extract complete expression
+    case extract_balanced_expression(rest, 0, "") do
+      {:ok, expr, remaining} ->
+        if should_convert_expression?(expr) do
+          do_convert_heex_expressions(remaining, acc <> "<%= " <> expr <> " %>")
+        else
+          do_convert_heex_expressions(remaining, acc <> "{" <> expr <> "}")
+        end
+
+      :error ->
+        # No matching brace, keep as-is
+        do_convert_heex_expressions(rest, acc <> "{")
+    end
+  end
+
+  defp do_convert_heex_expressions(<<char::utf8, rest::binary>>, acc) do
+    do_convert_heex_expressions(rest, acc <> <<char::utf8>>)
+  end
+
+  # Extract a balanced expression handling nested braces and strings
+  defp extract_balanced_expression("", _depth, _acc), do: :error
+
+  defp extract_balanced_expression(<<?}::utf8, rest::binary>>, 0, acc) do
+    {:ok, acc, rest}
+  end
+
+  defp extract_balanced_expression(<<?}::utf8, rest::binary>>, depth, acc) when depth > 0 do
+    extract_balanced_expression(rest, depth - 1, acc <> "}")
+  end
+
+  defp extract_balanced_expression(<<?{::utf8, rest::binary>>, depth, acc) do
+    extract_balanced_expression(rest, depth + 1, acc <> "{")
+  end
+
+  defp extract_balanced_expression(<<?"::utf8, rest::binary>>, depth, acc) do
+    # Inside string - extract until closing quote (handling escapes)
+    case extract_string(rest, <<?"::utf8>>) do
+      {:ok, str_content, remaining} ->
+        extract_balanced_expression(remaining, depth, acc <> str_content)
+
+      :error ->
+        :error
+    end
+  end
+
+  defp extract_balanced_expression(<<char::utf8, rest::binary>>, depth, acc) do
+    extract_balanced_expression(rest, depth, acc <> <<char::utf8>>)
+  end
+
+  # Extract a string literal handling escape sequences
+  defp extract_string("", _acc), do: :error
+
+  defp extract_string(<<"\\\""::utf8, rest::binary>>, acc) do
+    extract_string(rest, acc <> "\\\"")
+  end
+
+  defp extract_string(<<?"::utf8, rest::binary>>, acc) do
+    {:ok, acc <> "\"", rest}
+  end
+
+  defp extract_string(<<char::utf8, rest::binary>>, acc) do
+    extract_string(rest, acc <> <<char::utf8>>)
+  end
+
+  # Determine if an expression should be converted to <%= %> syntax
+  defp should_convert_expression?(expr) do
+    trimmed = String.trim(expr)
+
+    cond do
+      # @variable expressions
+      String.starts_with?(trimmed, "@") ->
+        true
+
+      # Elixir keywords/macros (if, unless, case, cond, for, with)
+      starts_with_elixir_keyword?(trimmed) ->
+        true
+
+      # Function calls like Module.function() or function()
+      String.match?(trimmed, ~r/^[a-zA-Z_][a-zA-Z0-9_]*[.\(]/) ->
+        true
+
+      # assigns[:key] pattern
+      String.starts_with?(trimmed, "assigns[") ->
+        true
+
+      # Single lowercase identifier without parens - likely a CSS class or similar
+      String.match?(trimmed, ~r/^[a-z_][a-z0-9_]*$/) ->
+        false
+
+      true ->
+        false
+    end
+  end
+
+  defp starts_with_elixir_keyword?(expr) do
+    Enum.any?(@elixir_keywords, fn keyword ->
+      String.starts_with?(expr, keyword <> " ") or String.starts_with?(expr, keyword <> "(")
+    end)
   end
 
   # Convert HEEx attribute syntax to EEx
