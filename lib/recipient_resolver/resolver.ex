@@ -34,18 +34,51 @@ defmodule AshDispatch.RecipientResolver.Resolver do
         []
 
       config ->
-        users = resolve_by_strategy(config, resource, context, resolver_module)
+        users =
+          config
+          |> resolve_by_strategy(resource, context, resolver_module)
+          |> apply_filter(config.filter)
 
         # Skip to_recipient conversion if:
         # - raw: true (explicitly marked as returning pre-formatted maps)
         # - combine: audiences (sub-audiences already applied to_recipient)
         # - from_resource: audiences (returns pre-built recipient maps)
-        if config.raw or config.combine or config.from_resource do
+        if config.raw || config.combine || config.from_resource do
           users
         else
           Enum.map(users, &resolver_module.to_recipient/1)
         end
     end
+  end
+
+  # Apply filter conditions to recipients
+  defp apply_filter(recipients, nil), do: recipients
+  defp apply_filter(recipients, []), do: recipients
+
+  defp apply_filter(recipients, filter) when is_list(filter) do
+    Enum.filter(recipients, fn recipient ->
+      Enum.all?(filter, fn {key, expected_value} ->
+        actual_value = Map.get(recipient, key)
+        matches_filter?(actual_value, expected_value)
+      end)
+    end)
+  end
+
+  # Match filter values - supports atoms, strings, and lists
+  defp matches_filter?(actual, expected) when is_atom(expected) do
+    actual == expected or to_string(actual) == to_string(expected)
+  end
+
+  defp matches_filter?(actual, expected) when is_binary(expected) do
+    to_string(actual) == expected
+  end
+
+  defp matches_filter?(actual, expected) when is_list(expected) do
+    actual in expected or to_string(actual) in Enum.map(expected, &to_string/1)
+  end
+
+  defp matches_filter?(actual, expected) do
+    actual == expected
   end
 
   defp find_audience(audiences, name) do

@@ -34,6 +34,10 @@ defmodule AshDispatch.RecipientResolver.Dsl do
   * `:extract` - When using `from_context` with a collection, extract this field from each item.
     Example: `from_context: [:meeting, :participants], extract: :user`
 
+  * `:filter` - Filter extracted recipients by field values. Only recipients matching
+    ALL conditions are included. Works with `from_context`, `query`, and `path`.
+    Example: `from_context: :user, filter: [user_type: :customer, is_active: true]`
+
   * `:from_resource` - Extract email/name fields directly from the event's resource.
     Creates a raw recipient map without needing a custom resolver function.
     Example: `from_resource: [email: :contact_email, name: :contact_name]`
@@ -68,6 +72,9 @@ defmodule AshDispatch.RecipientResolver.Dsl do
       # Extract field from collection
       audience :participants, from_context: [:meeting, :participants], extract: :user
 
+      # Filter extracted recipients by field values
+      audience :customer, from_context: [:customer_user, :user], filter: [user_type: :customer]
+
       # Extract email/name from resource fields (no custom resolver needed!)
       audience :lead_contact, from_resource: [email: :contact_email, name: :contact_name]
 
@@ -92,6 +99,7 @@ defmodule AshDispatch.RecipientResolver.Dsl do
         name: unquote(name),
         from_context: unquote(opts[:from_context]),
         extract: unquote(opts[:extract]),
+        filter: unquote(opts[:filter]),
         from_resource: unquote(opts[:from_resource]),
         query: unquote(opts[:query]),
         path: unquote(opts[:path]),

@@ -93,6 +93,24 @@ audience :assignee, from_context: [:user, :assignee]
 
 # Path + extract - gets context.data.meeting.participants, extracts :user from each
 audience :participants, from_context: [:meeting, :participants], extract: :user
+
+# With filter - only include recipients matching conditions
+audience :customer, from_context: [:customer_user, :user], filter: [user_type: :customer]
+```
+
+**The `filter` option:**
+
+Use `filter` to narrow down extracted recipients by field values. Only recipients matching ALL conditions are included:
+
+```elixir
+# Single condition
+audience :active_user, from_context: :user, filter: [is_active: true]
+
+# Multiple conditions (AND logic)
+audience :active_customer, from_context: :user, filter: [user_type: :customer, is_active: true]
+
+# List of allowed values (OR within single field)
+audience :staff, from_context: :user, filter: [role: [:admin, :moderator]]
 ```
 
 **When to use:** For recipients that are already loaded in the event context.
@@ -337,6 +355,9 @@ defmodule MyApp.RecipientResolver do
     audience :customer_user, from_context: [:customer_user, :user]
     audience :participants, from_context: [:meeting, :participants], extract: :user
 
+    # Context with filter - only external customers
+    audience :customer, from_context: [:customer_user, :user], filter: [user_type: :customer]
+
     # Query-based
     audience :admins, resolve: :resolve_admins
 
@@ -542,6 +563,7 @@ config :ash_dispatch,
 ### 1. Use Appropriate Strategies
 
 - **Simple context extraction:** Use `from_context`
+- **Context with filtering:** Use `from_context` with `filter`
 - **Non-user recipient fields:** Use `from_resource`
 - **Role/attribute queries:** Use `query`
 - **Relationship traversal:** Use `path`
