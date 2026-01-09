@@ -4,6 +4,7 @@ defmodule AshDispatch.RecipientResolver.Resolver do
 
   This module implements the various resolution strategies:
   - `from_context` - Extract from event context
+  - `from_resource` - Extract email/name fields from resource (for non-user recipients)
   - `query` - Query user resource with Ash filter
   - `path` - Follow relationship path on resource
   - `combine` - Union of other audiences
@@ -35,7 +36,11 @@ defmodule AshDispatch.RecipientResolver.Resolver do
       config ->
         users = resolve_by_strategy(config, resource, context, resolver_module)
 
-        if config.raw do
+        # Skip to_recipient conversion if:
+        # - raw: true (explicitly marked as returning pre-formatted maps)
+        # - combine: audiences (sub-audiences already applied to_recipient)
+        # - from_resource: audiences (returns pre-built recipient maps)
+        if config.raw or config.combine or config.from_resource do
           users
         else
           Enum.map(users, &resolver_module.to_recipient/1)
@@ -51,6 +56,9 @@ defmodule AshDispatch.RecipientResolver.Resolver do
     cond do
       config.from_context ->
         resolve_from_context(config.from_context, config.extract, context)
+
+      config.from_resource ->
+        resolve_from_resource(config.from_resource, resource)
 
       config.query ->
         resolve_by_query(config.query, resolver_module.__user_resource__())
@@ -161,6 +169,170 @@ defmodule AshDispatch.RecipientResolver.Resolver do
     items
     |> Enum.map(&Map.get(&1, extract_field))
     |> Enum.reject(&is_nil/1)
+  end
+
+  @doc """
+  Extract email/name from resource fields to create a raw recipient map.
+
+  This is a declarative alternative to writing a custom resolver function
+  for non-user recipients (e.g., lead contact emails).
+
+  The output map uses field names from your `recipient_fields` config so that
+  `RecipientExtractor` can find them. This ensures compatibility with your
+  transport configuration.
+
+  ## Options (keyword list)
+
+  * `:email` (required) - Field name on the resource containing the email address
+  * `:name` (optional) - Field name on the resource containing the display name
+  * `:id` (optional) - Field name for unique identifier (defaults to `:id`)
+
+  ## How it works
+
+  1. Reads your `recipient_fields` config to determine output field names
+  2. Extracts values from the specified resource fields
+  3. Creates a recipient map with keys that match your config
+
+  For example, with config:
+      recipient_fields: [email: [identifier: :email, name: :first_name]]
+
+  And DSL:
+      from_resource: [email: :contact_email, name: :contact_name]
+
+  Creates:
+      %{id: resource.id, email: resource.contact_email, first_name: resource.contact_name}
+
+  ## Examples
+
+      # Basic usage - just email
+      resolve_from_resource([email: :contact_email], lead)
+
+      # With name
+      resolve_from_resource([email: :contact_email, name: :contact_name], lead)
+
+      # With custom id field
+      resolve_from_resource([email: :email, name: :name, id: :external_id], record)
+  """
+  def resolve_from_resource(_field_map, nil), do: []
+
+  def resolve_from_resource(field_map, resource) when is_list(field_map) do
+    email_input_field = Keyword.fetch!(field_map, :email)
+    name_input_field = Keyword.get(field_map, :name)
+    id_input_field = Keyword.get(field_map, :id, :id)
+
+    email_value = extract_field_value(resource, email_input_field)
+
+    # Only return a recipient if email is present
+    if email_value && email_value != "" do
+      id_value = extract_field_value(resource, id_input_field)
+      name_value = if name_input_field, do: extract_field_value(resource, name_input_field)
+
+      # Get output field names from recipient_fields config
+      # This ensures compatibility with RecipientExtractor
+      {email_output_key, name_output_keys} = get_output_field_names()
+
+      recipient = %{
+        :id => id_value,
+        email_output_key => to_string(email_value)
+      }
+
+      # Add name fields if name is available
+      # We populate all configured name fields for maximum compatibility
+      recipient =
+        if name_value && name_value != "" do
+          name_str = to_string(name_value)
+
+          Enum.reduce(name_output_keys, recipient, fn key, acc ->
+            Map.put(acc, key, name_str)
+          end)
+        else
+          recipient
+        end
+
+      [recipient]
+    else
+      log_missing_field_warning(resource, email_input_field, :email)
+      []
+    end
+  end
+
+  # Get output field names from recipient_fields config
+  # Returns {identifier_key, [name_keys]} for email transport
+  defp get_output_field_names do
+    config = AshDispatch.Config.recipient_fields()
+
+    # Get email transport config (primary use case for from_resource)
+    email_config = Keyword.get(config, :email, [])
+
+    # Get identifier field (defaults to :email for backwards compatibility)
+    identifier_key = Keyword.get(email_config, :identifier, :email)
+
+    # Get name field(s) - can be atom or list of atoms
+    name_config = Keyword.get(email_config, :name, [:display_name, :first_name])
+
+    name_keys =
+      case name_config do
+        keys when is_list(keys) -> keys
+        key when is_atom(key) -> [key]
+        _ -> [:display_name, :first_name]
+      end
+
+    {identifier_key, name_keys}
+  end
+
+  # Extract a field value from a struct/map, handling CiString
+  defp extract_field_value(resource, field) when is_atom(field) do
+    value = Map.get(resource, field)
+
+    case value do
+      nil ->
+        nil
+
+      %{string: str} ->
+        str
+
+      %Ash.NotLoaded{} ->
+        resource_type =
+          if is_struct(resource), do: inspect(resource.__struct__), else: "map"
+
+        Logger.warning("""
+        [AshDispatch.from_resource] Field #{inspect(field)} is not loaded on resource.
+
+        Resource type: #{resource_type}
+
+        Make sure to load this field before dispatching the event.
+        You can add it to the action's `load` option or use Ash.load/3.
+        """)
+
+        nil
+
+      other ->
+        other
+    end
+  end
+
+  defp log_missing_field_warning(resource, field, purpose) do
+    resource_type =
+      if is_struct(resource), do: inspect(resource.__struct__), else: "map"
+
+    available_keys =
+      resource
+      |> Map.keys()
+      |> Enum.reject(&(&1 == :__struct__))
+      |> Enum.take(10)
+      |> inspect()
+
+    Logger.warning("""
+    [AshDispatch.from_resource] No #{purpose} found - field #{inspect(field)} is nil or empty.
+
+    Resource type: #{resource_type}
+    Available keys (first 10): #{available_keys}
+
+    The audience will return no recipients for this resource.
+    If this is unexpected, check that:
+    1. The field name in from_resource matches your resource attribute
+    2. The field has a value on this particular resource
+    """)
   end
 
   @doc """

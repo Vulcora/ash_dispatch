@@ -78,7 +78,7 @@ end
 
 ## Resolution Strategies
 
-AshDispatch provides five built-in resolution strategies:
+AshDispatch provides six built-in resolution strategies:
 
 ### `from_context` - Extract from Event Context
 
@@ -96,6 +96,47 @@ audience :participants, from_context: [:meeting, :participants], extract: :user
 ```
 
 **When to use:** For recipients that are already loaded in the event context.
+
+### `from_resource` - Extract Fields from Resource
+
+For non-user recipients where the email/name are fields on the resource itself.
+
+```elixir
+# Extract email and name from lead fields
+audience :lead_contact, from_resource: [email: :contact_email, name: :contact_name]
+
+# Just email (name is optional)
+audience :external_contact, from_resource: [email: :notification_email]
+
+# Custom ID field (defaults to :id)
+audience :vendor_contact, from_resource: [email: :vendor_email, name: :vendor_name, id: :vendor_id]
+```
+
+**How it works with `recipient_fields` config:**
+
+The `from_resource` option reads your `recipient_fields` configuration to determine what output field names to use. This ensures the recipient map is compatible with `RecipientExtractor`.
+
+For example, with this config:
+```elixir
+config :ash_dispatch,
+  recipient_fields: [
+    email: [identifier: :email, name: [:first_name, :display_name]]
+  ]
+```
+
+And this audience:
+```elixir
+audience :lead_contact, from_resource: [email: :contact_email, name: :contact_name]
+```
+
+The output recipient will be:
+```elixir
+%{id: lead.id, email: lead.contact_email, first_name: lead.contact_name, display_name: lead.contact_name}
+```
+
+**Helpful warnings:** If the specified field is nil, empty, or not loaded (Ash.NotLoaded), you'll see a warning in the logs explaining the issue and how to fix it.
+
+**When to use:** For non-user recipients like lead contacts, external emails, or vendor contacts where the email is a field on the event's resource. This is the simplest way to send notifications to non-users without writing a custom resolver.
 
 ### `query` - Query User Resource
 
@@ -190,10 +231,15 @@ end
 
 ## The `raw` Option
 
-For audiences that return pre-formatted recipient maps instead of user structs:
+For audiences that return pre-formatted recipient maps instead of user structs.
+
+> **Tip:** For simple cases where the email/name are fields on the resource, use `from_resource` instead - it's more concise and doesn't require writing a resolver function.
 
 ```elixir
-# Returns maps directly, skips to_recipient conversion
+# Preferred: Use from_resource for simple field extraction
+audience :lead_contact, from_resource: [email: :contact_email, name: :contact_name]
+
+# Alternative: Use raw + custom resolver for complex logic
 audience :lead_contact, resolve: :resolve_lead_contact, raw: true
 
 def resolve_lead_contact(resource, _context) do
@@ -210,7 +256,7 @@ def resolve_lead_contact(resource, _context) do
 end
 ```
 
-**When to use:** For non-user recipients like lead contacts, external emails, or webhook targets.
+**When to use:** For non-user recipients that require complex logic beyond simple field extraction. For simple cases, prefer `from_resource`.
 
 ## Custom Resolvers
 
@@ -301,8 +347,8 @@ defmodule MyApp.RecipientResolver do
     # Composite
     audience :stakeholders, combine: [:owner, :team]
 
-    # Non-user recipient
-    audience :lead_contact, resolve: :resolve_lead_contact, raw: true
+    # Non-user recipient (simple field extraction)
+    audience :lead_contact, from_resource: [email: :contact_email, name: :contact_name]
   end
 
   @impl true
@@ -363,31 +409,13 @@ defmodule MyApp.RecipientResolver do
     |> Ash.read!(authorize?: false)
   end
 
-  def resolve_lead_contact(resource, context) do
-    case extract_lead(resource, context) do
-      nil ->
-        []
-
-      lead when not is_nil(lead.contact_email) ->
-        [%{
-          id: lead.id,
-          email: lead.contact_email,
-          display_name: lead.contact_name || "there"
-        }]
-
-      _ ->
-        []
-    end
-  end
+  # Note: lead_contact uses from_resource, so no custom resolver needed!
 
   # ============ Private Helpers ============
 
   defp extract_project(%MyApp.Projects.Project{} = project, _), do: project
   defp extract_project(%MyApp.Projects.Phase{} = phase, _), do: ensure_loaded(phase, :project)
   defp extract_project(_, context), do: get_in_context(context, :project)
-
-  defp extract_lead(%MyApp.Leads.Lead{} = lead, _), do: lead
-  defp extract_lead(_, context), do: get_in_context(context, :lead)
 
   defp get_in_context(context, key) do
     context |> Map.get(:data, %{}) |> Map.get(key)
@@ -514,6 +542,7 @@ config :ash_dispatch,
 ### 1. Use Appropriate Strategies
 
 - **Simple context extraction:** Use `from_context`
+- **Non-user recipient fields:** Use `from_resource`
 - **Role/attribute queries:** Use `query`
 - **Relationship traversal:** Use `path`
 - **Complex business logic:** Use `resolve`

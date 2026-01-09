@@ -29,6 +29,9 @@ defmodule AshDispatch.RecipientResolver do
 
           # Custom resolver - for complex business logic
           audience :owner, resolve: :resolve_owner
+
+          # Non-user recipient - extract email/name from resource fields
+          audience :lead_contact, from_resource: [email: :contact_email, name: :contact_name]
         end
 
         @impl true
@@ -57,6 +60,7 @@ defmodule AshDispatch.RecipientResolver do
   | `from_context` | `audience :user, from_context: :user` | Extract from context.data |
   | `from_context` (fallback) | `audience :assignee, from_context: [:user, :assignee]` | Try each key until non-nil |
   | `from_context` + `extract` | `audience :participants, from_context: [:meeting, :participants], extract: :user` | Get collection, extract field |
+  | `from_resource` | `audience :lead_contact, from_resource: [email: :contact_email, name: :contact_name]` | Extract email/name from resource fields |
   | `query` | `audience :admins, query: [role: :admin]` | Query user_resource with Ash filter |
   | `path` | `audience :team, path: [:team_members, :user]` | Follow relationship path on resource |
   | `combine` | `audience :stakeholders, combine: [:owner, :team]` | Union of other audiences (deduped) |

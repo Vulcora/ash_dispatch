@@ -34,6 +34,12 @@ defmodule AshDispatch.RecipientResolver.Dsl do
   * `:extract` - When using `from_context` with a collection, extract this field from each item.
     Example: `from_context: [:meeting, :participants], extract: :user`
 
+  * `:from_resource` - Extract email/name fields directly from the event's resource.
+    Creates a raw recipient map without needing a custom resolver function.
+    Example: `from_resource: [email: :contact_email, name: :contact_name]`
+    Required keys: `:email`. Optional: `:name`, `:id`.
+    If `:id` is not specified, uses the resource's `:id` field.
+
   * `:query` - Ash filter to query user_resource.
     Example: `query: [role: :admin, is_active: true]`
 
@@ -62,6 +68,9 @@ defmodule AshDispatch.RecipientResolver.Dsl do
       # Extract field from collection
       audience :participants, from_context: [:meeting, :participants], extract: :user
 
+      # Extract email/name from resource fields (no custom resolver needed!)
+      audience :lead_contact, from_resource: [email: :contact_email, name: :contact_name]
+
       # Query users
       audience :admins, query: [role: :admin, is_active: true]
 
@@ -74,7 +83,7 @@ defmodule AshDispatch.RecipientResolver.Dsl do
       # Custom resolver
       audience :owner, resolve: :resolve_owner
 
-      # Custom resolver returning raw maps
+      # Custom resolver returning raw maps (use from_resource instead when possible)
       audience :lead_contact, resolve: :resolve_lead_contact, raw: true
   """
   defmacro audience(name, opts) do
@@ -83,6 +92,7 @@ defmodule AshDispatch.RecipientResolver.Dsl do
         name: unquote(name),
         from_context: unquote(opts[:from_context]),
         extract: unquote(opts[:extract]),
+        from_resource: unquote(opts[:from_resource]),
         query: unquote(opts[:query]),
         path: unquote(opts[:path]),
         combine: unquote(opts[:combine]),
