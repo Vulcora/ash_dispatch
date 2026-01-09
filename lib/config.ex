@@ -231,9 +231,30 @@ defmodule AshDispatch.Config do
   # ============================================================================
 
   @doc """
-  Audience configuration for recipient resolution.
+  The recipient resolver module.
+
+  When configured, this module is used for all recipient resolution,
+  replacing the legacy `audiences` configuration.
+
+  Should implement `AshDispatch.RecipientResolver` behaviour.
+
+  ## Example
+
+      config :ash_dispatch,
+        recipient_resolver: MyApp.RecipientResolver
+  """
+  @spec recipient_resolver() :: module() | nil
+  def recipient_resolver do
+    Application.get_env(:ash_dispatch, :recipient_resolver)
+  end
+
+  @doc """
+  Audience configuration for recipient resolution (legacy).
 
   Maps audience atoms to filter configurations.
+
+  **Note:** If `recipient_resolver` is configured, this option is ignored.
+  Prefer using `recipient_resolver` for new applications.
 
   ## Example
 

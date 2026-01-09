@@ -171,6 +171,9 @@ defmodule AshDispatch.Dispatcher do
     # Resolve recipients for this channel
     recipients = resolve_recipients_for_channel(context, channel, event_config)
 
+    # Filter out actor if exclude_actor is set
+    recipients = filter_out_actor(recipients, context, channel)
+
     # Create one receipt per recipient
     results =
       Enum.map(recipients, fn recipient ->
@@ -214,6 +217,9 @@ defmodule AshDispatch.Dispatcher do
       Enum.flat_map(channels, fn channel ->
         channel_context = apply_channel_load(context, channel)
         recipients = resolve_recipients_for_channel(channel_context, channel, event_config)
+
+        # Filter out actor if exclude_actor is set for this channel
+        recipients = filter_out_actor(recipients, channel_context, channel)
 
         Enum.map(recipients, fn recipient ->
           {recipient, channel}
@@ -296,10 +302,16 @@ defmodule AshDispatch.Dispatcher do
   # Private functions
 
   defp resolve_recipients_for_channel(context, channel, event_config) do
-    # DSL-first: Always use audience-based resolution
-    # The channel.audience comes from the DSL and should be the source of truth
-    # Module callbacks are only used if they return non-empty results
+    # Priority order for recipient resolution:
+    # 1. recipient_resolver config (new DSL-based system)
+    # 2. Event module recipients/2 callback (if returns non-empty)
+    # 3. Legacy audience config (MFA-based)
     cond do
+      # New: Use configured recipient resolver module
+      resolver = Config.recipient_resolver() ->
+        resource = extract_primary_resource(context)
+        resolver.resolve(channel.audience, resource, context)
+
       # If there's a recipient_filter in event_config, use it (inline DSL or event-level config)
       not is_nil(event_config[:recipient_filter]) ->
         AshDispatch.Event.Helpers.resolve_recipients_for_audience(context, channel, event_config)
@@ -327,6 +339,32 @@ defmodule AshDispatch.Dispatcher do
       # Pure inline DSL without module - use helpers with app-level config
       true ->
         AshDispatch.Event.Helpers.resolve_recipients_for_audience(context, channel, event_config)
+    end
+  end
+
+  # Extract the primary resource from context for recipient resolution
+  defp extract_primary_resource(context) do
+    # Priority order:
+    # 1. Use resource_key if specified
+    # 2. Look for common resource keys in data
+    # 3. Return first struct found in data
+    cond do
+      context.resource_key && Map.has_key?(context.data, context.resource_key) ->
+        Map.get(context.data, context.resource_key)
+
+      true ->
+        # Try common resource keys, then fall back to first struct
+        common_keys = [:project, :lead, :order, :meeting, :business_plan, :offer, :phase]
+
+        Enum.find_value(common_keys, fn key ->
+          case Map.get(context.data, key) do
+            value when is_struct(value) -> value
+            _ -> nil
+          end
+        end) ||
+          context.data
+          |> Map.values()
+          |> Enum.find(&is_struct/1)
     end
   end
 
@@ -442,6 +480,17 @@ defmodule AshDispatch.Dispatcher do
   end
 
   defp get_user_id(_), do: nil
+
+  # Filter out the actor (user who triggered the event) from recipients
+  # Only applies when channel.exclude_actor is true and context.user is set
+  defp filter_out_actor(recipients, %{user: %{id: actor_id}}, %{exclude_actor: true})
+       when not is_nil(actor_id) do
+    Enum.reject(recipients, fn recipient ->
+      get_user_id(recipient) == actor_id
+    end)
+  end
+
+  defp filter_out_actor(recipients, _context, _channel), do: recipients
 
   # Extract source resource info (type and ID) for linking receipts to source resources
   # Returns {source_type, source_id} tuple where values may be nil

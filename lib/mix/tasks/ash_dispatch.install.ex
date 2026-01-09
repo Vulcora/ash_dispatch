@@ -18,6 +18,7 @@ defmodule Mix.Tasks.AshDispatch.Install.Docs do
     - Create Notification and DeliveryReceipt resources
     - Create Notifications and Deliveries domains
     - Add domains to your :ash_domains configuration
+    - Create a RecipientResolver module for declarative audience resolution
     - Set up email layout templates
     - Optionally set up Phoenix channel for real-time updates
 
@@ -82,6 +83,7 @@ if Code.ensure_loaded?(Igniter) do
       |> create_notifications_domain(app_module)
       |> create_deliveries_domain(app_module)
       |> add_domains_to_config(otp_app, app_module)
+      |> create_recipient_resolver(app_module, user_resource)
       |> setup_email_layouts()
       |> maybe_setup_phoenix(opts[:phoenix], otp_app, app_module)
       |> maybe_configure_email(opts[:email], otp_app, app_module)
@@ -234,6 +236,111 @@ if Code.ensure_loaded?(Igniter) do
             other -> other
           end
         end
+      )
+    end
+
+    # ============================================
+    # Recipient Resolver
+    # ============================================
+
+    defp create_recipient_resolver(igniter, app_module, user_resource) do
+      resolver_module = Module.concat(app_module, RecipientResolver)
+      user_resource_str = inspect(user_resource || Module.concat(app_module, Accounts.User))
+
+      content = """
+      @moduledoc \"\"\"
+      Recipient resolver for notification audiences.
+
+      Define how to resolve recipients for each audience type using
+      the AshDispatch.RecipientResolver DSL.
+
+      ## Audience Strategies
+
+      | Strategy | Example | Description |
+      |----------|---------|-------------|
+      | `from_context` | `from_context: :user` | Extract from context.data |
+      | `query` | `query: [role: :admin]` | Query user_resource with Ash filter |
+      | `path` | `path: [:team, :users]` | Follow relationship path on resource |
+      | `combine` | `combine: [:owner, :team]` | Union of other audiences |
+      | `resolve` | `resolve: :resolve_owner` | Custom resolver function |
+
+      ## Usage
+
+      Reference audiences in your dispatch DSL:
+
+          dispatch do
+            event :order_created do
+              channel :in_app, audience: :owner
+              channel :email, audience: :team
+            end
+          end
+      \"\"\"
+
+      use AshDispatch.RecipientResolver,
+        user_resource: #{user_resource_str}
+
+      audiences do
+        # Context-based - extract user from event context
+        audience :user, from_context: :user
+
+        # Fallback chain - tries :user first, then :assignee
+        audience :assignee, from_context: [:user, :assignee]
+
+        # Query-based - find users matching filter
+        # audience :admins, query: [role: :admin, is_active: true]
+
+        # Relationship path - follow relationships on the resource
+        # audience :team, path: [:team_members, :user]
+
+        # Composite - union of other audiences (deduped by id)
+        # audience :stakeholders, combine: [:owner, :team]
+
+        # Custom resolver - for complex business logic
+        # audience :owner, resolve: :resolve_owner
+
+        # Custom resolver returning raw maps (not user structs)
+        # audience :lead_contact, resolve: :resolve_lead_contact, raw: true
+      end
+
+      @impl true
+      def to_recipient(%#{user_resource_str}{} = user) do
+        %{
+          id: user.id,
+          email: to_string(user.email),
+          display_name: extract_display_name(user)
+        }
+      end
+
+      defp extract_display_name(user) do
+        cond do
+          Map.has_key?(user, :full_name) && user.full_name ->
+            to_string(user.full_name)
+
+          Map.has_key?(user, :first_name) && user.first_name ->
+            to_string(user.first_name)
+
+          true ->
+            to_string(user.email)
+        end
+      end
+
+      # Example custom resolver:
+      #
+      # def resolve_owner(resource, context) do
+      #   case Map.get(context.data, :owner) do
+      #     nil -> []
+      #     owner -> [owner]
+      #   end
+      # end
+      """
+
+      igniter
+      |> Igniter.Project.Module.create_module(resolver_module, content)
+      |> Igniter.Project.Config.configure_new(
+        "config.exs",
+        :ash_dispatch,
+        [:recipient_resolver],
+        resolver_module
       )
     end
 

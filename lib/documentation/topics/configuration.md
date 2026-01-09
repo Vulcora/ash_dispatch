@@ -334,7 +334,55 @@ config :ash_dispatch,
 
 **Default:** `[]` (no domains scanned)
 
-### Audiences (Recipient Resolution)
+### Recipient Resolver (Recommended)
+
+Configure a declarative recipient resolver module for audience resolution:
+
+```elixir
+config :ash_dispatch,
+  recipient_resolver: MyApp.RecipientResolver
+```
+
+The `RecipientResolver` module uses a DSL to define how recipients are resolved:
+
+```elixir
+defmodule MyApp.RecipientResolver do
+  use AshDispatch.RecipientResolver,
+    user_resource: MyApp.Accounts.User
+
+  audiences do
+    audience :user, from_context: :user
+    audience :admins, query: [role: :admin, is_active: true]
+    audience :owner, resolve: :resolve_owner
+    audience :stakeholders, combine: [:owner, :team]
+  end
+
+  @impl true
+  def to_recipient(%MyApp.Accounts.User{} = user) do
+    %{id: user.id, email: to_string(user.email), display_name: user.full_name}
+  end
+
+  def resolve_owner(resource, context) do
+    # Custom resolution logic
+  end
+end
+```
+
+**Resolution Strategies:**
+
+| Strategy | Example | Description |
+|----------|---------|-------------|
+| `from_context` | `from_context: :user` | Extract from context.data |
+| `query` | `query: [role: :admin]` | Query user_resource with Ash filter |
+| `path` | `path: [:team, :users]` | Follow relationship path on resource |
+| `combine` | `combine: [:owner, :team]` | Union of other audiences |
+| `resolve` | `resolve: :resolve_owner` | Custom resolver function |
+
+See [Recipient Resolution](recipient-resolution.md) for the complete guide.
+
+### Audiences (Legacy Configuration)
+
+> **Note:** The `audiences` config is legacy. Prefer using `recipient_resolver` above for new projects.
 
 Configure how recipients are resolved for each audience type:
 
@@ -353,11 +401,6 @@ config :ash_dispatch,
   ]
 ```
 
-**Why needed:**
-- Determines recipient resolution strategy (relationship vs filter)
-- Used by counters AND events for consistent behavior
-- Enables automatic `user_id_path` derivation
-
 **Two configuration patterns:**
 
 | Pattern | Format | Behavior |
@@ -365,37 +408,9 @@ config :ash_dispatch,
 | Relationship-based | `:user` | Extract from record's relationship |
 | Filter-based | `{:admin, [...]}` | Query all users matching filter |
 
-**Relationship-based** (bare atoms):
-- For counters: extract user from record, broadcast to ONE user
-- `user_id_path` derived from audience name (`:user` → `[:user_id]`)
-- E.g., `:partner` extracts `record.partner_id`
-
-**Filter-based** (tuples):
-- For counters: query all matching users, broadcast to ALL
-- Format: `{:audience_name, [:relationship, filters...]}`
-- E.g., `{:admin, [:user, {:admin, true}]}` queries users where `admin == true`
-
 **Default:** `[]` (assumes relationship-based for unknown audiences)
 
 See [Counter Broadcasting](counter-broadcasting.md) and [Recipient Resolution](recipient-resolution.md) for details.
-
-### Audience Filters (Legacy Configuration)
-
-The `recipient_filters` config is still supported for backward compatibility:
-
-```elixir
-config :ash_dispatch,
-  recipient_filters: [
-    audiences: [
-      admin: [admin: true],
-      partner: [role: :partner, active: true],
-      support: [role: :support],
-      user: []  # All authenticated users
-    ]
-  ]
-```
-
-**Prefer the new `audiences` config** which supports both relationship-based and filter-based patterns in a unified format.
 
 ### Base URL
 

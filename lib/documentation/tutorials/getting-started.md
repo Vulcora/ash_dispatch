@@ -23,6 +23,7 @@ This will automatically:
 - Create `Notification` and `DeliveryReceipt` resources
 - Create `Notifications` and `Deliveries` domains
 - Add domains to your `:ash_domains` configuration
+- Create a `RecipientResolver` module for declarative audience resolution
 - Set up email layout templates
 - Configure Phoenix channels for real-time updates (if Phoenix detected)
 - Configure Oban for async delivery

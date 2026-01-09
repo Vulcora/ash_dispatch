@@ -201,6 +201,14 @@ defmodule AshDispatch.Dsl.Sections do
           List of counter names to broadcast when this channel creates a notification.
           E.g., [:admin_pending_reseller_requests, :user_cart_items]
           """
+        ],
+        exclude_actor: [
+          type: :boolean,
+          default: false,
+          doc: """
+          When true, excludes the user who triggered the event from receiving this notification.
+          Useful for team notifications where the actor shouldn't be notified of their own action.
+          """
         ]
       ]
     }

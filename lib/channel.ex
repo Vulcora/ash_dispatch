@@ -48,7 +48,8 @@ defmodule AshDispatch.Channel do
           opts: map(),
           load: [atom() | {atom(), any()}],
           deduplicate_group: atom() | nil,
-          optional: boolean()
+          optional: boolean(),
+          exclude_actor: boolean()
         }
 
   @enforce_keys [:transport, :audience]
@@ -61,6 +62,7 @@ defmodule AshDispatch.Channel do
     time: {:in, 0},
     policy: :always,
     optional: false,
+    exclude_actor: false,
     content: %{},
     metadata: %{},
     opts: %{},
