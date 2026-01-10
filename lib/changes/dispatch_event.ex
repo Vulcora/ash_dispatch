@@ -117,36 +117,20 @@ defmodule AshDispatch.Changes.DispatchEvent do
     data_key = Map.get(event_config, :data_key)
     include_actor_as = Map.get(event_config, :include_actor_as)
 
-    # Resolve module with runtime fallback (handles compilation order issues)
-    # The transformer sets event_config[:module] at compile time, but due to module
-    # compilation order, event modules may not be compiled yet when the resource
-    # transformer runs. We fall back to runtime lookup using EventResolver.
+    # Always resolve module at runtime via EventResolver
+    # Compile-time resolution is unreliable due to module compilation order
+    # (event modules compile after resources, so Code.ensure_loaded? fails)
     event_module =
-      case Map.get(event_config, :module) do
-        nil ->
-          case EventResolver.find_module(event_id) do
-            {:ok, m} ->
-              Logger.warning("""
-              [AshDispatch] Runtime module resolution fallback triggered for event: #{event_id}
-              Module #{inspect(m)} was not available at compile time.
-              This is usually caused by compilation order - event modules compile after resources.
-              The event will still work, but consider recompiling if this persists.
-              """)
-
-              m
-
-            {:error, :not_found} ->
-              Logger.warning("""
-              [AshDispatch] No event module found for event: #{event_id}
-              Looked in event_config[:module] (nil) and EventResolver (not found).
-              Event callbacks like prepare_data/prepare_template_assigns will not be called.
-              """)
-
-              nil
-          end
-
-        m ->
+      case EventResolver.find_module(event_id) do
+        {:ok, m} ->
           m
+
+        {:error, :not_found} ->
+          Logger.warning(
+            "[AshDispatch] No event module found for #{event_id} - callbacks (prepare_data, prepare_template_assigns) will not be called"
+          )
+
+          nil
       end
 
     Logger.debug("[DispatchEvent] dispatch_dsl_event starting for event_id: #{event_id}")

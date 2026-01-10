@@ -1,6 +1,8 @@
 defmodule AshDispatch.RecipientResolver.ResolverTest do
   use ExUnit.Case, async: true
 
+  import ExUnit.CaptureLog
+
   alias AshDispatch.RecipientResolver.Resolver
 
   describe "resolve_from_resource/2" do
@@ -29,10 +31,16 @@ defmodule AshDispatch.RecipientResolver.ResolverTest do
         contact_name: "John Doe"
       }
 
-      result =
-        Resolver.resolve_from_resource([email: :contact_email, name: :contact_name], resource)
+      # Warning expected - capture it
+      log =
+        capture_log(fn ->
+          result =
+            Resolver.resolve_from_resource([email: :contact_email, name: :contact_name], resource)
 
-      assert result == []
+          assert result == []
+        end)
+
+      assert log =~ "No email found"
     end
 
     test "returns empty list when email field is empty string" do
@@ -42,10 +50,16 @@ defmodule AshDispatch.RecipientResolver.ResolverTest do
         contact_name: "John Doe"
       }
 
-      result =
-        Resolver.resolve_from_resource([email: :contact_email, name: :contact_name], resource)
+      # Warning expected - capture it
+      log =
+        capture_log(fn ->
+          result =
+            Resolver.resolve_from_resource([email: :contact_email, name: :contact_name], resource)
 
-      assert result == []
+          assert result == []
+        end)
+
+      assert log =~ "No email found"
     end
 
     test "returns empty list when resource is nil" do
@@ -117,9 +131,13 @@ defmodule AshDispatch.RecipientResolver.ResolverTest do
       }
 
       # Should return empty and log warning (not raise)
-      result = Resolver.resolve_from_resource([email: :contact_email], resource)
+      log =
+        capture_log(fn ->
+          result = Resolver.resolve_from_resource([email: :contact_email], resource)
+          assert result == []
+        end)
 
-      assert result == []
+      assert log =~ "not loaded"
     end
   end
 

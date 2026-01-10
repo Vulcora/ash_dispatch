@@ -1116,33 +1116,14 @@ defmodule AshDispatch.Dispatcher do
 
   defp apply_channel_load(context, _channel), do: context
 
-  # Resolve event module with runtime fallback
-  # The transformer sets event_config[:module] at compile time, but due to module
-  # compilation order, event modules may not be compiled yet when the resource
-  # transformer runs. This function provides runtime fallback using EventResolver.
-  defp resolve_event_module(event_config, context) do
-    case event_config[:module] do
-      nil ->
-        # Try runtime lookup
-        case EventResolver.find_module(context.event_id) do
-          {:ok, m} ->
-            # Log at debug level here since warning is already logged at dispatch_event.ex
-            Logger.debug(
-              "[Dispatcher] Runtime module resolution for #{context.event_id}: #{inspect(m)}"
-            )
-
-            m
-
-          {:error, :not_found} ->
-            Logger.debug(
-              "[Dispatcher] No event module found for #{context.event_id} - callbacks will be skipped"
-            )
-
-            nil
-        end
-
-      m ->
-        m
+  # Always resolve event module at runtime via EventResolver
+  # Compile-time resolution is unreliable due to module compilation order
+  # (event modules compile after resources, so Code.ensure_loaded? fails)
+  # Warning is only logged in dispatch_event.ex on first resolution failure
+  defp resolve_event_module(_event_config, context) do
+    case EventResolver.find_module(context.event_id) do
+      {:ok, m} -> m
+      {:error, :not_found} -> nil
     end
   end
 
