@@ -302,6 +302,9 @@ defmodule AshDispatch.Dispatcher do
   # Private functions
 
   defp resolve_recipients_for_channel(context, channel, event_config) do
+    # Resolve module with runtime fallback (handles compilation order issues)
+    module = resolve_event_module(event_config, context)
+
     # Priority order for recipient resolution:
     # 1. recipient_resolver config (new DSL-based system)
     # 2. Event module recipients/2 callback (if returns non-empty)
@@ -318,9 +321,7 @@ defmodule AshDispatch.Dispatcher do
 
       # If there's a module, try its recipients callback first
       # But fall back to audience-based resolution if it returns empty
-      not is_nil(event_config[:module]) ->
-        module = event_config[:module]
-
+      not is_nil(module) ->
         case EventResolver.recipients(module, context, channel) do
           # Module returned recipients - use them
           recipients when is_list(recipients) and recipients != [] ->
@@ -495,7 +496,8 @@ defmodule AshDispatch.Dispatcher do
   # Extract source resource info (type and ID) for linking receipts to source resources
   # Returns {source_type, source_id} tuple where values may be nil
   defp extract_source_info(context, event_config) do
-    module = event_config[:module]
+    # Resolve module with runtime fallback (handles compilation order issues)
+    module = resolve_event_module(event_config, context)
 
     cond do
       # Module-based events: use resource() callback to get the source type
@@ -553,8 +555,11 @@ defmodule AshDispatch.Dispatcher do
   end
 
   defp build_receipt_content(context, channel, event_config) do
+    # Resolve module with runtime fallback (handles compilation order issues)
+    module = resolve_event_module(event_config, context)
+
     base_content =
-      case event_config[:module] do
+      case module do
         nil ->
           # Pure inline DSL - use inline content only
           build_inline_content(context, channel, event_config)
@@ -1021,6 +1026,9 @@ defmodule AshDispatch.Dispatcher do
 
     if counter_broadcaster && Code.ensure_loaded?(counter_broadcaster) &&
          function_exported?(counter_broadcaster, :broadcast, 3) do
+      # Resolve module with runtime fallback (handles compilation order issues)
+      module = resolve_event_module(event_config, context)
+
       # Hybrid mode: prefer inline DSL counters over module callback
       counters =
         cond do
@@ -1029,8 +1037,8 @@ defmodule AshDispatch.Dispatcher do
             channel.counters
 
           # Fall back to event module callback using EventResolver
-          not is_nil(event_config[:module]) ->
-            EventResolver.counters(event_config[:module], context, channel)
+          not is_nil(module) ->
+            EventResolver.counters(module, context, channel)
 
           # No counters defined
           true ->
@@ -1107,6 +1115,24 @@ defmodule AshDispatch.Dispatcher do
   end
 
   defp apply_channel_load(context, _channel), do: context
+
+  # Resolve event module with runtime fallback
+  # The transformer sets event_config[:module] at compile time, but due to module
+  # compilation order, event modules may not be compiled yet when the resource
+  # transformer runs. This function provides runtime fallback using EventResolver.
+  defp resolve_event_module(event_config, context) do
+    case event_config[:module] do
+      nil ->
+        # Try runtime lookup
+        case EventResolver.find_module(context.event_id) do
+          {:ok, m} -> m
+          {:error, :not_found} -> nil
+        end
+
+      m ->
+        m
+    end
+  end
 
   # Wrap prepare_template_assigns with helpful error messages for unloaded relationships
   # Uses EventResolver for safe callback execution, but adds extra error handling for NotLoaded
