@@ -552,7 +552,7 @@ defmodule Mix.Tasks.AshDispatch.Gen do
       {:email, :html} -> generate_email_html_stub(template)
       {:email, :text} -> generate_email_text_stub(template)
       {:sms, :text} -> generate_sms_text_stub(template)
-      _ -> "<%# TODO: Implement template for #{template.transport} %>\n"
+      _ -> "<% # TODO: Implement template for #{template.transport} %>\n"
     end
   end
 
@@ -560,9 +560,9 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     variant_info = if template.variant, do: " (variant: #{template.variant})", else: ""
 
     """
-    <%# Template for: #{template.event_id} %>
-    <%# Transport: email, Format: html#{variant_info} %>
-    <%#
+    <% # Template for: #{template.event_id} %>
+    <% # Transport: email, Format: html#{variant_info} %>
+    <% #
       Available assigns (from prepare_template_assigns/2):
       - @source_url - Link back to source resource
       - Add custom assigns in your event module
@@ -610,8 +610,8 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     variant_info = if template.variant, do: " (variant: #{template.variant})", else: ""
 
     """
-    <%# Template for: #{template.event_id} %>
-    <%# Transport: email, Format: text#{variant_info} %>
+    <% # Template for: #{template.event_id} %>
+    <% # Transport: email, Format: text#{variant_info} %>
 
     Hej<%= if assigns[:display_name], do: " \#{@display_name}", else: "" %>!
 
@@ -623,8 +623,8 @@ defmodule Mix.Tasks.AshDispatch.Gen do
 
   defp generate_sms_text_stub(template) do
     """
-    <%# Template for: #{template.event_id} %>
-    <%# Transport: sms %>
+    <% # Template for: #{template.event_id} %>
+    <% # Transport: sms %>
 
     TODO: Add your SMS content here (keep it short!)
 

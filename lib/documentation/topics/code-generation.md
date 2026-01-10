@@ -325,8 +325,8 @@ Generated templates include helpful starter content:
 ### HTML Email Template
 
 ```heex
-<%# Template for: orders.created %>
-<%# Transport: email, Format: html %>
+<% # Template for: orders.created %>
+<% # Transport: email, Format: html %>
 
 <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
   Hej<%= if assigns[:display_name], do: " <strong>#{@display_name}</strong>", else: "" %>,
@@ -351,8 +351,8 @@ Generated templates include helpful starter content:
 ### Text Email Template
 
 ```eex
-<%# Template for: orders.created %>
-<%# Transport: email, Format: text %>
+<% # Template for: orders.created %>
+<% # Transport: email, Format: text %>
 
 Hej<%= if assigns[:display_name], do: " #{@display_name}", else: "" %>!
 
