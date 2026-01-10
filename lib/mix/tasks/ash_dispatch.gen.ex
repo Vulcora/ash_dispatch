@@ -1474,6 +1474,8 @@ defmodule Mix.Tasks.AshDispatch.Gen do
       readAt: string | null
       occurredAt: string
       insertedAt: string
+      /** Query keys to invalidate when this notification is received (for TanStack Query or custom cache) */
+      invalidates?: string[]
     }
 
     export interface UseNotificationsOptions {
@@ -1489,6 +1491,8 @@ defmodule Mix.Tasks.AshDispatch.Gen do
       markAllNotificationsAsRead: MarkAllAsReadFn
       /** Function to build CSRF headers */
       buildCSRFHeaders: () => Record<string, string>
+      /** Callback when query invalidation is requested (e.g., for TanStack Query or custom cache) */
+      onInvalidate?: (queryKeys: string[]) => void
     }
 
     export interface UseNotificationsReturn {
@@ -1569,6 +1573,7 @@ defmodule Mix.Tasks.AshDispatch.Gen do
       markNotificationAsRead,
       markAllNotificationsAsRead,
       buildCSRFHeaders,
+      onInvalidate,
     }: UseNotificationsOptions): UseNotificationsReturn {
       const [notifications, setNotifications] = useState<Notification[]>([])
       const [isLoading, setIsLoading] = useState(true)
@@ -1710,12 +1715,20 @@ defmodule Mix.Tasks.AshDispatch.Gen do
               // Use incrementCounter to avoid stale closure issues
               incrementCounter('unread_notifications', 1)
             }
+            // Trigger query invalidation if specified
+            if (notification.invalidates?.length && onInvalidate) {
+              onInvalidate(notification.invalidates)
+            }
           })
 
           // Listen for counter updates (from UserChannel.broadcast_counter or custom broadcast)
           channel.on('counter_updated', (payload: { counter: string; value: number; metadata?: { invalidate_queries?: string[] } }) => {
             if (isValidCounter(payload.counter)) {
               setCounter(payload.counter as CounterName, payload.value)
+            }
+            // Trigger query invalidation if specified in metadata
+            if (payload.metadata?.invalidate_queries?.length && onInvalidate) {
+              onInvalidate(payload.metadata.invalidate_queries)
             }
           })
 

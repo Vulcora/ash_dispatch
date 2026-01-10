@@ -296,6 +296,80 @@ Ensure your Phoenix backend has:
 
 ---
 
+## Query Invalidation
+
+Events can specify query keys to invalidate when notifications are received. This is useful for
+triggering cache refreshes in TanStack Query or custom state management.
+
+### Backend Configuration
+
+In your Elixir DSL, add `invalidates` to events:
+
+```elixir
+dispatch do
+  event :order_created,
+    trigger_on: :create,
+    channels: [[transport: :in_app, audience: :user]],
+    invalidates: ["orders", "order_stats"]  # Frontend query keys
+end
+```
+
+### Using with TanStack Query
+
+Pass `onInvalidate` to the `useNotifications` hook:
+
+```tsx
+import { useQueryClient } from '@tanstack/react-query'
+import { useNotifications } from '@/lib/generated/ash-dispatch'
+
+function NotificationsWithInvalidation() {
+  const queryClient = useQueryClient()
+
+  const { notifications } = useNotifications({
+    userId: user.id,
+    listNotifications,
+    markNotificationAsRead,
+    markAllNotificationsAsRead,
+    buildCSRFHeaders,
+    onInvalidate: (queryKeys) => {
+      // Invalidate matching TanStack Query caches
+      queryKeys.forEach((key) => {
+        queryClient.invalidates({ queryKey: [key] })
+      })
+    },
+  })
+
+  return <NotificationList notifications={notifications} />
+}
+```
+
+### Using with Custom State Management
+
+For apps without TanStack Query, use window events or a custom mechanism:
+
+```tsx
+// In your notification setup
+onInvalidate: (queryKeys) => {
+  // Broadcast a custom event
+  window.dispatchEvent(
+    new CustomEvent('invalidate-queries', { detail: { queryKeys } })
+  )
+}
+
+// In any component that needs to respond
+useEffect(() => {
+  const handler = (e: CustomEvent<{ queryKeys: string[] }>) => {
+    if (e.detail.queryKeys.includes('orders')) {
+      refetchOrders()
+    }
+  }
+  window.addEventListener('invalidate-queries', handler)
+  return () => window.removeEventListener('invalidate-queries', handler)
+}, [refetchOrders])
+```
+
+---
+
 ## Low-Level Channel Hook
 
 For custom channel handling, use `useChannel`:
@@ -371,6 +445,8 @@ interface Notification {
   readAt: string | null
   occurredAt: string
   insertedAt: string
+  /** Query keys to invalidate (from event's invalidates option) */
+  invalidates?: string[]
 }
 ```
 

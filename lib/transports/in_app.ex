@@ -70,7 +70,8 @@ defmodule AshDispatch.Transports.InApp do
     else
       # Receipt now corresponds to a single recipient (user_id in receipt)
       # Create one notification for this recipient
-      result = create_notification_for_receipt(receipt, context, channel)
+      invalidates = event_config[:invalidates] || []
+      result = create_notification_for_receipt(receipt, context, channel, invalidates)
 
       # Update receipt status and link notification_id
       updated_receipt = update_receipt_with_notification(receipt, result)
@@ -91,7 +92,7 @@ defmodule AshDispatch.Transports.InApp do
   # Private functions
 
   # Create notification for the receipt (one receipt = one recipient now)
-  defp create_notification_for_receipt(receipt, context, channel) do
+  defp create_notification_for_receipt(receipt, context, channel, invalidates) do
     # Receipt now has the user_id of the recipient
     user_id = receipt.user_id
 
@@ -145,8 +146,8 @@ defmodule AshDispatch.Transports.InApp do
             Message: #{notification.message}
             """)
 
-            # Broadcast to user's channel
-            broadcast_notification(notification)
+            # Broadcast to user's channel with invalidation keys
+            broadcast_notification(notification, invalidates)
 
             {:ok, notification}
 
@@ -212,7 +213,7 @@ defmodule AshDispatch.Transports.InApp do
   end
 
   # Broadcast notification to user's channel in JSON-serializable format
-  defp broadcast_notification(notification) do
+  defp broadcast_notification(notification, invalidates) do
     pubsub_module = Config.pubsub_module()
 
     if pubsub_module do
@@ -225,7 +226,8 @@ defmodule AshDispatch.Transports.InApp do
         timestamp: notification.inserted_at,
         metadata: notification.metadata || %{},
         actionLabel: notification.action_label,
-        actionUrl: notification.action_url
+        actionUrl: notification.action_url,
+        invalidates: invalidates
       }
 
       pubsub_module.broadcast(

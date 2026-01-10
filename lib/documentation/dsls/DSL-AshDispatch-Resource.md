@@ -64,6 +64,7 @@ Defines an event that is automatically dispatched when specified actions occur.
 | `channels` | `[keyword_list \| map]` | `[]` | ❌ | List of delivery channels for this event |
 | `content` | `keyword_list \| map` | `[]` | ❌ | Content configuration (subject, titles, messages) |
 | `metadata` | `keyword_list \| map` | `[]` | ❌ | Event metadata (notification type, user configurable, etc.) |
+| `invalidates` | `[string]` | `[]` | ❌ | Frontend query keys to invalidate when notification is received |
 
 ### Examples
 
@@ -114,6 +115,26 @@ dispatch do
     content: [
       notification_title: "Status: {{status}}"
     ]
+end
+```
+
+#### Event with frontend cache invalidation
+
+When the notification is received, the frontend can automatically invalidate
+TanStack Query caches or custom caches using the `invalidates` option:
+
+```elixir
+dispatch do
+  event :created,
+    trigger_on: :create,
+    channels: [
+      [transport: :in_app, audience: :user]
+    ],
+    content: [
+      notification_title: "Order Created",
+      notification_message: "Your order #{{order_number}} is being processed"
+    ],
+    invalidates: ["orders", "order_stats"]
 end
 ```
 

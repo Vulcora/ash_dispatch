@@ -20,6 +20,7 @@ defmodule AshDispatch.Resource.Dsl.Event do
     metadata: %{},
     recipient: %{},
     recipient_filter: %{},
+    invalidates: [],
     __spark_metadata__: nil
   ]
 
@@ -38,6 +39,7 @@ defmodule AshDispatch.Resource.Dsl.Event do
           metadata: map(),
           recipient: map(),
           recipient_filter: map(),
+          invalidates: [String.t()],
           __spark_metadata__: any()
         }
 end

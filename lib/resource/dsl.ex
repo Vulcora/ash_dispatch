@@ -487,6 +487,31 @@ defmodule AshDispatch.Resource.Dsl do
           Note: This filter is only checked for auto-triggered events. Manual
           triggers always send (assuming applicable_for_user? returns true).
           """
+        ],
+        invalidates: [
+          type: {:list, :string},
+          default: [],
+          doc: """
+          Frontend query keys to invalidate when this event is dispatched.
+
+          When notifications are broadcast to recipients, the frontend can use these
+          keys to invalidate TanStack Query caches, triggering automatic refetches.
+
+          ## Example
+
+              event :created,
+                trigger_on: :create,
+                invalidates: ["partner_leads", "partner_stats"],
+                channels: [[transport: :in_app, audience: :partner_owner]]
+
+          The invalidation keys are broadcast along with the notification, allowing
+          the frontend to react to data changes in real-time without polling.
+
+          Common patterns:
+          - Resource lists: `["leads", "projects", "invoices"]`
+          - Dashboard stats: `["partner_stats", "admin_stats"]`
+          - Related data: `["customer_orders", "customer_invoices"]`
+          """
         ]
       ]
     }
