@@ -1125,8 +1125,20 @@ defmodule AshDispatch.Dispatcher do
       nil ->
         # Try runtime lookup
         case EventResolver.find_module(context.event_id) do
-          {:ok, m} -> m
-          {:error, :not_found} -> nil
+          {:ok, m} ->
+            # Log at debug level here since warning is already logged at dispatch_event.ex
+            Logger.debug(
+              "[Dispatcher] Runtime module resolution for #{context.event_id}: #{inspect(m)}"
+            )
+
+            m
+
+          {:error, :not_found} ->
+            Logger.debug(
+              "[Dispatcher] No event module found for #{context.event_id} - callbacks will be skipped"
+            )
+
+            nil
         end
 
       m ->

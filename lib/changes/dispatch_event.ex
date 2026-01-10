@@ -115,8 +115,39 @@ defmodule AshDispatch.Changes.DispatchEvent do
     event_id = Keyword.fetch!(opts, :event_id)
     load = Keyword.get(opts, :load, [])
     data_key = Map.get(event_config, :data_key)
-    event_module = Map.get(event_config, :module)
     include_actor_as = Map.get(event_config, :include_actor_as)
+
+    # Resolve module with runtime fallback (handles compilation order issues)
+    # The transformer sets event_config[:module] at compile time, but due to module
+    # compilation order, event modules may not be compiled yet when the resource
+    # transformer runs. We fall back to runtime lookup using EventResolver.
+    event_module =
+      case Map.get(event_config, :module) do
+        nil ->
+          case EventResolver.find_module(event_id) do
+            {:ok, m} ->
+              Logger.warning("""
+              [AshDispatch] Runtime module resolution fallback triggered for event: #{event_id}
+              Module #{inspect(m)} was not available at compile time.
+              This is usually caused by compilation order - event modules compile after resources.
+              The event will still work, but consider recompiling if this persists.
+              """)
+
+              m
+
+            {:error, :not_found} ->
+              Logger.warning("""
+              [AshDispatch] No event module found for event: #{event_id}
+              Looked in event_config[:module] (nil) and EventResolver (not found).
+              Event callbacks like prepare_data/prepare_template_assigns will not be called.
+              """)
+
+              nil
+          end
+
+        m ->
+          m
+      end
 
     Logger.debug("[DispatchEvent] dispatch_dsl_event starting for event_id: #{event_id}")
 
@@ -133,7 +164,8 @@ defmodule AshDispatch.Changes.DispatchEvent do
     Logger.debug("[DispatchEvent] built context: #{inspect(context)}")
 
     # Get channels (from module or inline config)
-    channels = resolve_channels(context, event_config)
+    # Pass the resolved event_module to avoid using potentially-nil event_config[:module]
+    channels = resolve_channels(context, event_config, event_module)
     Logger.debug("[DispatchEvent] resolved #{length(channels)} channels: #{inspect(channels)}")
 
     # Dispatch to all channels
@@ -280,12 +312,14 @@ defmodule AshDispatch.Changes.DispatchEvent do
     end
   end
 
-  defp resolve_channels(context, event_config) do
+  defp resolve_channels(context, event_config, event_module) do
     # Use centralized ChannelResolver for consistent priority logic
     # DSL channels take precedence, module callback is fallback
+    # Note: event_module is passed directly (already resolved with runtime fallback)
+    # instead of using event_config[:module] which may be nil due to compilation order
     ChannelResolver.resolve(
       context.event_id,
-      Map.get(event_config, :module),
+      event_module,
       context,
       dsl_channels: Map.get(event_config, :channels)
     )
