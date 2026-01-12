@@ -126,6 +126,18 @@ end
 
 See [Getting Started](lib/documentation/tutorials/getting-started.md) for complete manual setup instructions.
 
+### Production Configuration (Required for Releases)
+
+**Important:** For production releases, you must enable template compilation. Without this, email templates won't load in production because `lib/` source files aren't included in releases.
+
+```elixir
+# config/prod.exs - REQUIRED for releases
+config :ash_dispatch,
+  compile_templates: true
+```
+
+This copies templates to `priv/ash_dispatch/templates/` during compilation, ensuring they're available at runtime. See [Code Generation](lib/documentation/topics/code-generation.md) for details.
+
 ## Quick Example
 
 ```elixir

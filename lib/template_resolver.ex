@@ -77,6 +77,7 @@ defmodule AshDispatch.TemplateResolver do
   """
 
   require EEx
+  require Logger
 
   @doc """
   Renders a template with the given options.
@@ -189,8 +190,52 @@ defmodule AshDispatch.TemplateResolver do
         render_from_files(convention_path, transport, variant, format, assigns, false, otp_app)
 
       true ->
+        maybe_warn_missing_template_config(event_module, event_id, otp_app)
         {:error, :template_not_found}
     end
+  end
+
+  # Warn about missing compile_templates config when running in a release
+  # This helps users understand why templates aren't loading in production
+  defp maybe_warn_missing_template_config(event_module, event_id, otp_app) do
+    # Only warn in release mode (when lib/ sources aren't available)
+    if release_mode?() do
+      identifier =
+        cond do
+          event_module -> "module: #{inspect(event_module)}"
+          event_id -> "event_id: #{event_id}"
+          true -> "unknown event"
+        end
+
+      has_manifest =
+        case otp_app do
+          nil -> false
+          app -> priv_manifest_exists?(app)
+        end
+
+      unless has_manifest do
+        Logger.warning("""
+        [AshDispatch] Template not found for #{identifier}
+
+        This is likely because `compile_templates: true` is not set in config/prod.exs.
+
+        In production releases, templates must be compiled to priv/ during build because
+        lib/ source files are not included in releases.
+
+        Add to config/prod.exs:
+
+            config :ash_dispatch,
+              compile_templates: true
+
+        Then rebuild your release. See: https://hexdocs.pm/ash_dispatch/code-generation.html
+        """)
+      end
+    end
+  end
+
+  # Detect if running in a release (Mix module is not available)
+  defp release_mode? do
+    not function_exported?(Mix, :env, 0)
   end
 
   # Check if priv manifest exists for the given OTP app
