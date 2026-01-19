@@ -137,6 +137,43 @@ defmodule AshDispatch.Config do
   end
 
   # ============================================================================
+  # Localization
+  # ============================================================================
+
+  @doc """
+  Default locale for template resolution and content.
+
+  Used as the ultimate fallback when no locale is specified. The full locale
+  resolution priority is:
+
+  1. Channel-level `locale` (static, e.g., `locale: "sv"`)
+  2. Channel-level `locale_from` (dynamic from record field)
+  3. Event-level `locale_from` configuration
+  4. Resource-level `locale_from` configuration
+  5. Auto-detected common fields: `visitor_locale`, `locale`
+  6. This config default
+
+  Template resolution then tries locale-specific templates first
+  (e.g., `email.sv.html.heex`), falling back to non-localized templates.
+
+  Defaults to `"en"`.
+
+  ## Example
+
+      config :ash_dispatch,
+        default_locale: "sv"
+
+  ## See Also
+
+  - `AshDispatch.Resource.Dsl` - Resource-level `locales` configuration
+  - `AshDispatch.TemplateResolver` - Template fallback chain
+  """
+  @spec default_locale() :: String.t()
+  def default_locale do
+    Application.get_env(:ash_dispatch, :default_locale, "en")
+  end
+
+  # ============================================================================
   # Email Configuration
   # ============================================================================
 
@@ -325,6 +362,22 @@ defmodule AshDispatch.Config do
   @spec pubsub_module() :: module() | nil
   def pubsub_module do
     Application.get_env(:ash_dispatch, :pubsub_module)
+  end
+
+  @doc """
+  The Phoenix channel topic prefix for user channels.
+
+  Defaults to `"user"` which creates topics like `"user:user_id"`.
+  Configure to match your channel setup, e.g., `"inbox"` for `"inbox:user_id"`.
+
+  ## Example
+
+      config :ash_dispatch,
+        channel_topic: "inbox"
+  """
+  @spec channel_topic() :: String.t()
+  def channel_topic do
+    Application.get_env(:ash_dispatch, :channel_topic, "user")
   end
 
   @doc """

@@ -6,7 +6,9 @@ The `AshDispatch.Resource` extension adds event dispatching capabilities to Ash 
 
 - [dispatch](#dispatch) - Top-level section for defining events
   - [event](#dispatch-event) - Define an event that dispatches when actions occur
+  - [locales](#dispatch-locales) - Configure locales for multi-language templates
 - [Actor Access](#actor-access) - Accessing the actor (user who triggered the action) in events
+- [Localization](#localization) - Multi-language template support
 
 ---
 
@@ -36,6 +38,77 @@ end
 ### Entities
 
 - [event](#dispatch-event)
+- [locales](#dispatch-locales)
+
+---
+
+## dispatch.locales
+
+Configures locales for multi-language template generation and runtime locale resolution.
+
+### Arguments
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `locales` | `[String.t()]` | ✅ | List of locale codes (e.g., `["sv", "en", "no"]`) |
+
+### Options
+
+| Name | Type | Default | Required | Description |
+|------|------|---------|----------|-------------|
+| `default_locale` | `String.t()` | config default | ❌ | Fallback locale when none can be determined from record |
+| `locale_from` | `atom` | `nil` | ❌ | Field on resource to extract runtime locale from |
+
+### Examples
+
+#### Resource-level locale configuration
+
+```elixir
+dispatch do
+  locales ["sv", "en", "no"],
+    default_locale: "sv",
+    locale_from: :visitor_locale
+
+  event :created, trigger_on: :create do
+    channels [
+      [transport: :email, audience: :customer],
+      [transport: :email, audience: :admin, locale: "sv"]
+    ]
+  end
+end
+```
+
+This generates:
+- `email.html.heex` (default/fallback)
+- `email.sv.html.heex`
+- `email.en.html.heex`
+- `email.no.html.heex`
+
+At runtime:
+- Customer email reads `lead.visitor_locale` to select template
+- Admin email always uses Swedish template (channel-level override)
+
+### Locale Resolution Priority
+
+When determining which locale to use at runtime:
+
+1. **Channel-level `locale`** - Static override (e.g., `locale: "sv"`)
+2. **Channel-level `locale_from`** - Dynamic from record field
+3. **Event-level `locale_from`** - Event-specific field
+4. **Resource-level `locale_from`** - Resource-wide field (this config)
+5. **Auto-detected fields** - `:visitor_locale`, `:locale` on record
+6. **Config default** - `AshDispatch.Config.default_locale()`
+
+### Template Fallback Chain
+
+When resolving templates, AshDispatch tries these in order:
+
+1. `email.admin.sv.html.heex` (variant + locale)
+2. `email.admin.html.heex` (variant only)
+3. `email.sv.html.heex` (locale only)
+4. `email.html.heex` (base template)
+5. `default.sv.html.heex` (default + locale)
+6. `default.html.heex` (ultimate fallback)
 
 ---
 
@@ -224,6 +297,10 @@ Channels define how and where the event is delivered.
 | `audience` | `atom` | ✅ | Who receives this: `:user`, `:admin`, or custom audience |
 | `delay` | `integer` | ❌ | Delay in seconds before delivering (default: 0) |
 | `policy` | `atom` | ❌ | Delivery policy: `:always` or `:skip_if_read` (default: `:always`) |
+| `variant` | `atom` | ❌ | Template variant (e.g., `:admin` for `email.admin.html.heex`) |
+| `locale` | `string` | ❌ | Static locale override (e.g., `"sv"` - always use Swedish) |
+| `locale_from` | `atom` | ❌ | Field on record to extract locale from (e.g., `:visitor_locale`) |
+| `locales` | `[string]` | ❌ | Locales for template generation (defaults to resource/event locales) |
 | `webhook_url` | `string` | ❌ | Webhook URL (required for `:webhook` transport) |
 | `deduplicate_group` | `atom` | ❌ | Group channels for deduplication (see below) |
 | `optional` | `boolean` | ❌ | Suppress warnings when no recipients found (default: `false`) |
@@ -327,6 +404,24 @@ channels: [
 
   # SMS to user (if enabled)
   [transport: :sms, audience: :user]
+]
+```
+
+### Channel Locale Examples
+
+```elixir
+channels: [
+  # Customer email - locale from their visitor_locale field
+  [transport: :email, audience: :customer, locale_from: :visitor_locale],
+
+  # Internal admin email - always in Swedish
+  [transport: :email, audience: :admin, locale: "sv"],
+
+  # Channel-specific locales for template generation
+  [transport: :email, audience: :user, locales: ["sv", "en", "no"]],
+
+  # Variant + locale (uses email.admin.sv.html.heex)
+  [transport: :email, audience: :admin, variant: :admin, locale: "sv"]
 ]
 ```
 
@@ -902,9 +997,68 @@ The `scope` option accepts any Ash expression with `^actor(:field)` templates:
 
 ---
 
+## Localization
+
+AshDispatch supports multi-language templates with dynamic locale resolution.
+
+### Quick Setup
+
+1. Configure locales at resource level:
+
+```elixir
+dispatch do
+  locales ["sv", "en"], locale_from: :visitor_locale
+
+  event :created, trigger_on: :create do
+    channels [[transport: :email, audience: :customer]]
+  end
+end
+```
+
+2. Run `mix ash.codegen` to generate locale-specific templates:
+   - `email.html.heex` (fallback)
+   - `email.sv.html.heex`
+   - `email.en.html.heex`
+
+3. At runtime, locale is resolved from `record.visitor_locale`
+
+### Locale Configuration Levels
+
+| Level | Option | Purpose |
+|-------|--------|---------|
+| **Resource** | `locales ["sv", "en"]` | Default locales for all events |
+| **Event** | `locales: ["sv", "en"]` | Override for specific event |
+| **Channel** | `locale: "sv"` | Static locale for channel |
+| **Channel** | `locale_from: :field` | Dynamic locale from record field |
+
+### Common Patterns
+
+**Different templates per audience:**
+
+```elixir
+channels: [
+  # Customer gets their preferred language
+  [transport: :email, audience: :customer, locale_from: :visitor_locale],
+  # Internal staff always gets Swedish
+  [transport: :email, audience: :admin, locale: "sv"]
+]
+```
+
+**Variant + locale combination:**
+
+```elixir
+# Uses email.customer.en.html.heex when visitor_locale is "en"
+[transport: :email, audience: :customer, variant: :customer, locale_from: :visitor_locale]
+```
+
+See [Localization Topic](../topics/localization.md) for complete guide.
+
+---
+
 ## See Also
 
 - [Getting Started Tutorial](../tutorials/getting-started.md)
 - [What is AshDispatch?](../topics/what-is-ash-dispatch.md)
+- [Localization (i18n)](../topics/localization.md)
 - [Phoenix Integration](../topics/phoenix-integration.md)
 - [Counter Broadcasting](../topics/counter-broadcasting.md)

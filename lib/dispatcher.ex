@@ -390,6 +390,9 @@ defmodule AshDispatch.Dispatcher do
     # Extract source resource info for linking (e.g., link receipt to order)
     {source_type, source_id} = extract_source_info(context, event_config)
 
+    # Resolve locale for traceability (which template was rendered)
+    locale = resolve_channel_locale(channel, context)
+
     # Build receipt attributes
     attrs = %{
       event_id: context.event_id,
@@ -399,7 +402,8 @@ defmodule AshDispatch.Dispatcher do
       user_id: recipient_user_id,
       notification_id: notification_id,
       source_type: source_type,
-      source_id: source_id
+      source_id: source_id,
+      locale: locale
       # Note: scheduled_for removed - Oban handles scheduling via schedule_in parameter
     }
 
@@ -716,6 +720,8 @@ defmodule AshDispatch.Dispatcher do
     # Resource name for template path resolution
     resource_name = event_config[:resource_name]
     variant = channel.variant
+    # Locale priority: channel.locale > channel.locale_from (dynamic) > context.locale
+    locale = resolve_channel_locale(channel, context)
 
     # Prepare template assigns
     assigns = Context.template_assigns(context)
@@ -733,6 +739,7 @@ defmodule AshDispatch.Dispatcher do
              format: :html,
              transport: :email,
              variant: variant,
+             locale: locale,
              assigns: assigns
            ) do
         {:ok, rendered} ->
@@ -759,6 +766,7 @@ defmodule AshDispatch.Dispatcher do
              format: :text,
              transport: :email,
              variant: variant,
+             locale: locale,
              assigns: assigns
            ) do
         {:ok, rendered} ->
@@ -851,6 +859,8 @@ defmodule AshDispatch.Dispatcher do
           # Get variant for template resolution
           # Prefer channel.variant (from inline DSL) over EventResolver callback
           variant = channel.variant || EventResolver.template_variant(module, context, channel)
+          # Locale priority: channel.locale > channel.locale_from (dynamic) > context.locale
+          locale = resolve_channel_locale(channel, context)
 
           # Prepare template assigns using EventResolver
           base_assigns = safe_prepare_template_assigns(module, context, channel)
@@ -889,6 +899,7 @@ defmodule AshDispatch.Dispatcher do
                        format: :html,
                        transport: :email,
                        variant: variant,
+                       locale: locale,
                        assigns: assigns_with_subject
                      ) do
                   {:ok, rendered} -> rendered
@@ -904,6 +915,7 @@ defmodule AshDispatch.Dispatcher do
                        format: :text,
                        transport: :email,
                        variant: variant,
+                       locale: locale,
                        assigns: assigns_with_subject
                      ) do
                   {:ok, rendered} -> rendered
@@ -1124,6 +1136,40 @@ defmodule AshDispatch.Dispatcher do
     case EventResolver.find_module(context.event_id) do
       {:ok, m} -> m
       {:error, :not_found} -> nil
+    end
+  end
+
+  # Resolve locale for a channel with priority:
+  # 1. channel.locale - static locale configured on channel
+  # 2. channel.locale_from - dynamic locale from record field
+  # 3. context.locale - event-level locale (already resolved from record or default)
+  defp resolve_channel_locale(channel, context) do
+    cond do
+      # Static locale on channel has highest priority
+      channel.locale ->
+        channel.locale
+
+      # Dynamic locale from record field
+      channel.locale_from ->
+        extract_locale_from_context(context, channel.locale_from)
+
+      # Fall back to context locale (event-level)
+      true ->
+        context.locale
+    end
+  end
+
+  # Extract locale from a specific field in context.data
+  defp extract_locale_from_context(context, locale_field) do
+    # The primary resource is stored under resource_key
+    resource_key = context.resource_key
+
+    case Map.get(context.data, resource_key) do
+      record when is_map(record) ->
+        Map.get(record, locale_field) || context.locale
+
+      _ ->
+        context.locale
     end
   end
 

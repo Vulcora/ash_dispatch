@@ -169,6 +169,9 @@ defmodule AshDispatch.Resource.Transformers.InjectDispatchChanges do
         time: get_val.(:time, {:in, 0}),
         policy: get_val.(:policy, :always),
         variant: get_val.(:variant, nil),
+        locale: get_val.(:locale, nil),
+        locale_from: get_val.(:locale_from, nil),
+        locales: get_val.(:locales, []),
         webhook_url: get_val.(:webhook_url, nil),
         deduplicate_group: get_val.(:deduplicate_group, nil),
         opts: get_val.(:opts, %{})
@@ -227,6 +230,9 @@ defmodule AshDispatch.Resource.Transformers.InjectDispatchChanges do
     # Auto-derive load requirements from audience
     derived_load = derive_load_from_audience(event, dsl_state)
 
+    # Get resource-level locale config
+    resource_locales = get_resource_locales(dsl_state)
+
     change_opts = [
       event_id: event_id,
       load: derived_load,
@@ -243,7 +249,11 @@ defmodule AshDispatch.Resource.Transformers.InjectDispatchChanges do
         # For template path resolution
         resource_name: resource_name,
         # For source resource linking (used by extract_source_info in dispatcher)
-        resource_module: resource
+        resource_module: resource,
+        # Locale configuration (event-level overrides resource-level)
+        locale_from: event.locale_from || resource_locales[:locale_from],
+        locales: event.locales || resource_locales[:locales] || [],
+        default_locale: resource_locales[:default_locale]
       }
     ]
 
@@ -362,6 +372,24 @@ defmodule AshDispatch.Resource.Transformers.InjectDispatchChanges do
     end)
     |> Enum.map(fn override -> {override.name, override.path} end)
     |> Enum.into(%{})
+  end
+
+  # Get resource-level locale configuration from DSL
+  defp get_resource_locales(dsl_state) do
+    case Transformer.get_entities(dsl_state, [:dispatch]) do
+      entities ->
+        Enum.find_value(entities, %{}, fn
+          %AshDispatch.Resource.Dsl.Locales{} = locales ->
+            %{
+              locales: locales.locales,
+              default_locale: locales.default_locale,
+              locale_from: locales.locale_from
+            }
+
+          _ ->
+            nil
+        end)
+    end
   end
 
   # Build the full relationship path for an audience

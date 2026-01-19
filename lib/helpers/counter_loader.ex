@@ -328,12 +328,14 @@ defmodule AshDispatch.Helpers.CounterLoader do
         # Legacy user_id_path support
         user_id && user_id_path && !counter.filter_by_record ->
           user_filter = ResourceIntrospection.build_user_filter(user_id_path, user_id)
-          Ash.Query.filter(query, ^user_filter)
+          # Use do_filter without caret for keyword list filters
+          Ash.Query.do_filter(query, user_filter)
 
         # Special case: filter_by_record with nested user_id_path
         user_id && user_id_path && counter.filter_by_record && length(user_id_path) > 1 ->
           user_filter = ResourceIntrospection.build_user_filter(user_id_path, user_id)
-          Ash.Query.filter(query, ^user_filter)
+          # Use do_filter without caret for keyword list filters
+          Ash.Query.do_filter(query, user_filter)
 
         # No scoping (global counter or filter_by_record handles it)
         true ->

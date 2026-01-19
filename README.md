@@ -55,6 +55,7 @@ end
 - **📊 Delivery Tracking** - Full audit trail with delivery receipts
 - **🔄 Automatic Retries** - Failed deliveries retry with exponential backoff
 - **🎨 Template Interpolation** - `{{variable}}` syntax for dynamic content
+- **🌍 Localization (i18n)** - Multi-language templates with dynamic locale resolution from record fields
 - **📈 Real-Time Counters** - Declarative counter DSL with automatic Phoenix Channel broadcasting
 - **⚡ Zero-Config Helpers** - `ChannelState`, `CounterLoader`, `NotificationLoader` for Phoenix integration
 - **⚛️ Generated TypeScript SDK** - Ready-to-use React hooks, NotificationProvider, and NotificationBell components
@@ -70,6 +71,7 @@ end
 ## Topics
 
 - [What is AshDispatch?](lib/documentation/topics/what-is-ash-dispatch.md)
+- [Localization (i18n)](lib/documentation/topics/localization.md) - Multi-language templates with dynamic locale resolution
 - [Phoenix Channel Integration](lib/documentation/topics/phoenix-integration.md) - Zero-config helpers for real-time updates
 - [Counter Broadcasting](lib/documentation/topics/counter-broadcasting.md) - Declarative counter DSL with auto-discovery
 - [TypeScript SDK](lib/documentation/topics/typescript-sdk.md) - Generated React hooks, components, and Zustand store

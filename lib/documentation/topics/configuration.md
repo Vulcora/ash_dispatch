@@ -318,6 +318,43 @@ end
 
 ## Optional Configuration
 
+### Localization
+
+Configure default locale for template resolution:
+
+```elixir
+config :ash_dispatch,
+  default_locale: "sv"  # Default when no locale found (defaults to "en")
+```
+
+**Why needed:**
+- Sets the fallback language for email and SMS templates
+- Used when no locale is configured on channel, event, or resource
+- Templates fall back to non-localized versions if locale-specific not found
+
+**Default:** `"en"`
+
+See [Localization](localization.md) for the complete i18n guide including:
+- Resource-level locale configuration
+- Dynamic locale from record fields
+- Template fallback chain
+- Multi-language templates
+
+### Phoenix Channel Topic
+
+Configure the channel topic prefix for real-time notifications:
+
+```elixir
+config :ash_dispatch,
+  channel_topic: "inbox"  # Creates topics like "inbox:user_id"
+```
+
+**Default:** `"user"` (creates topics like `"user:user_id"`)
+
+**Why needed:**
+- Must match your Phoenix channel topic structure
+- Used for broadcasting notifications and counter updates
+
 ### Ash Domains (for counter auto-discovery)
 
 Specify which Ash domains to scan for counter definitions:

@@ -185,57 +185,54 @@ defmodule AshDispatch.Helpers.ResourceIntrospection do
   end
 
   @doc """
-  Resolves the user_id_path for counter scoping using the three-layer control model.
+  Resolves the user_id_path for counter scoping.
 
   This function consolidates the logic for determining how to scope counter queries:
 
-  1. **authorize?: false** → No user scoping (system-wide counter)
-  2. **scope provided** → Scope expression takes precedence
-  3. **explicit user_id_path** → Use the configured path
-  4. **auto-derive** → Introspect resource relationships
+  1. **scope provided** → Scope expression takes precedence (returns nil, scope handles it)
+  2. **explicit user_id_path** → Use the configured path
+  3. **auto-derive** → Introspect resource relationships
+
+  Note: `authorize?` is used for Ash policy authorization but does NOT affect user scoping.
+  A counter can have `authorize?: false` (bypass policies) while still having user-scoped data
+  via `user_id_path`.
 
   ## Parameters
 
   - `resource` - The Ash resource module
   - `opts` - Options keyword list with:
-    - `:authorize?` - Whether to use Ash policies (default: true)
     - `:scope` - Explicit scope expression (Ash.Expr)
     - `:user_id_path` - Explicit path to user_id field
     - `:audience` - Audience atom for relationship disambiguation
 
   ## Examples
 
-      # Admin counter - no scoping
-      resolve_user_id_path_for_scoping(Order, authorize?: false, audience: :admin)
-      #=> nil
-
-      # User counter with explicit path
-      resolve_user_id_path_for_scoping(Ticket, authorize?: true, user_id_path: [:user_id])
+      # User counter with explicit path (authorize?: false bypasses policies but still scopes to user)
+      resolve_user_id_path_for_scoping(RoomMember, user_id_path: [:user_id])
       #=> [:user_id]
 
       # Auto-derive from relationship
-      resolve_user_id_path_for_scoping(Order, authorize?: true, audience: :user)
+      resolve_user_id_path_for_scoping(Order, audience: :user)
       #=> [:user_id]  # if Order has belongs_to :user
   """
   @spec resolve_user_id_path_for_scoping(module(), keyword()) :: [atom()] | nil
   def resolve_user_id_path_for_scoping(resource, opts) do
-    authorize? = Keyword.get(opts, :authorize?, true)
     scope = Keyword.get(opts, :scope)
     explicit_path = Keyword.get(opts, :user_id_path)
     audience = Keyword.get(opts, :audience)
 
     cond do
-      # Layer 1: authorize?: false means no user scoping (system-wide counter)
-      not authorize? ->
-        nil
-
-      # Layer 2: Explicit scope expression takes precedence
+      # Layer 1: Explicit scope expression takes precedence
       scope ->
         nil
 
-      # Layer 3: Use explicit or derived user_id_path
+      # Layer 2: Use explicit user_id_path if provided (regardless of authorize?)
+      explicit_path ->
+        explicit_path
+
+      # Layer 3: Auto-derive from resource relationships
       true ->
-        explicit_path || derive_user_id_path(resource, audience)
+        derive_user_id_path(resource, audience)
     end
   end
 

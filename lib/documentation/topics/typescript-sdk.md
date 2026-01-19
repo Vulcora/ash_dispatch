@@ -203,6 +203,26 @@ function Dashboard() {
 }
 ```
 
+### Setting Counters Programmatically
+
+The store provides `setCounter` for single updates and `setCounters` for bulk updates:
+
+```tsx
+import { useCounterStore } from '@/lib/generated/ash-dispatch/store'
+
+// Single counter update
+useCounterStore.getState().setCounter('cart_items', 5)
+
+// Bulk update (used internally by initial_state handler)
+useCounterStore.getState().setCounters({
+  cart_items: 3,
+  unread_notifications: 10,
+  pending_tasks: 2
+})
+```
+
+The `setCounters` function merges provided counters with existing state, only updating keys that are present in the payload.
+
 ### CamelCase Accessors
 
 Use the generated accessor helper for ergonomic naming:
@@ -271,28 +291,83 @@ function Navigation() {
 
 The SDK automatically connects to Phoenix channels when `NotificationProvider` mounts. It handles:
 
+- Initial counter state via `initial_state` event on channel join
 - Initial notification fetch via RPC
-- WebSocket connection to `user:{userId}` channel
+- WebSocket connection to `user:{userId}` channel (configurable topic)
 - Real-time counter updates via `counter_update` events
 - New notification pushes via `new_notification` events
+
+### React StrictMode Safety
+
+The SDK hooks use a `mountedRef` pattern to safely handle React's StrictMode double-mounting behavior. This prevents:
+
+- State updates after component unmount
+- Memory leaks from orphaned callbacks
+- Race conditions during rapid mount/unmount cycles
+
+The implementation ensures cleanup functions properly disconnect channels and prevent stale updates:
+
+```tsx
+// Internal pattern used by SDK hooks
+const mountedRef = useRef(true)
+
+useEffect(() => {
+  mountedRef.current = true
+
+  // Channel setup with guard checks
+  channel.on('counter_update', (payload) => {
+    if (!mountedRef.current) return  // Skip if unmounted
+    setCounter(payload.name, payload.value)
+  })
+
+  return () => {
+    mountedRef.current = false
+    channel.leave()
+  }
+}, [])
+```
+
+This pattern is automatically applied - no additional configuration needed.
 
 ### Backend Requirements
 
 Ensure your Phoenix backend has:
 
 1. **Socket endpoint** at `/socket`
-2. **User channel** at `user:{userId}`
+2. **User channel** - Default topic is `user:{userId}`, configurable via:
+   ```elixir
+   # config/config.exs
+   config :ash_dispatch,
+     channel_topic: "inbox"  # Changes to "inbox:{userId}"
+   ```
 3. **Socket token endpoint** at `/api/inbox/socket-token` returning:
    ```json
    { "success": true, "data": { "token": "..." } }
+   ```
+4. **Initial state push** - Channel should push `initial_state` on join:
+   ```elixir
+   # In your channel join handler
+   def join("user:" <> user_id, _params, socket) do
+     initial_state = AshDispatch.Helpers.ChannelState.build(user_id)
+     send(self(), {:after_join, initial_state})
+     {:ok, socket}
+   end
+
+   def handle_info({:after_join, state}, socket) do
+     push(socket, "initial_state", state)
+     {:noreply, socket}
+   end
    ```
 
 ### Channel Events
 
 | Event | Payload | Description |
 |-------|---------|-------------|
-| `counter_update` | `{ unread_notifications: number }` | Counter changed |
+| `initial_state` | `{ counters: AllCounters }` | Initial state on channel join |
+| `counter_update` | `{ counter_name: number }` | Single counter changed |
 | `new_notification` | `Notification` | New notification received |
+
+The `initial_state` event is sent immediately when joining the channel, providing all current counter values. This eliminates the need for separate RPC calls to fetch initial counter state.
 
 ---
 
@@ -474,6 +549,21 @@ export function isValidCounter(name: string): name is CounterName;
 // CamelCase accessors
 export function getCounterAccessors(counters: AllCounters): CounterAccessors;
 ```
+
+### Counter Store
+
+```typescript
+interface CounterState {
+  counters: AllCounters
+  setCounter: (name: CounterName, value: number) => void
+  setCounters: (counters: Partial<AllCounters>) => void
+  incrementCounter: (name: CounterName, by?: number) => void
+  decrementCounter: (name: CounterName, by?: number) => void
+  resetCounters: () => void
+}
+```
+
+The `setCounters` function is used by the `initial_state` event handler to set all counters at once when joining the channel.
 
 ### Hook Return Types
 

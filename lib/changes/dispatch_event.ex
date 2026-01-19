@@ -133,32 +133,34 @@ defmodule AshDispatch.Changes.DispatchEvent do
           nil
       end
 
-    Logger.debug("[DispatchEvent] dispatch_dsl_event starting for event_id: #{event_id}")
-
     # Load relationships if specified
     record = maybe_load_relationships(record, load, changeset)
 
     # Build base context with the record and actor
-    context = build_context(event_id, record, changeset, ash_context, data_key, include_actor_as)
+    context =
+      build_context(
+        event_id,
+        record,
+        changeset,
+        ash_context,
+        data_key,
+        include_actor_as,
+        event_config
+      )
 
     # Call prepare_data if event module defines it (non-default implementation)
     # This allows events to enrich context.data with additional data (e.g., created_user)
     context = maybe_enrich_context_with_prepare_data(context, changeset, record, event_module)
 
-    Logger.debug("[DispatchEvent] built context: #{inspect(context)}")
-
     # Get channels (from module or inline config)
     # Pass the resolved event_module to avoid using potentially-nil event_config[:module]
     channels = resolve_channels(context, event_config, event_module)
-    Logger.debug("[DispatchEvent] resolved #{length(channels)} channels: #{inspect(channels)}")
 
     # Dispatch to all channels
     Enum.each(channels, fn channel ->
-      Logger.debug("[DispatchEvent] dispatching to channel: #{inspect(channel)}")
       dispatch_to_channel(context, channel, event_config)
     end)
 
-    Logger.debug("[DispatchEvent] dispatch_dsl_event completed for event_id: #{event_id}")
     :ok
   end
 
@@ -222,7 +224,15 @@ defmodule AshDispatch.Changes.DispatchEvent do
     end
   end
 
-  defp build_context(event_id, record, changeset, ash_context, data_key, include_actor_as) do
+  defp build_context(
+         event_id,
+         record,
+         changeset,
+         ash_context,
+         data_key,
+         include_actor_as,
+         event_config
+       ) do
     # Use data_key if provided, otherwise fall back to table name
     resource_key = data_key || record.__struct__.__schema__(:source)
     actor = Map.get(ash_context, :actor)
@@ -232,13 +242,19 @@ defmodule AshDispatch.Changes.DispatchEvent do
       %{resource_key => record, :actor => actor}
       |> maybe_add_actor_alias(actor, include_actor_as)
 
+    # Extract locale from record
+    # Priority: locale_from config field > common field names > Config.default_locale()
+    locale_from = Map.get(event_config, :locale_from)
+    default_locale = Map.get(event_config, :default_locale) || Config.default_locale()
+    locale = extract_locale_from_record(record, locale_from, default_locale)
+
     %Context{
       event_id: event_id,
       data: data,
       resource_key: resource_key,
       user: actor,
       source: :resource_action,
-      locale: "en",
+      locale: locale,
       base_url: get_base_url(),
       now: DateTime.utc_now(),
       metadata: %{
@@ -246,6 +262,28 @@ defmodule AshDispatch.Changes.DispatchEvent do
         action_type: changeset.action.type
       }
     }
+  end
+
+  # Extract locale from record using configured locale_from field or common field names
+  # Priority: locale_from config > visitor_locale > locale > default_locale
+  defp extract_locale_from_record(record, locale_from, default_locale) do
+    cond do
+      # If locale_from is configured, use that specific field
+      locale_from && Map.has_key?(record, locale_from) && Map.get(record, locale_from) ->
+        Map.get(record, locale_from)
+
+      # Common field: visitor_locale (e.g., for leads from landing pages)
+      Map.has_key?(record, :visitor_locale) && record.visitor_locale ->
+        record.visitor_locale
+
+      # Common field: locale
+      Map.has_key?(record, :locale) && record.locale ->
+        record.locale
+
+      # Fall back to configured default
+      true ->
+        default_locale
+    end
   end
 
   defp maybe_add_actor_alias(data, _actor, nil), do: data

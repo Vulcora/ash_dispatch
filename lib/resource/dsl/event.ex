@@ -14,6 +14,7 @@ defmodule AshDispatch.Resource.Dsl.Event do
     :data_key,
     :template_path,
     :include_actor_as,
+    :locale_from,
     load: [],
     channels: [],
     content: %{},
@@ -21,6 +22,7 @@ defmodule AshDispatch.Resource.Dsl.Event do
     recipient: %{},
     recipient_filter: %{},
     invalidates: [],
+    locales: [],
     __spark_metadata__: nil
   ]
 
@@ -33,6 +35,7 @@ defmodule AshDispatch.Resource.Dsl.Event do
           data_key: atom() | nil,
           template_path: String.t() | nil,
           include_actor_as: atom() | nil,
+          locale_from: atom() | nil,
           load: [atom() | {atom(), any()}],
           channels: [AshDispatch.Dsl.Channel.t()],
           content: map(),
@@ -40,6 +43,7 @@ defmodule AshDispatch.Resource.Dsl.Event do
           recipient: map(),
           recipient_filter: map(),
           invalidates: [String.t()],
+          locales: [String.t()],
           __spark_metadata__: any()
         }
 end

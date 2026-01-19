@@ -214,6 +214,11 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
           public?: true,
           description: "Source resource ID"
 
+        attribute :locale, :string,
+          allow_nil?: true,
+          public?: true,
+          description: "Locale used for template rendering (e.g., 'en', 'sv')"
+
         timestamps(public?: true)
       end
 
@@ -262,7 +267,8 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
             :provider_id,
             :provider_response,
             :source_type,
-            :source_id
+            :source_id,
+            :locale
           ]
         end
 

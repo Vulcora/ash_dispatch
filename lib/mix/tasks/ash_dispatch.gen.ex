@@ -402,13 +402,28 @@ defmodule Mix.Tasks.AshDispatch.Gen do
         {"README.md", &generate_readme_content/0}
       ]
 
-      Enum.filter(sdk_files, fn {filename, _generator} ->
-        path = Path.join(base_path, filename)
-        !File.exists?(path)
-      end)
+      # Generate all SDK files and check for changes (like events.ts/types.ts)
+      sdk_files
       |> Enum.map(fn {filename, generator} ->
-        %{path: Path.join(base_path, filename), content: generator.()}
+        path = Path.join(base_path, filename)
+        expected_content = generator.() |> ensure_trailing_newline()
+        file_exists = File.exists?(path)
+        current_content = if file_exists, do: File.read!(path), else: ""
+
+        # Compare without timestamp (handles regeneration without actual changes)
+        expected_normalized = normalize_for_comparison(expected_content)
+        current_normalized = normalize_for_comparison(current_content)
+
+        needs_write = expected_normalized != current_normalized
+
+        %{
+          path: path,
+          content: expected_content,
+          is_new: !file_exists,
+          needs_write: needs_write
+        }
       end)
+      |> Enum.filter(& &1.needs_write)
     else
       []
     end
@@ -556,12 +571,21 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     end
   end
 
+  # Format locale info for template comments
+  defp locale_info(template) do
+    case template[:locale] do
+      nil -> ""
+      locale -> " (locale: #{locale})"
+    end
+  end
+
   defp generate_email_html_stub(template) do
     variant_info = if template.variant, do: " (variant: #{template.variant})", else: ""
+    locale_info = locale_info(template)
 
     """
     <% # Template for: #{template.event_id} %>
-    <% # Transport: email, Format: html#{variant_info} %>
+    <% # Transport: email, Format: html#{variant_info}#{locale_info} %>
     <% #
       Available assigns (from prepare_template_assigns/2):
       - @source_url - Link back to source resource
@@ -608,10 +632,11 @@ defmodule Mix.Tasks.AshDispatch.Gen do
 
   defp generate_email_text_stub(template) do
     variant_info = if template.variant, do: " (variant: #{template.variant})", else: ""
+    locale_info = locale_info(template)
 
     """
     <% # Template for: #{template.event_id} %>
-    <% # Transport: email, Format: text#{variant_info} %>
+    <% # Transport: email, Format: text#{variant_info}#{locale_info} %>
 
     Hej<%= if assigns[:display_name], do: " \#{@display_name}", else: "" %>!
 
@@ -1050,7 +1075,8 @@ defmodule Mix.Tasks.AshDispatch.Gen do
 
       File.write!(file_info.path, file_info.content)
 
-      Mix.shell().info([:green, "* creating ", :reset, file_info.path])
+      action = if file_info.is_new, do: "creating ", else: "updating "
+      Mix.shell().info([:green, "* #{action}", :reset, file_info.path])
     end)
 
     length(sdk_files)
@@ -1582,9 +1608,12 @@ defmodule Mix.Tasks.AshDispatch.Gen do
 
       const socketRef = useRef<Socket | null>(null)
       const channelRef = useRef<Channel | null>(null)
+      // Track if component is mounted to prevent state updates after unmount (React StrictMode safety)
+      const mountedRef = useRef(true)
 
       // Use the Zustand counter store
       const setCounter = useCounterStore((state: CounterState) => state.setCounter)
+      const setCounters = useCounterStore((state: CounterState) => state.setCounters)
       const incrementCounter = useCounterStore((state: CounterState) => state.incrementCounter)
       const unreadCount = useCounterStore((state: CounterState) => state.counters.unread_notifications)
 
@@ -1677,6 +1706,12 @@ defmodule Mix.Tasks.AshDispatch.Gen do
       const connectChannel = useCallback(async () => {
         if (!userId || !enabled) return
 
+        // If there's already a channel, leave it first
+        if (channelRef.current) {
+          channelRef.current.leave()
+          channelRef.current = null
+        }
+
         try {
           // Fetch socket token from your API
           const response = await fetch('/api/inbox/socket-token', {
@@ -1684,11 +1719,18 @@ defmodule Mix.Tasks.AshDispatch.Gen do
             credentials: 'include',
           })
 
+          // Check if component was unmounted during async wait (React StrictMode safety)
+          if (!mountedRef.current) return
+
           if (!response.ok) {
             return // Socket connection is optional
           }
 
           const data = await response.json()
+
+          // Check again after parsing JSON
+          if (!mountedRef.current) return
+
           if (!data.success) {
             return
           }
@@ -1700,16 +1742,36 @@ defmodule Mix.Tasks.AshDispatch.Gen do
             params: { token },
           })
 
-          socket.onError(() => setIsConnected(false))
-          socket.onClose(() => setIsConnected(false))
+          socket.onError(() => {
+            if (mountedRef.current) setIsConnected(false)
+          })
+          socket.onClose(() => {
+            if (mountedRef.current) setIsConnected(false)
+          })
           socket.connect()
           socketRef.current = socket
 
           // Join the channel for notifications (configurable via :channel_topic)
           const channel = socket.channel(`#{channel_topic()}:${userId}`, {})
 
+          // Listen for initial state (bulk counter load on connect)
+          channel.on('initial_state', (payload: { counters?: Record<string, number> }) => {
+            if (!mountedRef.current) return
+            if (payload.counters) {
+              // Filter to only valid counters and update the store
+              const validCounters: Record<string, number> = {}
+              for (const [key, value] of Object.entries(payload.counters)) {
+                if (isValidCounter(key)) {
+                  validCounters[key] = value
+                }
+              }
+              setCounters(validCounters)
+            }
+          })
+
           // Listen for new notifications
           channel.on('new_notification', (notification: Notification) => {
+            if (!mountedRef.current) return
             setNotifications((prev) => [notification, ...prev])
             if (!notification.read) {
               // Use incrementCounter to avoid stale closure issues
@@ -1723,6 +1785,7 @@ defmodule Mix.Tasks.AshDispatch.Gen do
 
           // Listen for counter updates (from UserChannel.broadcast_counter or custom broadcast)
           channel.on('counter_updated', (payload: { counter: string; value: number; metadata?: { invalidate_queries?: string[] } }) => {
+            if (!mountedRef.current) return
             if (isValidCounter(payload.counter)) {
               setCounter(payload.counter as CounterName, payload.value)
             }
@@ -1734,14 +1797,18 @@ defmodule Mix.Tasks.AshDispatch.Gen do
 
           channel
             .join()
-            .receive('ok', () => setIsConnected(true))
-            .receive('error', () => setIsConnected(false))
+            .receive('ok', () => {
+              if (mountedRef.current) setIsConnected(true)
+            })
+            .receive('error', () => {
+              if (mountedRef.current) setIsConnected(false)
+            })
 
           channelRef.current = channel
         } catch {
           // Socket connection is optional
         }
-      }, [userId, enabled, buildCSRFHeaders, setCounter, incrementCounter])
+      }, [userId, enabled, buildCSRFHeaders, setCounter, setCounters, incrementCounter, onInvalidate])
 
       // Initial fetch
       useEffect(() => {
@@ -1750,9 +1817,11 @@ defmodule Mix.Tasks.AshDispatch.Gen do
 
       // Connect to channel
       useEffect(() => {
+        mountedRef.current = true
         connectChannel()
 
         return () => {
+          mountedRef.current = false
           if (channelRef.current) {
             channelRef.current.leave()
             channelRef.current = null

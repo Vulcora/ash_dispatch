@@ -125,13 +125,8 @@ defmodule AshDispatch.Changes.BroadcastCounterUpdate do
     invalidates = Keyword.get(opts, :invalidates, [])
     filter_by_record = Keyword.get(opts, :filter_by_record)
 
-    Logger.debug(
-      "[BroadcastCounterUpdate] Starting broadcast for #{counter_name}, audience: #{audience}"
-    )
-
     # Resolve recipients using unified system (same as events)
     recipients = resolve_recipients_for_counter(record, audience, opts)
-    Logger.debug("[BroadcastCounterUpdate] Resolved #{length(recipients)} recipients")
 
     # Get authorization and scoping options
     authorize? = Keyword.get(opts, :authorize?, true)
@@ -168,8 +163,9 @@ defmodule AshDispatch.Changes.BroadcastCounterUpdate do
 
               # Legacy user_id_path support
               user_id_path && !filter_by_record ->
+                # Build user filter as keyword list and apply directly (no caret needed)
                 user_filter = ResourceIntrospection.build_user_filter(user_id_path, recipient.id)
-                Ash.Query.filter(query, ^user_filter)
+                Ash.Query.do_filter(query, user_filter)
 
               # No scoping (global counter or filter_by_record handles it)
               true ->
@@ -190,11 +186,6 @@ defmodule AshDispatch.Changes.BroadcastCounterUpdate do
 
             0
         end
-
-      # Broadcast to recipient
-      Logger.debug(
-        "[BroadcastCounterUpdate] Broadcasting #{counter_name}=#{count} to user #{recipient.id}"
-      )
 
       broadcast_to_user(recipient.id, counter_name, count, invalidates, audience)
     end)
@@ -303,25 +294,52 @@ defmodule AshDispatch.Changes.BroadcastCounterUpdate do
     end
   end
 
-  # Apply query_filter keyword list using expr() macro
-  defp apply_query_filter(query, query_filter)
-       when is_list(query_filter) and query_filter != [] do
-    # Convert keyword list to expr() filters
-    # Example: [status: :pending] -> filter(query, status == :pending)
-    # Example: [status: [:a, :b]] -> filter(query, status in [:a, :b])
-    Enum.reduce(query_filter, query, fn {field, value}, acc_query ->
-      import Ash.Query
-      import Ash.Expr
+  # Apply query_filter - supports both Ash expressions and keyword lists
+  #
+  # Ash.Expr format (from counter DSL with expr()):
+  #   query_filter: expr(status == :pending and is_nil(deleted_at))
+  #
+  # Keyword list format (legacy):
+  #   query_filter: [status: :pending]
+  defp apply_query_filter(query, nil), do: query
+  defp apply_query_filter(query, []), do: query
 
-      if is_list(value) do
-        filter(acc_query, ^ref(field) in ^value)
-      else
-        filter(acc_query, ^ref(field) == ^value)
-      end
-    end)
+  defp apply_query_filter(query, query_filter) when is_list(query_filter) do
+    # Check if it's a keyword list (legacy format) or something else
+    if Keyword.keyword?(query_filter) do
+      # Keyword list format - convert to filters
+      # Example: [status: :pending] -> filter(query, status == :pending)
+      Enum.reduce(query_filter, query, fn {field, value}, acc_query ->
+        import Ash.Query
+        import Ash.Expr
+
+        if is_list(value) do
+          filter(acc_query, ^ref(field) in ^value)
+        else
+          filter(acc_query, ^ref(field) == ^value)
+        end
+      end)
+    else
+      # Non-keyword list - might be some other filter format, skip
+      Logger.warning(
+        "[BroadcastCounterUpdate] Unknown query_filter format (non-keyword list): #{inspect(query_filter)}"
+      )
+
+      query
+    end
   end
 
-  defp apply_query_filter(query, _query_filter), do: query
+  defp apply_query_filter(query, query_filter) do
+    Ash.Query.filter(query, ^query_filter)
+  rescue
+    # If query_filter doesn't have __struct__ or filter fails
+    e ->
+      Logger.warning(
+        "[BroadcastCounterUpdate] Failed to apply query_filter: #{inspect(e)}, filter: #{inspect(query_filter)}"
+      )
+
+      query
+  end
 
   # Apply scope expression with recipient as actor context.
   #

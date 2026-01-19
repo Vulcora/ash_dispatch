@@ -42,6 +42,9 @@ defmodule AshDispatch.Channel do
           time: time(),
           policy: policy(),
           variant: variant(),
+          locale: String.t() | nil,
+          locale_from: atom() | nil,
+          locales: [String.t()],
           webhook_url: String.t() | nil,
           content: map(),
           metadata: map(),
@@ -57,6 +60,8 @@ defmodule AshDispatch.Channel do
     :transport,
     :audience,
     :variant,
+    :locale,
+    :locale_from,
     :webhook_url,
     :deduplicate_group,
     time: {:in, 0},
@@ -66,7 +71,8 @@ defmodule AshDispatch.Channel do
     content: %{},
     metadata: %{},
     opts: %{},
-    load: []
+    load: [],
+    locales: []
   ]
 
   @doc """

@@ -16,6 +16,28 @@ defmodule AshDispatch.Resource.Dsl do
 
       Events can be simple (inline DSL) or complex (with callback modules).
 
+      ## Locale Configuration
+
+      Configure locales at resource level (inherited by all events):
+
+          dispatch do
+            locales ["sv", "en", "no"]
+            locale_from :visitor_locale  # Field on resource to extract locale
+
+            event :created, trigger_on: :create do
+              channels [
+                [transport: :email, audience: :customer, locale_from: :visitor_locale],
+                [transport: :email, audience: :admin, locale: "sv"]
+              ]
+            end
+          end
+
+      Locale priority (highest to lowest):
+      1. Channel-level `locale` (static) or `locale_from` (dynamic)
+      2. Event-level `locales` / `locale_from`
+      3. Resource-level `locales` / `locale_from`
+      4. Config default_locale
+
       ## Audience Path Configuration
 
       For child resources that access users through parent relationships,
@@ -43,7 +65,7 @@ defmodule AshDispatch.Resource.Dsl do
             end
           end
       """,
-      entities: [event_entity(), audience_prefix_entity(), audience_entity()],
+      entities: [event_entity(), audience_prefix_entity(), audience_entity(), locales_entity()],
       sections: []
     }
   end
@@ -248,6 +270,9 @@ defmodule AshDispatch.Resource.Dsl do
           - `delay`: Delay in seconds before sending (default: 0)
           - `policy`: :always | :skip_if_read (default: :always)
           - `variant`: Custom variant for template selection (e.g., "admin" for email.admin.html.heex)
+          - `locale`: Static locale for this channel (e.g., "sv" for internal emails)
+          - `locale_from`: Field on record to extract locale (e.g., :visitor_locale)
+          - `locales`: List of locales for template generation (e.g., ["sv", "en"])
           - `webhook_url`: For webhook transport
           - `content`: Transport-specific content (see below)
           - `metadata`: Transport-specific metadata (see below)
@@ -512,6 +537,49 @@ defmodule AshDispatch.Resource.Dsl do
           - Dashboard stats: `["partner_stats", "admin_stats"]`
           - Related data: `["customer_orders", "customer_invoices"]`
           """
+        ],
+        locales: [
+          type: {:list, :string},
+          default: [],
+          doc: """
+          Locales for template generation at the event level.
+
+          When specified, the template generator will create locale-specific template
+          variants for each locale. Overrides resource-level locales.
+
+          ## Example
+
+              event :created,
+                trigger_on: :create,
+                locales: ["sv", "en", "no"],
+                channels: [[transport: :email, audience: :customer]]
+
+          This generates:
+          - email.html.heex (default/fallback)
+          - email.sv.html.heex
+          - email.en.html.heex
+          - email.no.html.heex
+          """
+        ],
+        locale_from: [
+          type: :atom,
+          required: false,
+          doc: """
+          Field on the resource to extract the runtime locale from.
+
+          At dispatch time, this field is read from the record to determine
+          which locale-specific template to render. Overrides resource-level locale_from.
+
+          ## Example
+
+              event :created,
+                trigger_on: :create,
+                locale_from: :visitor_locale,
+                channels: [[transport: :email, audience: :customer]]
+
+          If the lead has `visitor_locale: "en"`, the English template is rendered.
+          Falls back to default template if locale-specific template doesn't exist.
+          """
         ]
       ]
     }
@@ -606,6 +674,75 @@ defmodule AshDispatch.Resource.Dsl do
           type: {:list, :atom},
           required: true,
           doc: "Relationship path to follow for this audience (e.g., [:order, :user])"
+        ]
+      ]
+    }
+  end
+
+  @doc """
+  The `locales` entity for resource-level locale configuration.
+
+  Defines which locales should have templates generated and serves as the
+  default locale list for all events in the resource.
+  """
+  def locales_entity do
+    %Entity{
+      name: :locales,
+      describe: """
+      Configure locales for template generation and runtime locale resolution.
+
+      When specified, the template generator (`mix ash.codegen`) will create
+      locale-specific template variants for all events in this resource.
+
+      ## Example
+
+          dispatch do
+            locales ["sv", "en"], default: "sv", locale_from: :visitor_locale
+
+            event :created, trigger_on: :create do
+              channels [
+                [transport: :email, audience: :customer],
+                [transport: :email, audience: :admin, locale: "sv"]
+              ]
+            end
+          end
+
+      This generates templates for each event:
+      - email.html.heex (default/fallback)
+      - email.sv.html.heex
+      - email.en.html.heex
+
+      At runtime:
+      - Customer email uses lead.visitor_locale to select template
+      - Admin email always uses Swedish template (channel-level override)
+      """,
+      args: [:locales],
+      target: AshDispatch.Resource.Dsl.Locales,
+      schema: [
+        locales: [
+          type: {:list, :string},
+          required: true,
+          doc: "List of locale codes (e.g., [\"sv\", \"en\", \"no\"])"
+        ],
+        default_locale: [
+          type: :string,
+          required: false,
+          doc: """
+          Default locale when none can be determined from the record.
+          Falls back to AshDispatch config default_locale if not set.
+          """
+        ],
+        locale_from: [
+          type: :atom,
+          required: false,
+          doc: """
+          Field on the resource to extract the runtime locale from.
+
+          At dispatch time, this field is read from the record to determine
+          which locale-specific template to render.
+
+          Example: :visitor_locale, :preferred_language, :locale
+          """
         ]
       ]
     }

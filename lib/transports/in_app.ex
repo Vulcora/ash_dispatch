@@ -223,15 +223,19 @@ defmodule AshDispatch.Transports.InApp do
         title: notification.title,
         message: notification.message,
         read: notification.read,
-        timestamp: notification.inserted_at,
+        source: notification.source,
+        occurredAt: notification.occurred_at,
+        insertedAt: notification.inserted_at,
         metadata: notification.metadata || %{},
         actionLabel: notification.action_label,
         actionUrl: notification.action_url,
         invalidates: invalidates
       }
 
+      topic = "#{Config.channel_topic()}:#{notification.user_id}"
+
       pubsub_module.broadcast(
-        "user:#{notification.user_id}",
+        topic,
         "new_notification",
         serialized
       )

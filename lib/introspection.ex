@@ -38,7 +38,8 @@ defmodule AshDispatch.Introspection do
           filename: String.t(),
           format: :html | :text,
           transport: atom(),
-          variant: atom() | nil
+          variant: atom() | nil,
+          locale: String.t() | nil
         }
 
   # ============================================================================
@@ -157,7 +158,8 @@ defmodule AshDispatch.Introspection do
         filename: template.filename,
         format: template.format,
         transport: template.transport,
-        variant: template.variant
+        variant: template.variant,
+        locale: template[:locale]
       }
     end)
   end
@@ -274,11 +276,17 @@ defmodule AshDispatch.Introspection do
     end)
   end
 
-  defp normalize_inline_event(event, resource, _otp_app) do
+  defp normalize_inline_event(event, resource, otp_app) do
     # Use Naming for consistent derivation
     resource_name = Naming.resource_name(resource)
     event_id = event.event_id || Naming.event_id(resource, event.name)
     domain = Naming.domain_name(resource)
+
+    # Get resource-level locales configuration
+    resource_locales = get_resource_locales(resource)
+
+    # Merge locales: channel > event > resource (channel locales handled in normalize_channels)
+    event_locales = event.locales || resource_locales[:locales] || []
 
     %{
       source: :inline,
@@ -288,39 +296,109 @@ defmodule AshDispatch.Introspection do
       resource_name: resource_name,
       module: event.module,
       domain: domain && String.to_atom(domain),
-      channels: normalize_channels(event.channels || []),
+      channels: normalize_channels(event.channels || [], event_locales),
       content: event.content,
       metadata: event.metadata,
       trigger_on: event.trigger_on,
-      data_key: event.data_key
+      data_key: event.data_key,
+      locales: event_locales,
+      otp_app: otp_app
     }
   end
 
-  defp normalize_channels(channels) when is_list(channels) do
+  # Get resource-level locale configuration
+  defp get_resource_locales(resource) do
+    # events/1 returns all entities in the dispatch section (events, locales, audience_prefix, etc.)
+    case ResourceInfo.events(resource) do
+      entities when is_list(entities) ->
+        Enum.find_value(entities, %{}, fn
+          %AshDispatch.Resource.Dsl.Locales{} = locales ->
+            %{
+              locales: locales.locales,
+              default_locale: locales.default_locale,
+              locale_from: locales.locale_from
+            }
+
+          _ ->
+            nil
+        end)
+
+      _ ->
+        %{}
+    end
+  rescue
+    _ -> %{}
+  end
+
+  defp normalize_channels(channels, event_locales) when is_list(channels) do
     Enum.map(channels, fn channel ->
       case channel do
         %{transport: _} = ch ->
-          Map.take(ch, [:transport, :audience, :variant, :policy, :content, :metadata])
+          # Channel-level locales take priority over event-level
+          channel_locales = Map.get(ch, :locales, [])
+          effective_locales = if channel_locales != [], do: channel_locales, else: event_locales
+
+          ch
+          |> Map.take([:transport, :audience, :variant, :policy, :content, :metadata, :locale])
+          |> Map.put(:locales, effective_locales)
 
         [_ | _] = opts ->
+          # Channel-level locales take priority over event-level
+          channel_locales = Keyword.get(opts, :locales, [])
+          effective_locales = if channel_locales != [], do: channel_locales, else: event_locales
+
           %{
             transport: Keyword.get(opts, :transport),
             audience: Keyword.get(opts, :audience),
             variant: Keyword.get(opts, :variant),
             policy: Keyword.get(opts, :policy),
             content: Keyword.get(opts, :content),
-            metadata: Keyword.get(opts, :metadata)
+            metadata: Keyword.get(opts, :metadata),
+            locale: Keyword.get(opts, :locale),
+            locales: effective_locales
           }
 
         _ ->
-          %{transport: nil, audience: nil, variant: nil}
+          %{transport: nil, audience: nil, variant: nil, locales: event_locales}
       end
     end)
   end
 
-  defp normalize_channels(_), do: []
+  defp normalize_channels(_, _), do: []
+
+  defp templates_for_channel(%{transport: transport, variant: variant, locales: locales})
+       when is_list(locales) and locales != [] do
+    # Generate templates for each locale
+    # Templates are named: email.{locale}.html.heex, email.{variant}.{locale}.html.heex
+    base_templates = templates_for_transport(transport, variant)
+
+    # For each locale, generate locale-specific template specs
+    locale_templates =
+      Enum.flat_map(locales, fn locale ->
+        locale_str = to_string(locale)
+
+        Enum.map(base_templates, fn template ->
+          # Insert locale before the format extension
+          # email.html.heex -> email.en.html.heex
+          # email.admin.html.heex -> email.admin.en.html.heex
+          locale_filename = insert_locale_in_filename(template.filename, locale_str)
+
+          %{template | filename: locale_filename, locale: locale}
+        end)
+      end)
+
+    # Return both base templates (fallback) and locale-specific templates
+    base_templates ++ locale_templates
+  end
 
   defp templates_for_channel(%{transport: transport, variant: variant}) do
+    templates_for_transport(transport, variant)
+  end
+
+  defp templates_for_channel(_), do: []
+
+  # Generate base templates for a transport (without locale)
+  defp templates_for_transport(transport, variant) do
     # Templates are determined by transport type and variant presence:
     # - If variant is set: ONLY variant-specific templates (e.g., email.admin.html.heex)
     # - If no variant: base templates (e.g., email.html.heex)
@@ -328,8 +406,20 @@ defmodule AshDispatch.Introspection do
       {:email, nil} ->
         # No variant - need base templates
         [
-          %{transport: :email, format: :html, filename: "email.html.heex", variant: nil},
-          %{transport: :email, format: :text, filename: "email.text.eex", variant: nil}
+          %{
+            transport: :email,
+            format: :html,
+            filename: "email.html.heex",
+            variant: nil,
+            locale: nil
+          },
+          %{
+            transport: :email,
+            format: :text,
+            filename: "email.text.eex",
+            variant: nil,
+            locale: nil
+          }
         ]
 
       {:email, variant} when not is_nil(variant) ->
@@ -341,18 +431,20 @@ defmodule AshDispatch.Introspection do
             transport: :email,
             format: :html,
             filename: "email.#{variant_str}.html.heex",
-            variant: variant
+            variant: variant,
+            locale: nil
           },
           %{
             transport: :email,
             format: :text,
             filename: "email.#{variant_str}.text.eex",
-            variant: variant
+            variant: variant,
+            locale: nil
           }
         ]
 
       {:sms, _} ->
-        [%{transport: :sms, format: :text, filename: "sms.text.eex", variant: nil}]
+        [%{transport: :sms, format: :text, filename: "sms.text.eex", variant: nil, locale: nil}]
 
       # in_app, webhook, discord, slack don't require templates
       _ ->
@@ -360,7 +452,25 @@ defmodule AshDispatch.Introspection do
     end
   end
 
-  defp templates_for_channel(_), do: []
+  # Insert locale into filename before the format extension
+  # email.html.heex -> email.en.html.heex
+  # email.admin.html.heex -> email.admin.en.html.heex
+  # sms.text.eex -> sms.en.text.eex
+  defp insert_locale_in_filename(filename, locale) do
+    case String.split(filename, ".") do
+      # email.html.heex -> [email, html, heex]
+      [base, format, ext] ->
+        "#{base}.#{locale}.#{format}.#{ext}"
+
+      # email.admin.html.heex -> [email, admin, html, heex]
+      [base, variant, format, ext] ->
+        "#{base}.#{variant}.#{locale}.#{format}.#{ext}"
+
+      # Unexpected format - just append locale
+      parts ->
+        Enum.join([List.first(parts), locale | Enum.drop(parts, 1)], ".")
+    end
+  end
 
   defp module_path_from_name(module_name, otp_app) do
     parts =

@@ -94,6 +94,7 @@ defmodule AshDispatch.TemplateResolver do
   * `:format` - Required. Either `:html` or `:text`
   * `:transport` - Required. The transport type (e.g., `:email`)
   * `:variant` - Optional. A variant hint like "admin" or "user"
+  * `:locale` - Optional. Locale for i18n template selection (e.g., "en", "sv")
   * `:assigns` - Required. Map of variables available in template as @variable
 
   ## Template Path Resolution
@@ -130,6 +131,7 @@ defmodule AshDispatch.TemplateResolver do
     format = Keyword.fetch!(opts, :format)
     transport = Keyword.fetch!(opts, :transport)
     variant = Keyword.get(opts, :variant)
+    locale = Keyword.get(opts, :locale)
     assigns = Keyword.fetch!(opts, :assigns)
 
     # Try priv templates first (production), fall back to files (development)
@@ -137,17 +139,26 @@ defmodule AshDispatch.TemplateResolver do
     cond do
       # 1. Event module with compiled templates (legacy, deprecated)
       event_module && function_exported?(event_module, :__compiled_templates__, 0) ->
-        render_from_compiled(event_module, transport, variant, format, assigns)
+        render_from_compiled(event_module, transport, variant, locale, format, assigns)
 
       # 2. File-based: Explicit template path (highest priority for user overrides)
       template_path ->
         # Explicit path: already points to template directory, don't add /templates
-        render_from_files(template_path, transport, variant, format, assigns, false, otp_app)
+        render_from_files(
+          template_path,
+          transport,
+          variant,
+          locale,
+          format,
+          assigns,
+          false,
+          otp_app
+        )
 
       # 3. File-based: Explicit event_dir with templates/ subdirectory
       event_dir ->
         # Module-based: event_dir is __DIR__, add /templates subdirectory
-        render_from_files(event_dir, transport, variant, format, assigns, true, otp_app)
+        render_from_files(event_dir, transport, variant, locale, format, assigns, true, otp_app)
 
       # 4. File-based: Derive event_dir from module source (development)
       event_module && derive_module_dir(event_module) ->
@@ -155,6 +166,7 @@ defmodule AshDispatch.TemplateResolver do
           derive_module_dir(event_module),
           transport,
           variant,
+          locale,
           format,
           assigns,
           true,
@@ -168,6 +180,7 @@ defmodule AshDispatch.TemplateResolver do
           otp_app,
           transport,
           variant,
+          locale,
           format,
           assigns
         )
@@ -179,6 +192,7 @@ defmodule AshDispatch.TemplateResolver do
           otp_app,
           transport,
           variant,
+          locale,
           format,
           assigns
         )
@@ -187,7 +201,17 @@ defmodule AshDispatch.TemplateResolver do
       event_id && otp_app ->
         # Convention-based: path already points to template directory, don't add /templates
         convention_path = derive_template_path(event_id, otp_app, domain, resource_name)
-        render_from_files(convention_path, transport, variant, format, assigns, false, otp_app)
+
+        render_from_files(
+          convention_path,
+          transport,
+          variant,
+          locale,
+          format,
+          assigns,
+          false,
+          otp_app
+        )
 
       true ->
         maybe_warn_missing_template_config(event_module, event_id, otp_app)
@@ -276,15 +300,9 @@ defmodule AshDispatch.TemplateResolver do
   end
 
   # Render from compiled templates (production)
-  defp render_from_compiled(event_module, transport, variant, format, assigns) do
+  defp render_from_compiled(event_module, transport, variant, locale, format, assigns) do
     templates = event_module.__compiled_templates__()
-    extension = extension_for(format)
-
-    candidates = [
-      variant && "#{transport}.#{variant}.#{extension}",
-      "#{transport}.#{extension}",
-      "default.#{extension}"
-    ]
+    candidates = build_template_candidates(transport, variant, locale, format)
 
     case Enum.find_value(candidates, fn
            nil -> nil
@@ -299,14 +317,8 @@ defmodule AshDispatch.TemplateResolver do
   end
 
   # Render from priv directory manifest
-  defp render_from_priv_manifest(lookup_key, otp_app, transport, variant, format, assigns) do
-    extension = extension_for(format)
-
-    candidates = [
-      variant && "#{transport}.#{variant}.#{extension}",
-      "#{transport}.#{extension}",
-      "default.#{extension}"
-    ]
+  defp render_from_priv_manifest(lookup_key, otp_app, transport, variant, locale, format, assigns) do
+    candidates = build_template_candidates(transport, variant, locale, format)
 
     with {:ok, manifest} <- load_manifest(otp_app),
          manifest_key <- format_manifest_key(lookup_key),
@@ -373,12 +385,14 @@ defmodule AshDispatch.TemplateResolver do
          event_dir,
          transport,
          variant,
+         locale,
          format,
          assigns,
          add_templates_subdir,
          otp_app
        ) do
-    template_path = resolve_template(event_dir, transport, variant, format, add_templates_subdir)
+    template_path =
+      resolve_template(event_dir, transport, variant, locale, format, add_templates_subdir)
 
     case template_path do
       {:ok, path} ->
@@ -397,7 +411,7 @@ defmodule AshDispatch.TemplateResolver do
       {:error, error}
   end
 
-  defp resolve_template(event_dir, transport, variant, format, add_templates_subdir) do
+  defp resolve_template(event_dir, transport, variant, locale, format, add_templates_subdir) do
     # For module-based events, add /templates subdirectory
     # For convention-based paths, the path already points to the template directory
     templates_dir =
@@ -407,20 +421,36 @@ defmodule AshDispatch.TemplateResolver do
         event_dir
       end
 
-    extension = extension_for(format)
-
     candidates =
-      [
-        variant && "#{transport}.#{variant}.#{extension}",
-        "#{transport}.#{extension}",
-        "default.#{extension}"
-      ]
-      |> Enum.reject(&is_nil/1)
+      build_template_candidates(transport, variant, locale, format)
       |> Enum.map(&Path.join(templates_dir, &1))
 
     Enum.find_value(candidates, :error, fn path ->
       if File.exists?(path), do: {:ok, path}, else: nil
     end)
+  end
+
+  # Build template candidate filenames with locale support
+  # Fallback chain: variant+locale → variant → locale → base → default+locale → default
+  defp build_template_candidates(transport, variant, locale, format) do
+    extension = extension_for(format)
+
+    [
+      # Most specific: variant + locale
+      variant && locale && "#{transport}.#{variant}.#{locale}.#{extension}",
+      # Variant only (default locale)
+      variant && "#{transport}.#{variant}.#{extension}",
+      # Locale only
+      locale && "#{transport}.#{locale}.#{extension}",
+      # Base template
+      "#{transport}.#{extension}",
+      # Default with locale
+      locale && "default.#{locale}.#{extension}",
+      # Ultimate fallback
+      "default.#{extension}"
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
   end
 
   # Format to file extension mapping
