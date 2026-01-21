@@ -1494,6 +1494,7 @@ defmodule Mix.Tasks.AshDispatch.Gen do
       title: string
       message: string
       type: 'info' | 'success' | 'warning' | 'error'
+      source: string | null
       actionUrl: string | null
       actionLabel: string | null
       read: boolean
@@ -1632,6 +1633,7 @@ defmodule Mix.Tasks.AshDispatch.Gen do
               'title',
               'message',
               'type',
+              'source',
               'actionUrl',
               'actionLabel',
               'read',
