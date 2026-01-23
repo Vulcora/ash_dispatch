@@ -215,8 +215,28 @@ Delivery receipts include useful calculated fields:
 | `source_url` | URL path to the source resource |
 | `source_label` | Human-readable label for source type |
 | `admin_url` | Admin-specific URL for the source |
+| `from_email` | Sender email address extracted from content |
+| `from_name` | Sender name extracted from content |
 
 These are useful for building admin UIs that link back to the originating record.
+
+### Sender Information
+
+The `from_email` and `from_name` calculations extract sender information from the stored `content` field:
+
+```elixir
+# Load sender info with the receipt
+receipt = Ash.get!(DeliveryReceipt, id, load: [:from_email, :from_name])
+
+# Display sender
+"#{receipt.from_name} <#{receipt.from_email}>"
+# => "Siteflow <noreply@siteflow.se>"
+```
+
+This is useful for:
+- Displaying the sender in admin UIs
+- Debugging which domain emails were sent from (staging vs production)
+- Filtering receipts by sender domain
 
 ## Building an Admin UI
 

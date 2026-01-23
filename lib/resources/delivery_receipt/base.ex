@@ -245,6 +245,37 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
           description "Admin-specific URL path to the source resource"
           allow_nil? true
         end
+
+        calculate :from_email, :string do
+          public? true
+          description "Sender email address extracted from content"
+          allow_nil? true
+
+          calculation fn records, _context ->
+            Enum.map(records, fn record ->
+              case record.content do
+                %{"from" => %{"email" => email}} when is_binary(email) -> email
+                %{"from" => email} when is_binary(email) -> email
+                _ -> nil
+              end
+            end)
+          end
+        end
+
+        calculate :from_name, :string do
+          public? true
+          description "Sender name extracted from content"
+          allow_nil? true
+
+          calculation fn records, _context ->
+            Enum.map(records, fn record ->
+              case record.content do
+                %{"from" => %{"name" => name}} when is_binary(name) -> name
+                _ -> nil
+              end
+            end)
+          end
+        end
       end
 
       actions do
