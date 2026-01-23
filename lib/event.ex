@@ -588,8 +588,12 @@ defmodule AshDispatch.Event do
         from_email = safe_get_dsl_opt(:from_email)
 
         case {from_name, from_email} do
-          {nil, nil} -> __static_from()
-          {name, email} -> {name || "App", email || "noreply@example.com"}
+          {nil, nil} ->
+            __static_from()
+
+          {name, email} ->
+            {name || AshDispatch.Config.default_from_name(),
+             email || AshDispatch.Config.default_from_email()}
         end
       end
 
@@ -739,7 +743,11 @@ defmodule AshDispatch.Event do
 
       # Private static defaults (can be overridden by defining these functions)
       defp __static_subject, do: "Notification"
-      defp __static_from, do: {"App", "noreply@example.com"}
+
+      defp __static_from do
+        {AshDispatch.Config.default_from_name(), AshDispatch.Config.default_from_email()}
+      end
+
       defp __static_notification_title, do: "Notification"
       defp __static_notification_message, do: "You have a new notification"
 
