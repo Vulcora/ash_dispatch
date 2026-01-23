@@ -152,6 +152,29 @@ defmodule AshDispatch.Changes.DispatchEvent do
     # This allows events to enrich context.data with additional data (e.g., created_user)
     context = maybe_enrich_context_with_prepare_data(context, changeset, record, event_module)
 
+    # Generate send variables (e.g., tokens) if event module defines it
+    # This is critical for events that need to generate dynamic data like invitation tokens
+    context =
+      if event_module do
+        case EventResolver.generate_send_variables(
+               event_module,
+               context,
+               context.variables || %{}
+             ) do
+          {:ok, enhanced_variables} ->
+            %{context | variables: enhanced_variables}
+
+          {:error, reason} ->
+            Logger.error(
+              "[AshDispatch] generate_send_variables failed for #{event_id}: #{inspect(reason)}"
+            )
+
+            context
+        end
+      else
+        context
+      end
+
     # Get channels (from module or inline config)
     # Pass the resolved event_module to avoid using potentially-nil event_config[:module]
     channels = resolve_channels(context, event_config, event_module)
