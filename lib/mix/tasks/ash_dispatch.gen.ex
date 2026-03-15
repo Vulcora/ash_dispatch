@@ -100,15 +100,17 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     otp_app = Mix.Project.config()[:app]
     sdk_enabled = typescript_sdk_enabled?(otp_app)
 
-    # Introspect all events and counters
+    # Introspect all events, counters, resources, and entity change config
     events = AshDispatch.Introspection.all_events(otp_app)
     counters = discover_counters(otp_app)
+    resource_metas = discover_resource_metas(otp_app)
+    entity_change_resources = discover_entity_change_resources(otp_app)
 
     # Warn if no events or counters found (common misconfiguration)
     warn_if_no_dispatch_resources(otp_app, events, counters)
 
     if opts[:verbose] do
-      Mix.shell().info("Found #{length(events)} events, #{length(counters)} counters")
+      Mix.shell().info("Found #{length(events)} events, #{length(counters)} counters, #{length(resource_metas)} resource metas, #{length(entity_change_resources)} entity change resources")
 
       if sdk_enabled do
         Mix.shell().info("TypeScript SDK output: #{sdk_base_path(otp_app)}")
@@ -125,7 +127,7 @@ defmodule Mix.Tasks.AshDispatch.Gen do
         if(sdk_enabled, do: check_typescript_events_status(otp_app, events), else: nil),
       typescript_types:
         if(sdk_enabled, do: check_typescript_types_status(otp_app, counters), else: nil),
-      sdk_files: if(sdk_enabled, do: check_sdk_status(otp_app), else: [])
+      sdk_files: if(sdk_enabled, do: check_sdk_status(otp_app, resource_metas, entity_change_resources), else: [])
     }
 
     total_missing = count_missing(missing)
@@ -328,6 +330,162 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     _ -> []
   end
 
+  defp discover_resource_metas(otp_app) do
+    domains = get_domains(otp_app)
+
+    domains
+    |> Enum.flat_map(&Ash.Domain.Info.resources/1)
+    |> Enum.filter(&uses_ash_dispatch?/1)
+    |> Enum.flat_map(&extract_resource_meta/1)
+    |> Enum.sort_by(& &1.key)
+  end
+
+  defp extract_resource_meta(resource) do
+    meta = AshDispatch.Resource.Info.resource_meta(resource)
+    entity_changes = AshDispatch.Resource.Info.entity_changes(resource)
+
+    # Only include resources that have resource_meta or entity_changes enabled
+    if meta || (entity_changes && entity_changes.enabled) do
+      resource_name =
+        resource
+        |> Module.split()
+        |> List.last()
+
+      # Auto-derive label from resource name
+      label = (meta && meta.label) || resource_name
+
+      # Auto-derive plural from postgres table
+      plural = (meta && meta.plural) || derive_plural(resource)
+
+      # Auto-derive nav_path from plural
+      nav_path = (meta && meta.nav_path) || "/#{plural}"
+
+      # Auto-derive key (lowercase resource name)
+      key = String.downcase(resource_name)
+
+      # Introspect state machine states if AshStateMachine is used
+      states = introspect_states(resource)
+
+      [%{
+        key: key,
+        label: label,
+        plural: plural,
+        nav_path: nav_path,
+        states: states,
+        resource: resource
+      }]
+    else
+      []
+    end
+  rescue
+    _ -> []
+  end
+
+  defp derive_plural(resource) do
+    if Code.ensure_loaded?(resource) do
+      try do
+        table = AshPostgres.DataLayer.Info.table(resource)
+        if table, do: to_string(table), else: derive_plural_from_name(resource)
+      rescue
+        _ -> derive_plural_from_name(resource)
+      end
+    else
+      derive_plural_from_name(resource)
+    end
+  end
+
+  defp derive_plural_from_name(resource) do
+    resource
+    |> Module.split()
+    |> List.last()
+    |> Macro.underscore()
+    |> Kernel.<>("s")
+  end
+
+  defp introspect_states(resource) do
+    if AshStateMachine in Spark.extensions(resource) do
+      try do
+        initial = AshStateMachine.Info.state_machine_initial_states!(resource)
+        all_states = AshStateMachine.Info.state_machine_all_states(resource)
+        if all_states && all_states != [], do: Enum.map(all_states, &to_string/1), else: Enum.map(initial, &to_string/1)
+      rescue
+        _ -> []
+      end
+    else
+      []
+    end
+  end
+
+  defp discover_entity_change_resources(otp_app) do
+    domains = get_domains(otp_app)
+
+    domains
+    |> Enum.flat_map(&Ash.Domain.Info.resources/1)
+    |> Enum.filter(&uses_ash_dispatch?/1)
+    |> Enum.flat_map(fn resource ->
+      case AshDispatch.Resource.Info.entity_changes(resource) do
+        %AshDispatch.Resource.Dsl.EntityChanges{enabled: true} = config ->
+          resource_name =
+            resource
+            |> Module.split()
+            |> List.last()
+
+          key = String.downcase(resource_name)
+
+          # Determine label fields — check which actually exist as attributes or calculations
+          # (AshCloak creates calculations for encrypted fields)
+          label_fields =
+            (config.label_fields || [:title, :name])
+            |> Enum.filter(fn field ->
+              try do
+                Ash.Resource.Info.attribute(resource, field) != nil ||
+                  Ash.Resource.Info.calculation(resource, field) != nil
+              rescue
+                _ -> false
+              end
+            end)
+
+          # Auto-detect status field from AshStateMachine
+          status_field = config.status_field || detect_state_attribute(resource)
+
+          # Determine summary fields — label fields + status + id
+          summary_fields = [:id] ++ label_fields ++ (if status_field, do: [status_field], else: [])
+
+          [%{
+            key: key,
+            resource: resource,
+            trigger_on: config.trigger_on,
+            label_fields: label_fields,
+            status_field: status_field,
+            summary_fields: Enum.uniq(summary_fields)
+          }]
+
+        _ ->
+          []
+      end
+    end)
+    |> Enum.sort_by(& &1.key)
+  end
+
+  defp detect_state_attribute(resource) do
+    if AshStateMachine in Spark.extensions(resource) do
+      try do
+        AshStateMachine.Info.state_machine_state_attribute!(resource)
+      rescue
+        _ -> nil
+      end
+    else
+      # Check for common status/state attributes
+      cond do
+        Ash.Resource.Info.attribute(resource, :status) -> :status
+        Ash.Resource.Info.attribute(resource, :state) -> :state
+        true -> nil
+      end
+    end
+  rescue
+    _ -> nil
+  end
+
   # ============================================================================
   # Missing File Detection
   # ============================================================================
@@ -386,21 +544,30 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     end
   end
 
-  defp check_sdk_status(otp_app) do
+  defp check_sdk_status(otp_app, resource_metas, entity_change_resources) do
     base_path = sdk_base_path(otp_app)
 
     if base_path do
       sdk_files = [
         {"store.ts", &generate_store_content/0},
         {"channel.ts", &generate_channel_content/0},
-        {"index.ts", &generate_index_content/0},
+        {"socket-provider.tsx", fn -> generate_socket_provider_content(entity_change_resources) end},
+        {"index.ts", fn -> generate_index_content(resource_metas, entity_change_resources) end},
         {"hooks/use-channel.ts", &generate_use_channel_content/0},
+        {"hooks/use-user-channel.ts", &generate_use_user_channel_content/0},
         {"hooks/use-counter.ts", &generate_use_counter_content/0},
         {"hooks/use-notifications.ts", &generate_use_notifications_content/0},
         {"notification-provider.tsx", &generate_notification_provider_content/0},
         {"notification-bell.tsx", &generate_notification_bell_content/0},
         {"README.md", &generate_readme_content/0}
-      ]
+      ] ++
+        if(entity_change_resources != [], do: [
+          {"entity-store.ts", fn -> generate_entity_store_content(entity_change_resources) end},
+          {"hooks/use-entity.ts", &generate_use_entity_content/0}
+        ], else: []) ++
+        if(resource_metas != [], do: [
+          {"resources.ts", fn -> generate_resources_content(resource_metas) end}
+        ], else: [])
 
       # Generate all SDK files and check for changes (like events.ts/types.ts)
       sdk_files
@@ -1352,7 +1519,260 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     """
   end
 
-  defp generate_index_content do
+  defp generate_socket_provider_content(entity_change_resources) do
+    entity_store_import = if entity_change_resources != [] do
+      "\nimport { useEntityStore } from './entity-store'"
+    else
+      ""
+    end
+
+    entity_change_handler = if entity_change_resources != [] do
+      """
+
+            // Register built-in event: entity_change → entity store
+            channel.on('entity_change', (payload: { resource: string; action: string; data: Record<string, unknown> }) => {
+              if (!mountedRef.current) return
+              useEntityStore.getState().handleChange(payload.resource, payload.action, payload.data)
+              // Also fan out to any listeners
+              const handlers = listenersRef.current.get('entity_change')
+              if (handlers) handlers.forEach((h) => h(payload))
+            })
+            registeredEventsRef.current.add('entity_change')
+      """
+    else
+      ""
+    end
+
+    """
+    // Auto-generated by mix ash_dispatch.gen
+    // Shared Phoenix socket provider — one socket, one channel, pub/sub fan-out
+
+    "use client"
+
+    import { createContext, useContext, useEffect, useRef, useState, useCallback, useMemo, type ReactNode } from 'react'
+    import { Socket, Channel } from 'phoenix'
+    import { useCounterStore, type CounterState } from './store'
+    import { isValidCounter, type CounterName } from './types'#{entity_store_import}
+
+    // ============================================================================
+    // Types
+    // ============================================================================
+
+    export interface SocketContextValue {
+      /** Subscribe to a channel event. Returns an unsubscribe function. */
+      on: <E extends string>(event: E, handler: (payload: any) => void) => () => void
+      /** Whether the socket is connected and channel has joined. */
+      isConnected: boolean
+    }
+
+    export interface SocketProviderProps {
+      /** User ID for the channel topic. When null, no connection is made. */
+      userId: string | null
+      /** URL for fetching the socket token. Defaults to "/api/inbox/socket-token". */
+      tokenUrl?: string
+      children: ReactNode
+    }
+
+    // ============================================================================
+    // Context
+    // ============================================================================
+
+    const SocketContext = createContext<SocketContextValue | null>(null)
+
+    /**
+     * Access the shared socket context.
+     * Returns null if no SocketProvider ancestor exists (for backwards compatibility).
+     */
+    export function useSocketContext(): SocketContextValue | null {
+      return useContext(SocketContext)
+    }
+
+    // ============================================================================
+    // Provider
+    // ============================================================================
+
+    /**
+     * Shared Phoenix socket provider.
+     *
+     * Creates one socket connection and one channel join to `#{channel_topic()}:{userId}`.
+     * All consumers subscribe to events via `on()` with automatic fan-out.
+     *
+     * @example
+     * ```tsx
+     * <SocketProvider userId={user.id}>
+     *   <NotificationProvider ...>
+     *     <App />
+     *   </NotificationProvider>
+     * </SocketProvider>
+     * ```
+     */
+    export function SocketProvider({ userId, tokenUrl = '/api/inbox/socket-token', children }: SocketProviderProps) {
+      const [isConnected, setIsConnected] = useState(false)
+      const socketRef = useRef<Socket | null>(null)
+      const channelRef = useRef<Channel | null>(null)
+      const mountedRef = useRef(true)
+      const listenersRef = useRef<Map<string, Set<(payload: any) => void>>>(new Map())
+      // Track which events we've registered channel.on() for
+      const registeredEventsRef = useRef<Set<string>>(new Set())
+
+      // Counter store for initial_state and counter_updated handling
+      const setCounter = useCounterStore((state: CounterState) => state.setCounter)
+      const setCounters = useCounterStore((state: CounterState) => state.setCounters)
+
+      const on = useCallback(<E extends string>(event: E, handler: (payload: any) => void): (() => void) => {
+        if (!listenersRef.current.has(event)) {
+          listenersRef.current.set(event, new Set())
+        }
+        listenersRef.current.get(event)!.add(handler)
+
+        // If channel is already joined and we haven't registered this event yet, register now
+        const channel = channelRef.current
+        if (channel && !registeredEventsRef.current.has(event)) {
+          registeredEventsRef.current.add(event)
+          channel.on(event, (payload: any) => {
+            const handlers = listenersRef.current.get(event)
+            if (handlers) {
+              handlers.forEach((h) => h(payload))
+            }
+          })
+        }
+
+        return () => {
+          const handlers = listenersRef.current.get(event)
+          if (handlers) {
+            handlers.delete(handler)
+          }
+        }
+      }, [])
+
+      useEffect(() => {
+        if (!userId) return
+        mountedRef.current = true
+
+        const connect = async () => {
+          try {
+            const response = await fetch(tokenUrl, {
+              headers: {
+                Authorization: `Bearer ${localStorage.getItem('auth_token') ?? ''}`,
+              },
+              credentials: 'include',
+            })
+
+            if (!mountedRef.current || !response.ok) return
+
+            const data = await response.json()
+            if (!mountedRef.current || !data.success) return
+
+            const token = data.data.token
+            const socket = new Socket('/socket', { params: { token } })
+
+            socket.onError(() => { if (mountedRef.current) setIsConnected(false) })
+            socket.onClose(() => { if (mountedRef.current) setIsConnected(false) })
+            socket.connect()
+            socketRef.current = socket
+
+            const channel = socket.channel(`#{channel_topic()}:${userId}`, {})
+            channelRef.current = channel
+
+            // Register built-in events: initial_state and counter_updated
+            channel.on('initial_state', (payload: { counters?: Record<string, number> }) => {
+              if (!mountedRef.current) return
+              if (payload.counters) {
+                const validCounters: Record<string, number> = {}
+                for (const [key, value] of Object.entries(payload.counters)) {
+                  if (isValidCounter(key)) {
+                    validCounters[key] = value
+                  }
+                }
+                setCounters(validCounters)
+              }
+              // Also fan out to any listeners
+              const handlers = listenersRef.current.get('initial_state')
+              if (handlers) handlers.forEach((h) => h(payload))
+            })
+            registeredEventsRef.current.add('initial_state')
+
+            channel.on('counter_updated', (payload: { counter: string; value: number }) => {
+              if (!mountedRef.current) return
+              if (isValidCounter(payload.counter)) {
+                setCounter(payload.counter as CounterName, payload.value)
+              }
+              // Also fan out to any listeners
+              const handlers = listenersRef.current.get('counter_updated')
+              if (handlers) handlers.forEach((h) => h(payload))
+            })
+            registeredEventsRef.current.add('counter_updated')
+    #{entity_change_handler}
+            // Register channel.on() for any events that already have listeners
+            for (const event of listenersRef.current.keys()) {
+              if (!registeredEventsRef.current.has(event)) {
+                registeredEventsRef.current.add(event)
+                channel.on(event, (payload: any) => {
+                  const handlers = listenersRef.current.get(event)
+                  if (handlers) handlers.forEach((h) => h(payload))
+                })
+              }
+            }
+
+            channel
+              .join()
+              .receive('ok', () => {
+                if (mountedRef.current) setIsConnected(true)
+              })
+              .receive('error', () => {
+                if (mountedRef.current) setIsConnected(false)
+              })
+          } catch {
+            // Socket connection is optional
+          }
+        }
+
+        connect()
+
+        return () => {
+          mountedRef.current = false
+          channelRef.current?.leave()
+          channelRef.current = null
+          socketRef.current?.disconnect()
+          socketRef.current = null
+          registeredEventsRef.current.clear()
+          setIsConnected(false)
+        }
+      }, [userId, tokenUrl, setCounter, setCounters])
+
+      const value = useMemo<SocketContextValue>(() => ({ on, isConnected }), [on, isConnected])
+
+      return (
+        <SocketContext.Provider value={value}>
+          {children}
+        </SocketContext.Provider>
+      )
+    }
+    """
+  end
+
+  defp generate_index_content(resource_metas, entity_change_resources) do
+    entity_store_exports = if entity_change_resources != [] do
+      """
+
+      // Entity store
+      export { useEntityStore, type EntitySnapshot, type EntityStoreState } from './entity-store'
+      export { useEntity } from './hooks/use-entity'
+      """
+    else
+      ""
+    end
+
+    resources_exports = if resource_metas != [] do
+      """
+
+      // Resource metadata
+      export { RESOURCES, resourcePath, resourceLabel, type ResourceType } from './resources'
+      """
+    else
+      ""
+    end
+
     """
     // Auto-generated by mix ash_dispatch.gen
     // Do not edit manually
@@ -1362,14 +1782,231 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     export * from './store'
     export * from './channel'
 
+    // Socket provider
+    export { SocketProvider, useSocketContext, type SocketProviderProps, type SocketContextValue } from './socket-provider'
+
     // Hooks
     export { useChannel } from './hooks/use-channel'
+    export { useUserChannelEvent } from './hooks/use-user-channel'
     export { useCounter } from './hooks/use-counter'
     export { useNotifications, type Notification, type UseNotificationsOptions, type UseNotificationsReturn } from './hooks/use-notifications'
 
     // Components
     export { NotificationProvider, useNotificationContext, type NotificationProviderProps } from './notification-provider'
     export { NotificationBell, type NotificationBellProps } from './notification-bell'
+    #{String.trim(entity_store_exports)}
+    #{String.trim(resources_exports)}
+    """
+  end
+
+  # ============================================================================
+  # Entity Store Generator (Phase 1)
+  # ============================================================================
+
+  defp generate_entity_store_content(entity_change_resources) do
+    # Build TypeScript type for valid entity types
+    type_keys = entity_change_resources |> Enum.map(& &1.key) |> Enum.sort()
+    type_union = type_keys |> Enum.map(&"'#{&1}'") |> Enum.join(" | ")
+
+    """
+    // Auto-generated by mix ash_dispatch.gen
+    // Entity snapshot store — tracks live entity state from socket events
+
+    "use client"
+
+    import { create } from 'zustand'
+
+    // ============================================================================
+    // Types
+    // ============================================================================
+
+    /** Valid entity types that broadcast entity_change events. */
+    export type EntityType = #{type_union}
+
+    /** A snapshot of an entity's current state, updated in real-time via socket events. */
+    export interface EntitySnapshot {
+      id: string
+      type: EntityType
+      label: string | undefined
+      status: string | undefined
+      updatedAt: number
+    }
+
+    export interface EntityStoreState {
+      entities: Map<string, EntitySnapshot>
+      getEntity: (type: string, id: string) => EntitySnapshot | undefined
+      handleChange: (resource: string, action: string, data: Record<string, unknown>) => void
+    }
+
+    // ============================================================================
+    // Debounce
+    // ============================================================================
+
+    const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+    // ============================================================================
+    // Store
+    // ============================================================================
+
+    export const useEntityStore = create<EntityStoreState>()((set, get) => ({
+      entities: new Map(),
+
+      getEntity: (type, id) => {
+        return get().entities.get(`${type}:${id}`)
+      },
+
+      handleChange: (resource, _action, data) => {
+        const id = data.id as string
+        if (!id) return
+
+        const key = `${resource}:${id}`
+
+        // Debounce at 200ms per entity key
+        const existing = debounceTimers.get(key)
+        if (existing) clearTimeout(existing)
+
+        debounceTimers.set(
+          key,
+          setTimeout(() => {
+            debounceTimers.delete(key)
+
+            const label = #{generate_label_extraction(entity_change_resources)}
+            const status = #{generate_status_extraction(entity_change_resources)}
+
+            const snapshot: EntitySnapshot = {
+              id,
+              type: resource as EntityType,
+              label,
+              status,
+              updatedAt: Date.now(),
+            }
+
+            set((state) => {
+              const entities = new Map(state.entities)
+              entities.set(key, snapshot)
+              return { entities }
+            })
+          }, 200)
+        )
+      },
+    }))
+    """
+  end
+
+  defp generate_label_extraction(entity_change_resources) do
+    # Collect all unique label fields across all resources
+    all_label_fields =
+      entity_change_resources
+      |> Enum.flat_map(& &1.label_fields)
+      |> Enum.uniq()
+
+    case all_label_fields do
+      [] -> "undefined"
+      [field] -> "(data.#{field} as string | undefined)"
+      fields ->
+        fields
+        |> Enum.map(&"(data.#{&1} as string | undefined)")
+        |> Enum.join(" || ")
+    end
+  end
+
+  defp generate_status_extraction(entity_change_resources) do
+    # Collect all unique status fields across all resources
+    all_status_fields =
+      entity_change_resources
+      |> Enum.map(& &1.status_field)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+
+    case all_status_fields do
+      [] -> "undefined"
+      [field] -> "(data.#{field} as string | undefined)"
+      fields ->
+        fields
+        |> Enum.map(&"(data.#{&1} as string | undefined)")
+        |> Enum.join(" || ")
+    end
+  end
+
+  defp generate_use_entity_content do
+    """
+    // Auto-generated by mix ash_dispatch.gen
+    // Selector hook for single entity from entity store
+
+    "use client"
+
+    import { useEntityStore, type EntitySnapshot } from '../entity-store'
+
+    /**
+     * Subscribe to a single entity's live snapshot.
+     *
+     * @example
+     * ```tsx
+     * const task = useEntity("task", taskId)
+     * // task?.label, task?.status, task?.updatedAt
+     * ```
+     */
+    export function useEntity(type: string, id: string | null | undefined): EntitySnapshot | undefined {
+      return useEntityStore((state) =>
+        type && id ? state.entities.get(`${type}:${id}`) : undefined
+      )
+    }
+    """
+  end
+
+  # ============================================================================
+  # Resources Generator (Phase 2)
+  # ============================================================================
+
+  defp generate_resources_content(resource_metas) do
+    resource_entries =
+      resource_metas
+      |> Enum.map(fn meta ->
+        states_str = if meta.states != [] do
+          states_list = meta.states |> Enum.map(&"\"#{&1}\"") |> Enum.join(", ")
+          ", states: [#{states_list}]"
+        else
+          ""
+        end
+
+        "  #{meta.key}: { label: \"#{meta.label}\", plural: \"#{meta.plural}\", navPath: \"#{meta.nav_path}\"#{states_str} }"
+      end)
+      |> Enum.join(",\n")
+
+    """
+    // Auto-generated by mix ash_dispatch.gen
+    // Resource metadata derived from Ash resource declarations
+
+    // ============================================================================
+    // Resource Definitions
+    // ============================================================================
+
+    export const RESOURCES = {
+    #{resource_entries},
+    } as const
+
+    export type ResourceType = keyof typeof RESOURCES
+
+    /**
+     * Returns the navigation path for a resource type, optionally with an ID.
+     *
+     * @example
+     * ```ts
+     * resourcePath("task")          // "/tasks"
+     * resourcePath("person", id)    // "/people/abc-123"
+     * ```
+     */
+    export function resourcePath(type: ResourceType, id?: string): string {
+      const base = RESOURCES[type]?.navPath ?? `/${type}s`
+      return id ? `${base}/${id}` : base
+    }
+
+    /**
+     * Returns the human-readable label for a resource type.
+     */
+    export function resourceLabel(type: ResourceType): string {
+      return RESOURCES[type]?.label ?? type
+    }
     """
   end
 
@@ -1442,6 +2079,51 @@ defmodule Mix.Tasks.AshDispatch.Gen do
           }
         }
       }, [channel, setCounter, onNotification])
+    }
+    """
+  end
+
+  defp generate_use_user_channel_content do
+    """
+    // Auto-generated by mix ash_dispatch.gen
+    // Convenience hook for subscribing to shared socket events with automatic cleanup
+
+    "use client"
+
+    import { useEffect, useRef } from 'react'
+    import { useSocketContext } from '../socket-provider'
+
+    /**
+     * Subscribe to an event on the shared user channel.
+     * Automatically unsubscribes on unmount or when deps change.
+     *
+     * Requires a `<SocketProvider>` ancestor. If no provider exists, this is a no-op.
+     *
+     * @example
+     * ```tsx
+     * useUserChannelEvent("pipeline_progress", (payload) => {
+     *   addProgress(payload.session_id, payload.stage, payload.status)
+     * })
+     * ```
+     */
+    export function useUserChannelEvent(
+      event: string,
+      handler: (payload: any) => void,
+      deps: React.DependencyList = []
+    ): void {
+      const socket = useSocketContext()
+      const subscribe = socket?.on
+      const handlerRef = useRef(handler)
+      handlerRef.current = handler
+
+      useEffect(() => {
+        if (!subscribe) return
+
+        const stableHandler = (payload: any) => handlerRef.current(payload)
+        const unsubscribe = subscribe(event, stableHandler)
+        return unsubscribe
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [subscribe, event, ...deps])
     }
     """
   end
@@ -1857,11 +2539,14 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     """
     // Auto-generated by mix ash_dispatch.gen
     // Provider component that initializes notification state
+    // Detects SocketProvider context and uses shared socket when available
 
     "use client"
 
-    import { createContext, useContext, type ReactNode } from 'react'
-    import { useNotifications, type UseNotificationsReturn, type UseNotificationsOptions } from './hooks/use-notifications'
+    import { createContext, useContext, useEffect, useCallback, useState, useRef, type ReactNode } from 'react'
+    import { useNotifications, type Notification, type UseNotificationsReturn, type UseNotificationsOptions } from './hooks/use-notifications'
+    import { useSocketContext } from './socket-provider'
+    import { useCounterStore, type CounterState } from './store'
 
     // ============================================================================
     // Context
@@ -1882,6 +2567,144 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     }
 
     // ============================================================================
+    // Shared Socket Implementation
+    // ============================================================================
+
+    /** Uses the shared SocketProvider for real-time events instead of its own socket. */
+    function useNotificationsWithSharedSocket({
+      userId,
+      enabled = true,
+      listNotifications,
+      markNotificationAsRead,
+      markAllNotificationsAsRead,
+      buildCSRFHeaders,
+      onInvalidate,
+    }: UseNotificationsOptions): UseNotificationsReturn {
+      const socket = useSocketContext()!
+      const [notifications, setNotifications] = useState<Notification[]>([])
+      const [isLoading, setIsLoading] = useState(true)
+      const [error, setError] = useState<string | null>(null)
+
+      const setCounter = useCounterStore((state: CounterState) => state.setCounter)
+      const incrementCounter = useCounterStore((state: CounterState) => state.incrementCounter)
+      const unreadCount = useCounterStore((state: CounterState) => state.counters.unread_notifications)
+
+      const onInvalidateRef = useRef(onInvalidate)
+      onInvalidateRef.current = onInvalidate
+
+      // Fetch notifications from backend (same as standalone)
+      const fetchNotifications = useCallback(async () => {
+        if (!enabled || !userId) return
+
+        setIsLoading(true)
+        setError(null)
+
+        try {
+          const result = await listNotifications({
+            headers: buildCSRFHeaders(),
+            fields: [
+              'id', 'title', 'message', 'type', 'source',
+              'actionUrl', 'actionLabel', 'read', 'readAt',
+              'occurredAt', 'insertedAt',
+            ],
+            input: { userId },
+          })
+
+          if (result.success) {
+            const data = result.data
+            setNotifications(data)
+            const unread = data.filter((n: Notification) => !n.read).length
+            setCounter('unread_notifications', unread)
+          } else {
+            setError('Failed to fetch notifications')
+          }
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Failed to fetch notifications')
+        } finally {
+          setIsLoading(false)
+        }
+      }, [enabled, userId, listNotifications, buildCSRFHeaders, setCounter])
+
+      // Subscribe to real-time events via shared socket
+      useEffect(() => {
+        if (!userId || !enabled) return
+
+        const unsubs: (() => void)[] = []
+
+        unsubs.push(socket.on('new_notification', (notification: Notification) => {
+          setNotifications((prev) => [notification, ...prev])
+          if (!notification.read) {
+            incrementCounter('unread_notifications', 1)
+          }
+          if (notification.invalidates?.length && onInvalidateRef.current) {
+            onInvalidateRef.current(notification.invalidates)
+          }
+        }))
+
+        // Counter values are already updated by SocketProvider's built-in handler.
+        // Only subscribe here for query invalidation metadata.
+        unsubs.push(socket.on('counter_updated', (payload: { counter: string; value: number; metadata?: { invalidate_queries?: string[] } }) => {
+          if (payload.metadata?.invalidate_queries?.length && onInvalidateRef.current) {
+            onInvalidateRef.current(payload.metadata.invalidate_queries)
+          }
+        }))
+
+        return () => { unsubs.forEach((fn) => fn()) }
+      }, [userId, enabled, socket, setCounter, incrementCounter])
+
+      // Initial fetch
+      useEffect(() => { fetchNotifications() }, [fetchNotifications])
+
+      const markAsRead = useCallback(
+        async (notificationId: string) => {
+          try {
+            const result = await markNotificationAsRead({
+              headers: buildCSRFHeaders(),
+              identity: notificationId,
+              fields: ['id', 'read'],
+            })
+            if (result.success) {
+              setNotifications((prev) =>
+                prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n))
+              )
+              incrementCounter('unread_notifications', -1)
+            }
+          } catch (err) {
+            console.error('[AshDispatch] Failed to mark notification as read:', err)
+          }
+        },
+        [markNotificationAsRead, buildCSRFHeaders, incrementCounter]
+      )
+
+      const markAllAsRead = useCallback(async () => {
+        if (!userId) return
+        try {
+          const result = await markAllNotificationsAsRead({
+            headers: buildCSRFHeaders(),
+            input: { userId },
+          })
+          if (result.success) {
+            setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
+            setCounter('unread_notifications', 0)
+          }
+        } catch (err) {
+          console.error('[AshDispatch] Failed to mark all notifications as read:', err)
+        }
+      }, [userId, markAllNotificationsAsRead, buildCSRFHeaders, setCounter])
+
+      return {
+        notifications,
+        unreadCount,
+        isLoading,
+        error,
+        isConnected: socket.isConnected,
+        markAsRead,
+        markAllAsRead,
+        refresh: fetchNotifications,
+      }
+    }
+
+    // ============================================================================
     // Provider
     // ============================================================================
 
@@ -1890,50 +2713,60 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     }
 
     /**
-     * Provider component that initializes notification state and Phoenix channel connection.
+     * Provider component that initializes notification state.
      *
-     * Wrap your app (or authenticated layout) with this provider to enable
-     * notification features throughout your application.
+     * When wrapped in a `<SocketProvider>`, uses the shared socket for real-time events.
+     * Otherwise, falls back to its own socket connection (backwards compatible).
      *
      * @example
      * ```tsx
-     * // In your app layout or authenticated wrapper:
-     * import { NotificationProvider } from '@/lib/generated/ash-dispatch/notification-provider'
-     * import {
-     *   listNotifications,
-     *   markNotificationAsRead,
-     *   markAllNotificationsAsRead,
-     *   buildCSRFHeaders,
-     * } from '@/lib/generated/ash_rpc'
+     * // Recommended: with SocketProvider (shared socket)
+     * <SocketProvider userId={user.id}>
+     *   <NotificationProvider
+     *     userId={user.id}
+     *     listNotifications={listNotifications}
+     *     markNotificationAsRead={markNotificationAsRead}
+     *     markAllNotificationsAsRead={markAllNotificationsAsRead}
+     *     buildCSRFHeaders={buildCSRFHeaders}
+     *   >
+     *     {children}
+     *   </NotificationProvider>
+     * </SocketProvider>
      *
-     * function AuthenticatedLayout({ children }) {
-     *   const { user } = useAuth()
-     *
-     *   return (
-     *     <NotificationProvider
-     *       userId={user?.id ?? null}
-     *       listNotifications={listNotifications}
-     *       markNotificationAsRead={markNotificationAsRead}
-     *       markAllNotificationsAsRead={markAllNotificationsAsRead}
-     *       buildCSRFHeaders={buildCSRFHeaders}
-     *     >
-     *       {children}
-     *     </NotificationProvider>
-     *   )
-     * }
+     * // Also works: standalone (own socket, backwards compatible)
+     * <NotificationProvider userId={user.id} ...>
+     *   {children}
+     * </NotificationProvider>
      * ```
      */
-    export function NotificationProvider({
-      children,
-      ...options
-    }: NotificationProviderProps) {
-      const notificationState = useNotifications(options)
-
+    /** Inner provider using the shared socket for real-time events. */
+    function SharedSocketNotificationProvider({ children, ...options }: NotificationProviderProps) {
+      const notificationState = useNotificationsWithSharedSocket(options)
       return (
         <NotificationContext.Provider value={notificationState}>
           {children}
         </NotificationContext.Provider>
       )
+    }
+
+    /** Inner provider using its own standalone socket connection. */
+    function StandaloneNotificationProvider({ children, ...options }: NotificationProviderProps) {
+      const notificationState = useNotifications(options)
+      return (
+        <NotificationContext.Provider value={notificationState}>
+          {children}
+        </NotificationContext.Provider>
+      )
+    }
+
+    export function NotificationProvider({ children, ...options }: NotificationProviderProps) {
+      const socketContext = useSocketContext()
+
+      // Dispatch to the correct inner provider — avoids conditional hook calls
+      if (socketContext) {
+        return <SharedSocketNotificationProvider {...options}>{children}</SharedSocketNotificationProvider>
+      }
+      return <StandaloneNotificationProvider {...options}>{children}</StandaloneNotificationProvider>
     }
     """
   end
@@ -2066,11 +2899,11 @@ defmodule Mix.Tasks.AshDispatch.Gen do
 
     ## Quick Start
 
-    ### 1. Wrap your app with the NotificationProvider
+    ### 1. Wrap your app with SocketProvider and NotificationProvider
 
     ```tsx
     // app/layout.tsx or your authenticated layout
-    import { NotificationProvider } from '@/lib/generated/ash-dispatch/notification-provider'
+    import { SocketProvider, NotificationProvider } from '@/lib/generated/ash-dispatch'
     import {
       listNotifications,
       markNotificationAsRead,
@@ -2082,16 +2915,36 @@ defmodule Mix.Tasks.AshDispatch.Gen do
       const { user } = useAuth() // Your auth hook
 
       return (
-        <NotificationProvider
-          userId={user?.id ?? null}
-          listNotifications={listNotifications}
-          markNotificationAsRead={markNotificationAsRead}
-          markAllNotificationsAsRead={markAllNotificationsAsRead}
-          buildCSRFHeaders={buildCSRFHeaders}
-        >
-          {children}
-        </NotificationProvider>
+        <SocketProvider userId={user?.id ?? null}>
+          <NotificationProvider
+            userId={user?.id ?? null}
+            listNotifications={listNotifications}
+            markNotificationAsRead={markNotificationAsRead}
+            markAllNotificationsAsRead={markAllNotificationsAsRead}
+            buildCSRFHeaders={buildCSRFHeaders}
+          >
+            {children}
+          </NotificationProvider>
+        </SocketProvider>
       )
+    }
+    ```
+
+    The `SocketProvider` creates a single shared Phoenix socket and channel. All consumers
+    (notifications, custom events) multiplex over the same connection.
+
+    > **Note:** `NotificationProvider` also works without `SocketProvider` — it falls back to
+    > its own socket connection for backwards compatibility.
+
+    ### Subscribe to custom events
+
+    ```tsx
+    import { useUserChannelEvent } from '@/lib/generated/ash-dispatch'
+
+    function MyComponent() {
+      useUserChannelEvent("pipeline_progress", (payload) => {
+        console.log("Progress:", payload)
+      })
     }
     ```
 
@@ -2161,7 +3014,7 @@ defmodule Mix.Tasks.AshDispatch.Gen do
 
     ## Real-time Updates
 
-    The SDK automatically connects to Phoenix channels when using `useNotifications` or `NotificationProvider`. Ensure your backend has:
+    The SDK connects to Phoenix channels via the `SocketProvider` (or standalone via `useNotifications`). Ensure your backend has:
 
     1. A socket endpoint at `/socket`
     2. A user channel at `user:{userId}`
@@ -2174,6 +3027,7 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     | Hook | Description |
     |------|-------------|
     | `useNotifications(options)` | Full notification management with RPC and channels |
+    | `useUserChannelEvent(event, handler)` | Subscribe to shared socket events with auto-cleanup |
     | `useCounter(name)` | Single counter value |
     | `useChannel(options)` | Low-level Phoenix channel connection |
 
@@ -2181,6 +3035,7 @@ defmodule Mix.Tasks.AshDispatch.Gen do
 
     | Component | Description |
     |-----------|-------------|
+    | `SocketProvider` | Shared Phoenix socket — one connection for all consumers |
     | `NotificationProvider` | Context provider for notification state |
     | `NotificationBell` | Drop-in bell icon with badge |
 
@@ -2189,6 +3044,7 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     | Type | Description |
     |------|-------------|
     | `Notification` | Notification object from backend |
+    | `SocketContextValue` | Shape of the shared socket context |
     | `CounterName` | Union of all counter names |
     | `AllCounters` | Object type with all counter values |
 
@@ -2200,7 +3056,9 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     | `events.ts` | Event IDs and metadata |
     | `store.ts` | Zustand store for counters |
     | `channel.ts` | Phoenix channel utilities |
+    | `socket-provider.tsx` | Shared socket provider |
     | `hooks/use-channel.ts` | Channel connection hook |
+    | `hooks/use-user-channel.ts` | Event subscription hook |
     | `hooks/use-counter.ts` | Single counter hook |
     | `hooks/use-notifications.ts` | Complete notification hook |
     | `notification-provider.tsx` | React context provider |
