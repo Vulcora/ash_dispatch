@@ -1561,6 +1561,8 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     export interface SocketContextValue {
       /** Subscribe to a channel event. Returns an unsubscribe function. */
       on: <E extends string>(event: E, handler: (payload: any) => void) => () => void
+      /** Push an event to the channel. */
+      push: (event: string, payload: Record<string, unknown>) => void
       /** Whether the socket is connected and channel has joined. */
       isConnected: boolean
     }
@@ -1740,7 +1742,11 @@ defmodule Mix.Tasks.AshDispatch.Gen do
         }
       }, [userId, tokenUrl, setCounter, setCounters])
 
-      const value = useMemo<SocketContextValue>(() => ({ on, isConnected }), [on, isConnected])
+      const push = useCallback((event: string, payload: Record<string, unknown>) => {
+        channelRef.current?.push(event, payload)
+      }, [])
+
+      const value = useMemo<SocketContextValue>(() => ({ on, push, isConnected }), [on, push, isConnected])
 
       return (
         <SocketContext.Provider value={value}>
