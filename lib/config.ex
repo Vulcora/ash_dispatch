@@ -173,6 +173,29 @@ defmodule AshDispatch.Config do
     Application.get_env(:ash_dispatch, :default_locale, "en")
   end
 
+  @doc """
+  Optional Gettext backend for translating content strings.
+
+  When configured, all `content:` block strings (notification_title,
+  notification_message, etc.) are run through Gettext before variable
+  interpolation. The locale is resolved via the dispatch locale chain.
+
+  The content string IS the gettext msgid. Translations are looked up
+  in the "notifications" domain.
+
+  ## Example
+
+      config :ash_dispatch,
+        gettext_backend: MyAppWeb.Gettext
+
+  Then content strings like `notification_title: "Usage Alert"` will
+  be translated via `Gettext.dgettext(MyAppWeb.Gettext, "notifications", "Usage Alert")`.
+  """
+  @spec gettext_backend() :: module() | nil
+  def gettext_backend do
+    Application.get_env(:ash_dispatch, :gettext_backend)
+  end
+
   # ============================================================================
   # Email Configuration
   # ============================================================================

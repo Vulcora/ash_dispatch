@@ -834,12 +834,33 @@ defmodule AshDispatch.Dispatcher do
   defp interpolate(nil, _context), do: nil
 
   defp interpolate(template, context) when is_binary(template) do
-    # Use template_assigns which merges data and variables
+    # Step 1: Translate via Gettext if backend configured
+    translated = translate_content(template, context.locale)
+
+    # Step 2: Variable interpolation ({{variable}} → value)
     assigns = Context.template_assigns(context)
-    AshDispatch.VariableInterpolator.interpolate(template, assigns, context.resource_key)
+    AshDispatch.VariableInterpolator.interpolate(translated, assigns, context.resource_key)
   end
 
   defp interpolate(value, _context), do: value
+
+  # Translate content string via Gettext if a backend is configured.
+  # The content string is the msgid, looked up in the "notifications" domain.
+  # Gettext calls are dynamic to avoid requiring gettext as a dependency.
+  defp translate_content(string, locale) do
+    case AshDispatch.Config.gettext_backend() do
+      nil ->
+        string
+
+      backend ->
+        if Code.ensure_loaded?(Gettext) do
+          apply(Gettext, :put_locale, [backend, locale || "en"])
+          apply(Gettext, :dgettext, [backend, "notifications", string])
+        else
+          string
+        end
+    end
+  end
 
   # Helper to conditionally add a key-value pair to a map only if value is not nil
   # This prevents overwriting module callback values with nil in hybrid mode
