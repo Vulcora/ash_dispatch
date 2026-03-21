@@ -23,7 +23,12 @@ defmodule AshDispatch.Resource.Transformers.ValidateEvents do
 
   @impl true
   def transform(dsl_state) do
-    events = Transformer.get_entities(dsl_state, [:dispatch])
+    # Filter to only Event structs — the dispatch section may also contain
+    # EntityChanges, ResourceMeta, AudiencePrefix, etc.
+    events =
+      dsl_state
+      |> Transformer.get_entities([:dispatch])
+      |> Enum.filter(&match?(%AshDispatch.Resource.Dsl.Event{}, &1))
 
     with :ok <- validate_unique_names(events, dsl_state),
          :ok <- validate_trigger_actions(events, dsl_state),

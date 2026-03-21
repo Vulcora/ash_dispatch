@@ -156,8 +156,70 @@ Set global defaults in your config:
 ```elixir
 # config/config.exs
 config :ash_dispatch,
-  default_locale: "sv"  # Default when no locale found (defaults to "en")
+  default_locale: "sv",  # Default when no locale found (defaults to "en")
+  gettext_backend: MyAppWeb.Gettext  # Optional: auto-translate content strings
 ```
+
+## Gettext Integration (Content String Translation)
+
+When `gettext_backend` is configured, all `content:` block strings are automatically translated via Gettext before `{{variable}}` interpolation. This enables content strings to work as translatable msgids.
+
+### How It Works
+
+```elixir
+# In your resource DSL:
+dispatch do
+  event :task_completed, trigger_on: :complete do
+    content: [
+      notification_title: "Task Completed",
+      notification_message: "\"{{title}}\" marked as done"
+    ]
+  end
+end
+```
+
+At dispatch time:
+1. Locale is resolved via the locale chain (channel → event → resource → config)
+2. `"Task Completed"` is looked up via `Gettext.dgettext(backend, "notifications", "Task Completed")`
+3. If a translation exists for the resolved locale, it's used
+4. `{{title}}` variable interpolation happens on the translated string
+
+### Auto-Generated Gettext Catalog
+
+When `gettext_backend` is set, `mix ash.codegen` automatically generates a Gettext catalog module from all `content:` block strings:
+
+```bash
+mix ash.codegen "update templates"
+# creates: lib/my_app/events/_i18n_catalog.ex
+```
+
+The generated catalog contains `dgettext("notifications", "...")` calls for every content string, enabling `mix gettext.extract` to discover them automatically. No manual catalog maintenance needed.
+
+### Translation Workflow
+
+```bash
+# 1. Add content: to your dispatch event
+# 2. Run codegen (generates catalog + templates)
+mix ash.codegen "add event"
+
+# 3. Extract strings (finds them via auto-generated catalog)
+mix gettext.extract --merge
+
+# 4. Translate (using your preferred method — AI, manual, TMS)
+# Strings appear in priv/gettext/*/LC_MESSAGES/notifications.po
+
+# 5. Deploy — content strings are translated at dispatch time
+```
+
+### Configuration
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `gettext_backend` | `nil` | Gettext backend module. When set, enables content translation. |
+
+The Gettext domain used is `"notifications"`. All content strings (titles, messages, action labels) are looked up in this domain.
+
+> **Note**: Gettext is not a required dependency of AshDispatch. The integration uses dynamic function calls (`apply/3`) so it works seamlessly when Gettext is available and is a no-op when it's not.
 
 ## Delivery Receipt Tracking
 

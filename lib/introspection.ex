@@ -272,6 +272,9 @@ defmodule AshDispatch.Introspection do
     |> Enum.flat_map(fn resource ->
       resource
       |> ResourceInfo.events()
+      # Filter to only Event structs — the dispatch section may also contain
+      # EntityChanges, ResourceMeta, AudiencePrefix, etc.
+      |> Enum.filter(&match?(%AshDispatch.Resource.Dsl.Event{}, &1))
       |> Enum.map(&normalize_inline_event(&1, resource, otp_app))
     end)
   end

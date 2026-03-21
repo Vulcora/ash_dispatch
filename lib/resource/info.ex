@@ -301,4 +301,44 @@ defmodule AshDispatch.Resource.Info do
     |> counters()
     |> Enum.find(&(&1.name == name))
   end
+
+  @doc """
+  Get entity_changes configuration for a resource, if any.
+
+  Returns the `%AshDispatch.Resource.Dsl.EntityChanges{}` struct if
+  `entity_changes true` is defined in the dispatch section, or `nil`.
+  """
+  def entity_changes(resource) do
+    resource
+    |> events()
+    |> Enum.find(fn
+      %AshDispatch.Resource.Dsl.EntityChanges{} -> true
+      _ -> false
+    end)
+  end
+
+  @doc """
+  Check if entity change broadcasting is enabled for a resource.
+  """
+  def entity_changes_enabled?(resource) do
+    case entity_changes(resource) do
+      %AshDispatch.Resource.Dsl.EntityChanges{enabled: true} -> true
+      _ -> false
+    end
+  end
+
+  @doc """
+  Get resource_meta configuration for a resource, if any.
+
+  Returns the `%AshDispatch.Resource.Dsl.ResourceMeta{}` struct if
+  `resource_meta` is defined in the dispatch section, or `nil`.
+  """
+  def resource_meta(resource) do
+    resource
+    |> events()
+    |> Enum.find(fn
+      %AshDispatch.Resource.Dsl.ResourceMeta{} -> true
+      _ -> false
+    end)
+  end
 end

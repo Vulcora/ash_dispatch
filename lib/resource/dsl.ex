@@ -65,7 +65,7 @@ defmodule AshDispatch.Resource.Dsl do
             end
           end
       """,
-      entities: [event_entity(), audience_prefix_entity(), audience_entity(), locales_entity()],
+      entities: [event_entity(), entity_changes_entity(), resource_meta_entity(), audience_prefix_entity(), audience_entity(), locales_entity()],
       sections: []
     }
   end
@@ -580,6 +580,128 @@ defmodule AshDispatch.Resource.Dsl do
           If the lead has `visitor_locale: "en"`, the English template is rendered.
           Falls back to default template if locale-specific template doesn't exist.
           """
+        ]
+      ]
+    }
+  end
+
+  @doc """
+  The `entity_changes` entity for enabling real-time entity change broadcasting.
+
+  When enabled, CRUD events for this resource are automatically broadcast
+  as `entity_change` and `entity_created` channel events, enabling real-time
+  UI updates like entity snapshots, toast notifications, and status dots.
+  """
+  def entity_changes_entity do
+    %Entity{
+      name: :entity_changes,
+      describe: """
+      Enable automatic broadcasting of entity CRUD events via the user channel.
+
+      When enabled, the TypeScript SDK generates an entity store that tracks
+      live entity snapshots, and the socket provider auto-wires `entity_change`
+      events into the store.
+
+      ## Example
+
+          dispatch do
+            entity_changes true
+          end
+
+      Or with options:
+
+          dispatch do
+            entity_changes true,
+              trigger_on: [:create, :update, :complete, :activate],
+              label_fields: [:title],
+              status_field: :status
+          end
+
+      The generator introspects the resource to auto-detect:
+      - Label fields (first of :title, :name that exists as an attribute)
+      - Status field (from AshStateMachine state_attribute if present)
+      - States (from AshStateMachine initial_states + transition targets)
+      """,
+      args: [:enabled],
+      target: AshDispatch.Resource.Dsl.EntityChanges,
+      schema: [
+        enabled: [
+          type: :boolean,
+          required: true,
+          doc: "Whether to enable entity change broadcasting for this resource."
+        ],
+        trigger_on: [
+          type: {:list, :atom},
+          required: false,
+          doc: """
+          Optional list of action names to restrict broadcasting to.
+          If not specified, broadcasts on all create, update, and destroy actions.
+          """
+        ],
+        label_fields: [
+          type: {:list, :atom},
+          default: [:title, :name],
+          doc: """
+          Fields to use for the entity label in snapshots.
+          The first field with a non-nil value is used.
+          Defaults to `[:title, :name]`.
+          """
+        ],
+        status_field: [
+          type: :atom,
+          required: false,
+          doc: """
+          Field to use for entity status in snapshots.
+          Auto-detected from AshStateMachine state_attribute if present.
+          """
+        ]
+      ]
+    }
+  end
+
+  @doc """
+  The `resource_meta` entity for TypeScript resource metadata generation.
+
+  Provides metadata about the resource that the TypeScript SDK uses to generate
+  navigation paths, labels, and type-safe resource constants.
+  """
+  def resource_meta_entity do
+    %Entity{
+      name: :resource_meta,
+      describe: """
+      Define resource metadata for TypeScript generation.
+
+      The generator uses this to emit a `RESOURCES` constant with labels,
+      plural forms, navigation paths, and state machine states.
+
+      ## Example
+
+          dispatch do
+            resource_meta label: "Task", plural: "tasks", nav_path: "/tasks"
+          end
+
+      Most values are auto-derived if not specified:
+      - `label`: From the resource module name (e.g., `Mosis.Tasks.Task` → "Task")
+      - `plural`: From the postgres table name (e.g., "tasks")
+      - `nav_path`: From plural (e.g., "/tasks")
+      - States: Auto-introspected from AshStateMachine if present
+      """,
+      target: AshDispatch.Resource.Dsl.ResourceMeta,
+      schema: [
+        label: [
+          type: :string,
+          required: false,
+          doc: "Human-readable singular label (e.g., \"Task\"). Auto-derived from resource name."
+        ],
+        plural: [
+          type: :string,
+          required: false,
+          doc: "Plural form (e.g., \"tasks\"). Auto-derived from postgres table name."
+        ],
+        nav_path: [
+          type: :string,
+          required: false,
+          doc: "Navigation base path (e.g., \"/tasks\"). Auto-derived from plural."
         ]
       ]
     }

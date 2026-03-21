@@ -324,13 +324,15 @@ Configure default locale for template resolution:
 
 ```elixir
 config :ash_dispatch,
-  default_locale: "sv"  # Default when no locale found (defaults to "en")
+  default_locale: "sv",  # Default when no locale found (defaults to "en")
+  gettext_backend: MyAppWeb.Gettext  # Optional: translate content: strings via Gettext
 ```
 
 **Why needed:**
-- Sets the fallback language for email and SMS templates
+- `default_locale` sets the fallback language for templates and content translation
 - Used when no locale is configured on channel, event, or resource
 - Templates fall back to non-localized versions if locale-specific not found
+- `gettext_backend` (optional) enables automatic translation of `content:` block strings at dispatch time. See [Localization](localization.md#gettext-integration-content-string-translation) for details.
 
 **Default:** `"en"`
 
