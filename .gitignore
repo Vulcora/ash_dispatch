@@ -32,3 +32,4 @@ Thumbs.db
 
 # AI
 .claude/
+.tool-versions
