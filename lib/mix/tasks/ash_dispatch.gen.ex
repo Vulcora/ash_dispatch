@@ -375,7 +375,12 @@ defmodule Mix.Tasks.AshDispatch.Gen do
         plural: plural,
         nav_path: nav_path,
         states: states,
-        resource: resource
+        resource: resource,
+        color_theme: meta && meta.color_theme,
+        icon: meta && meta.icon,
+        discovery_mode: meta && meta.discovery_mode,
+        feature_key: meta && meta.feature_key,
+        order: meta && meta.order
       }]
     else
       []
@@ -1978,7 +1983,20 @@ defmodule Mix.Tasks.AshDispatch.Gen do
           ""
         end
 
-        "  #{meta.key}: { label: \"#{meta.label}\", plural: \"#{meta.plural}\", navPath: \"#{meta.nav_path}\"#{states_str} }"
+        extra =
+          [
+            if(meta.color_theme, do: "colorTheme: \"#{meta.color_theme}\""),
+            if(meta.icon, do: "icon: \"#{meta.icon}\""),
+            if(meta.discovery_mode, do: "discoveryMode: \"#{meta.discovery_mode}\""),
+            if(meta.feature_key, do: "featureKey: \"#{meta.feature_key}\""),
+            if(meta.order, do: "order: #{meta.order}")
+          ]
+          |> Enum.reject(&is_nil/1)
+          |> Enum.join(", ")
+
+        extra_str = if extra != "", do: ", #{extra}", else: ""
+
+        "  #{meta.key}: { label: \"#{meta.label}\", plural: \"#{meta.plural}\", navPath: \"#{meta.nav_path}\"#{states_str}#{extra_str} }"
       end)
       |> Enum.join(",\n")
 
