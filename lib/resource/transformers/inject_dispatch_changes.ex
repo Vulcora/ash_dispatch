@@ -240,6 +240,7 @@ defmodule AshDispatch.Resource.Transformers.InjectDispatchChanges do
         channels: event.channels,
         content: event.content,
         metadata: event.metadata,
+        priority: event.priority || :standard,
         module: event_module,
         data_key: event.data_key,
         include_actor_as: event.include_actor_as,

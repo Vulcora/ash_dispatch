@@ -30,7 +30,7 @@ defmodule AshDispatch.Test.Ticket do
   end
 
   dispatch do
-    # Inline event - should generate module
+    # Inline event - should generate module (default priority: :standard)
     event :created,
       trigger_on: :create,
       channels: [
@@ -53,6 +53,18 @@ defmodule AshDispatch.Test.Ticket do
       content: [
         subject: "Ticket assigned to you",
         notification_title: "Ticket Assigned"
+      ]
+
+    # Urgent event for testing priority flow
+    event :escalated,
+      trigger_on: :close,
+      priority: :urgent,
+      channels: [
+        [transport: :in_app, audience: :user]
+      ],
+      content: [
+        notification_title: "Ticket Escalated",
+        notification_message: "{{title}} needs immediate attention"
       ]
   end
 end

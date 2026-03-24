@@ -30,6 +30,7 @@ defmodule MyApp.Orders.ProductOrder do
   dispatch do
     event :created,
       trigger_on: :create_from_cart,
+      priority: :standard,
       channels: [
         [transport: :in_app, audience: :user],
         [transport: :email, audience: :user, delay: 300]
@@ -50,6 +51,7 @@ end
 
 - **🎯 Automatic Dispatch** - Events are automatically triggered by resource actions
 - **📬 Multi-Transport** - Email, in-app, Discord, Slack, SMS, webhooks out of the box
+- **🚨 Priority Levels** - `:urgent`, `:standard`, `:informational` — consumers gate delivery timing by priority
 - **⏰ Delayed Delivery** - Schedule notifications for later delivery
 - **👤 User Preferences** - Respect user notification preferences automatically
 - **📊 Delivery Tracking** - Full audit trail with delivery receipts
@@ -62,6 +64,30 @@ end
 - **🔌 Extensible** - Add custom transports and event modules
 - **🧪 Test-Friendly** - Factory integration for testing templates
 - **🔀 Smart Deduplication** - Optional `deduplicate_group` to prevent duplicate notifications when audiences overlap
+
+### Priority Levels
+
+Events declare delivery priority, enabling consumers to gate delivery timing:
+
+```elixir
+dispatch do
+  # Urgent: always deliver immediately (billing alerts, security)
+  event :budget_alert, trigger_on: :manual, priority: :urgent, ...
+
+  # Standard: deliver at next appropriate opportunity (default)
+  event :task_completed, trigger_on: :complete, priority: :standard, ...
+
+  # Informational: low priority, can be batched or held
+  event :habit_logged, trigger_on: :manual, priority: :informational, ...
+end
+```
+
+Priority flows through the entire dispatch pipeline:
+- Stored in `Context.priority` during dispatch
+- Included in notification `metadata["priority"]` for in-app transport
+- Available on `DeliveryReceipt` for querying
+
+Consumers use priority for smart delivery: hold informational notifications outside active hours, suppress non-urgent during deep work, always deliver urgent regardless of context.
 
 ## Tutorials
 
