@@ -234,6 +234,33 @@ defmodule AshDispatch.Resource.Dsl do
           in the event (inviter, approver, assignee, etc.).
           """
         ],
+        priority: [
+          type: {:in, [:urgent, :standard, :informational]},
+          default: :standard,
+          doc: """
+          Delivery priority for this event.
+
+          Consumers can use this to gate delivery timing and presentation:
+          - `:urgent` — Bypass timing/window constraints, always deliver immediately
+          - `:standard` — Deliver at next appropriate opportunity
+          - `:informational` — Low priority, can be batched or held for summaries
+
+          Priority is stored on the DeliveryReceipt and included in notification
+          metadata, making it queryable downstream without re-classification.
+
+          Example:
+
+              event :budget_alert,
+                trigger_on: :manual,
+                priority: :urgent,
+                channels: [[transport: :in_app, audience: :user]]
+
+              event :habit_logged,
+                trigger_on: :manual,
+                priority: :informational,
+                channels: [[transport: :in_app, audience: :user]]
+          """
+        ],
         template_path: [
           type: :string,
           required: false,
@@ -702,6 +729,31 @@ defmodule AshDispatch.Resource.Dsl do
           type: :string,
           required: false,
           doc: "Navigation base path (e.g., \"/tasks\"). Auto-derived from plural."
+        ],
+        color_theme: [
+          type: :string,
+          required: false,
+          doc: "Theme color name (e.g., \"teal\", \"green\"). Frontend maps to CSS."
+        ],
+        icon: [
+          type: :string,
+          required: false,
+          doc: "Icon name (e.g., \"map-pin\"). Frontend maps to SVG."
+        ],
+        discovery_mode: [
+          type: :string,
+          required: false,
+          doc: "Discovery mode: \"entity_created\", \"threshold\", \"always\", \"none\"."
+        ],
+        feature_key: [
+          type: :string,
+          required: false,
+          doc: "Feature key for discovery system (e.g., \"tasks\", \"places\")."
+        ],
+        order: [
+          type: :float,
+          required: false,
+          doc: "Navigation ordering (e.g., 1.0 for tasks, 3.5 for places)."
         ]
       ]
     }

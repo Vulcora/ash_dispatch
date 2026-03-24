@@ -120,6 +120,11 @@ defmodule AshDispatch.Transports.InApp do
             resource_id -> "#{context.event_id}:#{resource_id}:#{channel.audience}:#{user_id}"
           end
 
+        # Build metadata from event config + context priority
+        metadata =
+          (receipt.content[:metadata] || %{})
+          |> Map.put(:priority, context.priority || :standard)
+
         notification_attrs = %{
           user_id: user_id,
           title: get_content(receipt.content, :title),
@@ -129,6 +134,7 @@ defmodule AshDispatch.Transports.InApp do
           event_id: context.event_id,
           source: context.event_id,
           type: get_notification_type(receipt.content),
+          metadata: metadata,
           idempotency_key: idempotency_key
         }
 

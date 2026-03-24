@@ -15,6 +15,7 @@ defmodule AshDispatch.Resource.Dsl.Event do
     :template_path,
     :include_actor_as,
     :locale_from,
+    priority: :standard,
     load: [],
     channels: [],
     content: %{},
@@ -26,6 +27,8 @@ defmodule AshDispatch.Resource.Dsl.Event do
     __spark_metadata__: nil
   ]
 
+  @type priority :: :urgent | :standard | :informational
+
   @type t :: %__MODULE__{
           name: atom(),
           trigger_on: atom() | [atom()],
@@ -36,6 +39,7 @@ defmodule AshDispatch.Resource.Dsl.Event do
           template_path: String.t() | nil,
           include_actor_as: atom() | nil,
           locale_from: atom() | nil,
+          priority: priority(),
           load: [atom() | {atom(), any()}],
           channels: [AshDispatch.Dsl.Channel.t()],
           content: map(),

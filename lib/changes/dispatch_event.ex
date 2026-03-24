@@ -275,6 +275,7 @@ defmodule AshDispatch.Changes.DispatchEvent do
       event_id: event_id,
       data: data,
       resource_key: resource_key,
+      priority: Map.get(event_config, :priority, :standard),
       user: actor,
       source: :resource_action,
       locale: locale,
