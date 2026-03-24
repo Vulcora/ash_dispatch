@@ -65,30 +65,6 @@ end
 - **🧪 Test-Friendly** - Factory integration for testing templates
 - **🔀 Smart Deduplication** - Optional `deduplicate_group` to prevent duplicate notifications when audiences overlap
 
-### Priority Levels
-
-Events declare delivery priority, enabling consumers to gate delivery timing:
-
-```elixir
-dispatch do
-  # Urgent: always deliver immediately (billing alerts, security)
-  event :budget_alert, trigger_on: :manual, priority: :urgent, ...
-
-  # Standard: deliver at next appropriate opportunity (default)
-  event :task_completed, trigger_on: :complete, priority: :standard, ...
-
-  # Informational: low priority, can be batched or held
-  event :habit_logged, trigger_on: :manual, priority: :informational, ...
-end
-```
-
-Priority flows through the entire dispatch pipeline:
-- Stored in `Context.priority` during dispatch
-- Included in notification `metadata["priority"]` for in-app transport
-- Available on `DeliveryReceipt` for querying
-
-Consumers use priority for smart delivery: hold informational notifications outside active hours, suppress non-urgent during deep work, always deliver urgent regardless of context.
-
 ## Tutorials
 
 - [Getting Started with AshDispatch](lib/documentation/tutorials/getting-started.md) - Basic event setup with inline DSL
@@ -101,6 +77,7 @@ Consumers use priority for smart delivery: hold informational notifications outs
 - [Phoenix Channel Integration](lib/documentation/topics/phoenix-integration.md) - Zero-config helpers for real-time updates
 - [Counter Broadcasting](lib/documentation/topics/counter-broadcasting.md) - Declarative counter DSL with auto-discovery
 - [TypeScript SDK](lib/documentation/topics/typescript-sdk.md) - Generated React hooks, components, and Zustand store
+- [Priority Levels](lib/documentation/topics/priority.md) - Urgent, standard, informational — context-aware delivery gating
 - [User Preferences](lib/documentation/topics/user-preferences.md)
 - [Recipient Resolution](lib/documentation/topics/recipient-resolution.md)
 - [Configuration](lib/documentation/topics/configuration.md)
