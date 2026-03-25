@@ -26,7 +26,7 @@ defmodule AshDispatch.Transports.Broadcast do
   def deliver(receipt, context, channel, _event_config) do
     pubsub = Config.pubsub_module()
 
-    unless pubsub do
+    if is_nil(pubsub) do
       Logger.warning("Broadcast transport: no pubsub_module configured, skipping")
       {:ok, mark_skipped(receipt, "no_pubsub_module")}
     else
@@ -67,7 +67,7 @@ defmodule AshDispatch.Transports.Broadcast do
     base
     |> maybe_put(:title, get_content(content, :title))
     |> maybe_put(:message, get_content(content, :message))
-    |> Map.put(:timestamp, DateTime.utc_now() |> DateTime.to_iso8601())
+    |> Map.put(:timestamp, (context.now || DateTime.utc_now()) |> DateTime.to_iso8601())
   end
 
   # "pipeline_events.chat_chunk" → "chat_chunk"
