@@ -1001,6 +1001,9 @@ defmodule AshDispatch.Dispatcher do
       :webhook ->
         Transports.Webhook.deliver(receipt, context, channel, event_config)
 
+      :broadcast ->
+        Transports.Broadcast.deliver(receipt, context, channel, event_config)
+
       unknown ->
         Logger.warning("Unknown transport: #{unknown}, skipping delivery")
 
