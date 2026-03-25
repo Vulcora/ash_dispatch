@@ -28,7 +28,7 @@ defmodule AshDispatch.Transports.Broadcast do
 
     if is_nil(pubsub) do
       Logger.warning("Broadcast transport: no pubsub_module configured, skipping")
-      {:ok, mark_skipped(receipt, "no_pubsub_module")}
+      {:ok, maybe_mark_skipped(receipt, "no_pubsub_module")}
     else
       payload = build_payload(receipt, context)
       event_name = derive_event_name(context.event_id)
@@ -49,9 +49,9 @@ defmodule AshDispatch.Transports.Broadcast do
         end
 
       case result do
-        :ok -> {:ok, mark_sent(receipt)}
-        :no_user_id -> {:ok, mark_skipped(receipt, "no_user_id")}
-        {:error, reason} -> {:ok, mark_failed(receipt, inspect(reason))}
+        :ok -> {:ok, maybe_mark_sent(receipt)}
+        :no_user_id -> {:ok, maybe_mark_skipped(receipt, "no_user_id")}
+        {:error, reason} -> {:ok, maybe_mark_failed(receipt, inspect(reason))}
       end
     end
   rescue
@@ -75,22 +75,20 @@ defmodule AshDispatch.Transports.Broadcast do
     event_id |> to_string() |> String.split(".") |> List.last()
   end
 
-  defp mark_sent(receipt) do
-    receipt
-    |> Ash.Changeset.for_update(:mark_sent, %{})
-    |> Ash.update!()
+  # Handle both real receipts (Ash structs) and pseudo-receipts (plain maps)
+  defp maybe_mark_sent(%{id: nil} = receipt), do: receipt
+  defp maybe_mark_sent(receipt) do
+    receipt |> Ash.Changeset.for_update(:mark_sent, %{}) |> Ash.update!()
   end
 
-  defp mark_skipped(receipt, reason) do
-    receipt
-    |> Ash.Changeset.for_update(:skip, %{error_message: reason})
-    |> Ash.update!()
+  defp maybe_mark_skipped(%{id: nil} = receipt, _reason), do: receipt
+  defp maybe_mark_skipped(receipt, reason) do
+    receipt |> Ash.Changeset.for_update(:skip, %{error_message: reason}) |> Ash.update!()
   end
 
-  defp mark_failed(receipt, reason) do
-    receipt
-    |> Ash.Changeset.for_update(:mark_failed, %{error_message: reason})
-    |> Ash.update!()
+  defp maybe_mark_failed(%{id: nil} = receipt, _reason), do: receipt
+  defp maybe_mark_failed(receipt, reason) do
+    receipt |> Ash.Changeset.for_update(:mark_failed, %{error_message: reason}) |> Ash.update!()
   end
 
   defp maybe_put(map, _key, nil), do: map

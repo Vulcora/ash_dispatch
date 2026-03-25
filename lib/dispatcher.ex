@@ -271,6 +271,46 @@ defmodule AshDispatch.Dispatcher do
 
   # Private function that dispatches to a specific recipient
   defp dispatch_to_recipient(context, channel, event_config, recipient) do
+    # Skip receipt creation for lightweight transports (e.g., :broadcast)
+    if skip_receipt_for_transport?(channel.transport) do
+      dispatch_without_receipt(context, channel, event_config, recipient)
+    else
+      dispatch_with_receipt(context, channel, event_config, recipient)
+    end
+  end
+
+  defp skip_receipt_for_transport?(:broadcast), do: true
+  defp skip_receipt_for_transport?(_), do: false
+
+  defp extract_user_id_from_recipient(%{id: id}), do: id
+  defp extract_user_id_from_recipient(%{"id" => id}), do: id
+  defp extract_user_id_from_recipient(_), do: nil
+
+  defp dispatch_without_receipt(context, channel, event_config, recipient) do
+    # Build a minimal pseudo-receipt for the transport (no DB write)
+    pseudo_receipt = %{
+      id: nil,
+      event_id: context.event_id,
+      transport: channel.transport,
+      audience: channel.audience,
+      user_id: extract_user_id_from_recipient(recipient),
+      content: %{},
+      status: :pending,
+      metadata: %{}
+    }
+
+    case dispatch_to_transport(pseudo_receipt, context, channel, event_config) do
+      {:ok, _} ->
+        Logger.debug("Broadcast dispatched: #{context.event_id} to #{channel.audience}")
+        {:ok, :broadcast_sent}
+
+      {:error, reason} ->
+        Logger.warning("Broadcast failed: #{context.event_id} — #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  defp dispatch_with_receipt(context, channel, event_config, recipient) do
     case create_receipt(context, channel, event_config, recipient) do
       {:ok, receipt} ->
         case dispatch_to_transport(receipt, context, channel, event_config) do
