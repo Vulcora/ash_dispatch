@@ -293,7 +293,7 @@ Channels define how and where the event is delivered.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `transport` | `atom` | ✅ | Transport type: `:email`, `:in_app`, `:discord`, `:slack`, `:sms`, `:webhook` |
+| `transport` | `atom` | ✅ | Transport type: `:email`, `:in_app`, `:broadcast`, `:discord`, `:slack`, `:sms`, `:webhook` |
 | `audience` | `atom` | ✅ | Who receives this: `:user`, `:admin`, or custom audience |
 | `delay` | `integer` | ❌ | Delay in seconds before delivering (default: 0) |
 | `policy` | `atom` | ❌ | Delivery policy: `:always` or `:skip_if_read` (default: `:always`) |

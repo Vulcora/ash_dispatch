@@ -36,7 +36,7 @@ defmodule AshDispatch.Transports.Broadcast do
       result =
         case channel.audience do
           :admin ->
-            admin_topic = Application.get_env(:ash_dispatch, :admin_channel_topic, "admin:firehose")
+            admin_topic = Config.admin_channel_topic()
             pubsub.broadcast(admin_topic, event_name, payload)
 
           _ ->

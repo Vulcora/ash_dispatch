@@ -689,6 +689,49 @@ AshDispatch validates configuration at compile time and runtime. You'll see warn
 - User resource configured but not found
 - Notification resource missing required attributes
 
+## Broadcast Transport
+
+The `:broadcast` transport provides lightweight PubSub broadcasting for real-time events that don't need receipt tracking or notification records.
+
+### Admin Channel Topic
+
+Configure the admin/firehose PubSub topic:
+
+```elixir
+config :ash_dispatch,
+  admin_channel_topic: "admin:firehose"
+```
+
+**Default:** `"admin:firehose"`
+
+### How It Works
+
+- **User audience:** Broadcasts to `"{channel_topic}:{user_id}"` — same topic prefix as `:in_app` transport
+- **Admin audience:** Broadcasts to the `admin_channel_topic`
+- **No receipts:** Skips DeliveryReceipt creation for zero DB overhead — suitable for high-frequency streaming events
+- **Config-driven:** Uses `pubsub_module` and `channel_topic` from your existing config
+
+### Example
+
+```elixir
+dispatch do
+  event :chat_chunk,
+    trigger_on: :manual,
+    channels: [[transport: :broadcast, audience: :user]],
+    metadata: [category: :streaming]
+end
+```
+
+Dispatch manually from your pipeline:
+
+```elixir
+AshDispatch.Dispatcher.dispatch("my_resource.chat_chunk", %{
+  user: %{id: user_id},
+  content: chunk_text,
+  session_id: session_id
+})
+```
+
 ## Next Steps
 
 - [Getting Started](../tutorials/getting-started.md) - Basic setup

@@ -7,7 +7,7 @@
 
 ---
 
-**AshDispatch** is an event-driven notification and messaging system for [Ash Framework](https://ash-hq.org). It provides a declarative DSL for defining events in your resources and automatically dispatching them across multiple transports (email, in-app notifications, Discord, Slack, webhooks, etc.).
+**AshDispatch** is an event-driven notification and messaging system for [Ash Framework](https://ash-hq.org). It provides a declarative DSL for defining events in your resources and automatically dispatching them across multiple transports (email, in-app notifications, broadcast/PubSub, Discord, Slack, webhooks, etc.).
 
 ## Why AshDispatch?
 
@@ -61,6 +61,7 @@ end
 - **📈 Real-Time Counters** - Declarative counter DSL with automatic Phoenix Channel broadcasting
 - **⚡ Zero-Config Helpers** - `ChannelState`, `CounterLoader`, `NotificationLoader` for Phoenix integration
 - **⚛️ Generated TypeScript SDK** - Ready-to-use React hooks, NotificationProvider, and NotificationBell components
+- **📡 Lightweight Broadcast** - `:broadcast` transport for real-time PubSub events without receipt overhead
 - **🔌 Extensible** - Add custom transports and event modules
 - **🧪 Test-Friendly** - Factory integration for testing templates
 - **🔀 Smart Deduplication** - Optional `deduplicate_group` to prevent duplicate notifications when audiences overlap

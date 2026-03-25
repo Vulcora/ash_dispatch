@@ -404,6 +404,21 @@ defmodule AshDispatch.Config do
   end
 
   @doc """
+  The PubSub topic for admin/firehose broadcasts.
+
+  Used by the `:broadcast` transport when audience is `:admin`.
+
+  ## Example
+
+      config :ash_dispatch,
+        admin_channel_topic: "admin:firehose"
+  """
+  @spec admin_channel_topic() :: String.t()
+  def admin_channel_topic do
+    Application.get_env(:ash_dispatch, :admin_channel_topic, "admin:firehose")
+  end
+
+  @doc """
   The counter broadcaster module.
 
   Should implement `broadcast/3` for counter updates.
