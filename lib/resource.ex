@@ -76,7 +76,8 @@ defmodule AshDispatch.Resource do
     transformers: [
       AshDispatch.Resource.Transformers.ValidateEvents,
       AshDispatch.Resource.Transformers.InjectDispatchChanges,
-      AshDispatch.Resource.Transformers.InjectCounterBroadcasts
+      AshDispatch.Resource.Transformers.InjectCounterBroadcasts,
+      AshDispatch.Resource.Transformers.InjectEntityNotifier
     ]
 
   @doc """
