@@ -759,16 +759,11 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     locale_info = locale_info(template)
 
     """
-    <% # Template for: #{template.event_id} %>
-    <% # Transport: email, Format: html#{variant_info}#{locale_info} %>
-    <% #
-      Available assigns (from prepare_template_assigns/2):
-      - @source_url - Link back to source resource
-      - Add custom assigns in your event module
-    %>
+    <!-- Template: #{template.event_id} | Transport: email | Format: html#{variant_info}#{locale_info} -->
+    <!-- Available assigns: custom assigns from prepare_template_assigns/2 -->
 
     <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
-      Hej<%= if assigns[:display_name], do: " <strong>\#{@display_name}</strong>", else: "" %>,
+      Hi<%= if assigns[:display_name], do: " <strong>\#{@display_name}</strong>", else: "" %>,
     </p>
 
     <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
@@ -779,7 +774,7 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     <!--
     <div style="background-color: #f0f9ff; border-left: 4px solid #2563eb; padding: 20px; margin: 25px 0; border-radius: 4px;">
       <h2 style="margin: 0 0 15px 0; font-size: 18px; color: #1e40af;">
-        Detaljer
+        Details
       </h2>
       <table width="100%" cellpadding="0" cellspacing="0">
         <tr>
@@ -796,8 +791,8 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     <table width="100%" cellpadding="0" cellspacing="0" style="margin: 30px 0;">
       <tr>
         <td align="center">
-          <a href={@source_url} style="display: inline-block; background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: #ffffff; padding: 16px 40px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px;">
-            Visa detaljer
+          <a href="#" style="display: inline-block; background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: #ffffff; padding: 16px 40px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px;">
+            View Details
           </a>
         </td>
       </tr>
@@ -817,7 +812,7 @@ defmodule Mix.Tasks.AshDispatch.Gen do
 
     TODO: Add your plain text email content here.
 
-    Visa detaljer: <%= @source_url %>
+    TODO: Add your plain text link here.
     """
   end
 
@@ -827,8 +822,6 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     <% # Transport: sms %>
 
     TODO: Add your SMS content here (keep it short!)
-
-    <%= @source_url %>
     """
   end
 
@@ -1578,8 +1571,8 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     export interface SocketProviderProps {
       /** User ID for the channel topic. When null, no connection is made. */
       userId: string | null
-      /** URL for fetching the socket token. Defaults to "/api/inbox/socket-token". */
-      tokenUrl?: string
+      /** Async function that returns the socket token string. Called on connect. */
+      getToken?: () => Promise<string | null>
       children: ReactNode
     }
 
@@ -1616,7 +1609,7 @@ defmodule Mix.Tasks.AshDispatch.Gen do
      * </SocketProvider>
      * ```
      */
-    export function SocketProvider({ userId, tokenUrl = '/api/inbox/socket-token', children }: SocketProviderProps) {
+    export function SocketProvider({ userId, getToken, children }: SocketProviderProps) {
       const [isConnected, setIsConnected] = useState(false)
       const socketRef = useRef<Socket | null>(null)
       const channelRef = useRef<Channel | null>(null)
@@ -1661,19 +1654,13 @@ defmodule Mix.Tasks.AshDispatch.Gen do
 
         const connect = async () => {
           try {
-            const response = await fetch(tokenUrl, {
-              headers: {
-                Authorization: `Bearer ${localStorage.getItem('auth_token') ?? ''}`,
-              },
-              credentials: 'include',
-            })
+            if (!getToken) {
+              console.warn('[SocketProvider] No getToken function provided — cannot connect')
+              return
+            }
 
-            if (!mountedRef.current || !response.ok) return
-
-            const data = await response.json()
-            if (!mountedRef.current || !data.success) return
-
-            const token = data.data.token
+            const token = await getToken()
+            if (!mountedRef.current || !token) return
             const socket = new Socket('/socket', { params: { token } })
 
             socket.onError(() => { if (mountedRef.current) setIsConnected(false) })
@@ -1748,7 +1735,7 @@ defmodule Mix.Tasks.AshDispatch.Gen do
           registeredEventsRef.current.clear()
           setIsConnected(false)
         }
-      }, [userId, tokenUrl, setCounter, setCounters])
+      }, [userId, getToken, setCounter, setCounters])
 
       const push = useCallback((event: string, payload: Record<string, unknown>) => {
         channelRef.current?.push(event, payload)
@@ -3045,7 +3032,7 @@ defmodule Mix.Tasks.AshDispatch.Gen do
 
     1. A socket endpoint at `/socket`
     2. A user channel at `user:{userId}`
-    3. An endpoint at `/api/inbox/socket-token` that returns `{ success: true, data: { token: "..." } }`
+    3. A `getToken` function that returns a socket token (e.g., via RPC action)
 
     ## API Reference
 
@@ -3157,7 +3144,7 @@ defmodule Mix.Tasks.AshDispatch.Gen do
           "lib",
           to_string(otp_app),
           "events",
-          "_i18n_catalog.ex"
+          "i18n_catalog.ex"
         ])
 
         # Only write if content changed

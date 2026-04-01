@@ -190,7 +190,7 @@ When `gettext_backend` is set, `mix ash.codegen` automatically generates a Gette
 
 ```bash
 mix ash.codegen "update templates"
-# creates: lib/my_app/events/_i18n_catalog.ex
+# creates: lib/my_app/events/i18n_catalog.ex
 ```
 
 The generated catalog contains `dgettext("notifications", "...")` calls for every content string, enabling `mix gettext.extract` to discover them automatically. No manual catalog maintenance needed.

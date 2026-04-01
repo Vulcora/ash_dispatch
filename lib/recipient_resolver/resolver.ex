@@ -146,6 +146,11 @@ defmodule AshDispatch.RecipientResolver.Resolver do
       value when is_struct(value) ->
         [value]
 
+      # Support bare maps with :id — manual pipeline events pass %{id: user_id}
+      # instead of full User structs (avoids DB lookup on every broadcast)
+      %{id: _} = value ->
+        [value]
+
       _ ->
         []
     end
@@ -163,6 +168,7 @@ defmodule AshDispatch.RecipientResolver.Resolver do
           case get_in_data(context, [key]) do
             nil -> nil
             value when is_struct(value) -> [value]
+            %{id: _} = value -> [value]
             value when is_list(value) -> extract_from_collection(value, extract)
             _ -> nil
           end
@@ -172,6 +178,9 @@ defmodule AshDispatch.RecipientResolver.Resolver do
         extract_from_collection(value, extract)
 
       value when is_struct(value) ->
+        [value]
+
+      %{id: _} = value ->
         [value]
 
       _ ->

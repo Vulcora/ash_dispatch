@@ -1062,14 +1062,25 @@ defmodule AshDispatch.Dispatcher do
       Logger.warning("No :user_module configured in :ash_dispatch config")
       nil
     else
-      # Strategy 1: Check if any value in data IS the user module
-      # Strategy 2: Use Ash introspection to find user via relationships
+      # Strategy 1: Check if any value in data IS the user module struct
       Enum.find_value(data, fn {_key, value} ->
         if is_struct(value) && value.__struct__ == user_module do
           value
         end
       end) ||
-        find_user_via_ash_relationships(data, user_module)
+        # Strategy 2: Use Ash introspection to find user via relationships
+        find_user_via_ash_relationships(data, user_module) ||
+        # Strategy 3: Accept bare map with :id under :user or :actor key
+        # (manual pipeline events pass %{user: %{id: user_id}} without loading the full struct)
+        extract_bare_user_map(data)
+    end
+  end
+
+  defp extract_bare_user_map(data) do
+    case data do
+      %{user: %{id: _} = bare} when not is_struct(bare) -> bare
+      %{actor: %{id: _} = bare} when not is_struct(bare) -> bare
+      _ -> nil
     end
   end
 

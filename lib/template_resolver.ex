@@ -312,7 +312,7 @@ defmodule AshDispatch.TemplateResolver do
         {:error, :template_not_found}
 
       template_content ->
-        render_template_content(template_content, assigns, format)
+        render_template_content(template_content, assigns, format, locale: locale)
     end
   end
 
@@ -327,7 +327,8 @@ defmodule AshDispatch.TemplateResolver do
          {:ok, template_content} <- read_template_from_priv(otp_app, dest_filename) do
       render_template_content(template_content, assigns, format,
         otp_app: otp_app,
-        transport: transport
+        transport: transport,
+        locale: locale
       )
     else
       _ -> {:error, :template_not_found}
@@ -400,7 +401,8 @@ defmodule AshDispatch.TemplateResolver do
 
         render_template_content(template_content, assigns, format,
           otp_app: otp_app,
-          transport: transport
+          transport: transport,
+          locale: locale
         )
 
       :error ->
@@ -476,12 +478,16 @@ defmodule AshDispatch.TemplateResolver do
       raise "Unknown format #{inspect(format)}. Add it to config :ash_dispatch, format_extensions: %{#{format}: \"extension.eex\"}"
   end
 
-  defp render_template_content(template_content, assigns, format, opts \\ []) do
+  defp render_template_content(template_content, assigns, format, opts) do
     # Preprocess HEEx-style attribute syntax to EEx syntax
     preprocessed = preprocess_heex_attributes(template_content)
 
     # Normalize assigns (convert struct to map if needed)
     normalized_assigns = if is_struct(assigns), do: Map.from_struct(assigns), else: assigns
+
+    # Set Gettext locale before rendering so dgettext/t() calls in templates resolve correctly.
+    # This enables single-template-per-event i18n: templates use Gettext instead of per-locale files.
+    set_render_locale(Keyword.get(opts, :locale))
 
     # Render with EEx
     rendered = EEx.eval_string(preprocessed, assigns: normalized_assigns)
@@ -501,6 +507,25 @@ defmodule AshDispatch.TemplateResolver do
       {:error, error}
   end
 
+  # Set Gettext locale for template rendering.
+  # Enables dgettext()/t() calls in email templates to resolve per-recipient locale.
+  # Falls back gracefully if no gettext_backend configured or locale is nil.
+  defp set_render_locale(nil), do: :ok
+
+  defp set_render_locale(locale) when is_binary(locale) do
+    case AshDispatch.Config.gettext_backend() do
+      nil -> :ok
+      backend -> apply(Gettext, :put_locale, [backend, locale])
+    end
+  rescue
+    _ -> :ok
+  end
+
+  defp set_render_locale(locale) when is_atom(locale) and not is_nil(locale),
+    do: set_render_locale(to_string(locale))
+
+  defp set_render_locale(_), do: :ok
+
   # Wrap rendered content in layout if layout exists
   # layout_subdir is an optional subdirectory (e.g., "urgent" -> layouts/urgent/email.html.heex)
   defp wrap_in_layout(content, otp_app, transport, format, assigns, layout_subdir) do
@@ -513,7 +538,7 @@ defmodule AshDispatch.TemplateResolver do
           |> Map.put(:inner_content, content)
           |> Map.put_new(:subject, "")
 
-        # Preprocess and render layout
+        # Preprocess and render layout (locale already set by render_template_content)
         preprocessed = preprocess_heex_attributes(layout_content)
         rendered = EEx.eval_string(preprocessed, assigns: layout_assigns)
 
