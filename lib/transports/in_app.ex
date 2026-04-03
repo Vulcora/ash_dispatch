@@ -89,6 +89,73 @@ defmodule AshDispatch.Transports.InApp do
       {:error, error}
   end
 
+  @doc """
+  Retry a failed in-app delivery directly from a stored receipt.
+
+  In-app delivery is synchronous (DB write + PubSub broadcast), so we
+  re-attempt the Notification.create directly rather than going through Oban.
+
+  Uses the receipt's stored content and idempotency_key to prevent duplicates.
+
+  Returns `:ok` on success or `{:error, reason}` on failure.
+  """
+  def retry_from_receipt(receipt) do
+    user_id = receipt.user_id
+    content = receipt.content || %{}
+
+    if is_nil(user_id) do
+      {:error, :no_user_id}
+    else
+      # Rebuild idempotency key from receipt fields to match original delivery format.
+      # Original format: "event_id:source_id:audience:user_id" or "event_id:audience:user_id"
+      idempotency_key =
+        case receipt do
+          %{source_id: source_id} when is_binary(source_id) and source_id != "" ->
+            "#{receipt.event_id}:#{source_id}:#{receipt.audience}:#{user_id}"
+
+          _ ->
+            "#{receipt.event_id}:#{receipt.audience}:#{user_id}"
+        end
+
+      notification_attrs = %{
+        user_id: user_id,
+        title: get_content(content, :title),
+        message: get_content(content, :message),
+        action_url: get_content(content, :action_url),
+        action_label: get_content(content, :action_label),
+        event_id: receipt.event_id,
+        source: receipt.event_id,
+        type: get_notification_type(content),
+        metadata: get_content(content, :metadata) || %{},
+        idempotency_key: idempotency_key
+      }
+
+      notification_resource = Config.notification_resource()
+
+      case notification_resource
+           |> Ash.Changeset.for_create(:create, notification_attrs)
+           |> Ash.create() do
+        {:ok, notification} ->
+          # Broadcast and mark receipt as sent
+          invalidates = Map.get(content, :invalidates, [])
+          broadcast_notification(notification, invalidates)
+
+          receipt
+          |> Ash.Changeset.for_update(:mark_sent, %{notification_id: notification.id})
+          |> Ash.update(authorize?: false)
+
+          :ok
+
+        {:error, reason} ->
+          Logger.error(
+            "InApp retry failed: receipt_id=#{receipt.id}, reason=#{inspect(reason)}"
+          )
+
+          {:error, reason}
+      end
+    end
+  end
+
   # Private functions
 
   # Create notification for the receipt (one receipt = one recipient now)

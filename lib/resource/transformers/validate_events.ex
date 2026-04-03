@@ -32,7 +32,8 @@ defmodule AshDispatch.Resource.Transformers.ValidateEvents do
 
     with :ok <- validate_unique_names(events, dsl_state),
          :ok <- validate_trigger_actions(events, dsl_state),
-         :ok <- validate_event_configs(events, dsl_state) do
+         :ok <- validate_event_configs(events, dsl_state),
+         :ok <- validate_action_label_requires_url(events, dsl_state) do
       {:ok, dsl_state}
     end
   end
@@ -128,6 +129,41 @@ defmodule AshDispatch.Resource.Transformers.ValidateEvents do
            Events must have either:
            - Inline channel/content configuration, OR
            - A callback module via the `module:` option
+           """
+         )}
+    end
+  end
+
+  # Validate that events with action_label also have action_url
+  defp validate_action_label_requires_url(events, dsl_state) do
+    invalid =
+      Enum.find(events, fn event ->
+        has_in_app =
+          Enum.any?(event.channels, fn
+            ch when is_map(ch) -> ch[:transport] == :in_app
+            ch when is_list(ch) -> Keyword.get(ch, :transport) == :in_app
+          end)
+
+        has_label = (event.content || [])[:action_label] not in [nil, ""]
+        has_url = (event.content || [])[:action_url] not in [nil, ""]
+
+        has_in_app and has_label and not has_url
+      end)
+
+    case invalid do
+      nil ->
+        :ok
+
+      event ->
+        {:error,
+         DslError.exception(
+           module: Transformer.get_persisted(dsl_state, :module),
+           path: [:dispatch],
+           message: """
+           Event #{inspect(event.name)} has action_label but no action_url.
+
+           In-app notifications with action_label must also set action_url
+           so the frontend knows where to navigate when the button is clicked.
            """
          )}
     end

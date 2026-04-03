@@ -15,13 +15,18 @@ defmodule AshDispatch.Changes.EnqueueRetryJob do
   def change(changeset, _opts, _context) do
     Ash.Changeset.after_action(changeset, fn _changeset, receipt ->
       case enqueue_job(receipt) do
-        {:ok, job} ->
-          Logger.info("EnqueueRetryJob: Created Oban job #{job.id} for receipt #{receipt.id}")
+        {:ok, %{id: job_id}} when is_integer(job_id) ->
+          Logger.info("EnqueueRetryJob: Created Oban job #{job_id} for receipt #{receipt.id}")
 
-          # Actually persist the new job ID to the database
+          # Persist the new job ID to the database
           receipt
-          |> Ash.Changeset.for_update(:update, %{oban_job_id: job.id}, authorize?: false)
+          |> Ash.Changeset.for_update(:update, %{oban_job_id: job_id}, authorize?: false)
           |> Ash.update(authorize?: false)
+
+        {:ok, _direct} ->
+          # Direct retry (e.g. in_app) — no Oban job created
+          Logger.info("EnqueueRetryJob: Direct retry for receipt #{receipt.id}")
+          {:ok, receipt}
 
         {:error, reason} ->
           Logger.error(
@@ -38,6 +43,14 @@ defmodule AshDispatch.Changes.EnqueueRetryJob do
     %{receipt_id: receipt.id}
     |> SendEmail.new()
     |> Oban.insert()
+  end
+
+  defp enqueue_job(%{transport: :in_app} = receipt) do
+    # In-app delivery is synchronous — retry directly
+    case AshDispatch.Transports.InApp.retry_from_receipt(receipt) do
+      :ok -> {:ok, %{id: :direct_retry}}
+      error -> error
+    end
   end
 
   defp enqueue_job(%{transport: transport} = receipt) do

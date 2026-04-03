@@ -159,6 +159,14 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
     is_final_retry = next_retry_count >= max_retries
 
     case enqueue_worker(receipt, is_final_retry) do
+      {:ok, :already_handled} ->
+        # Transport handled the full lifecycle (e.g. in_app retry) — no receipt update needed
+        Logger.info(
+          "RetryFailedDeliveries: Retried delivery (direct): receipt_id=#{receipt.id}, event=#{receipt.event_id}, transport=#{receipt.transport}"
+        )
+
+        :ok
+
       {:ok, _job} ->
         # Update receipt: status → :scheduled, increment retry_count, set last_retry_at
         case receipt
@@ -212,6 +220,16 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
     %{receipt_id: receipt.id}
     |> SendEmail.new()
     |> Oban.insert()
+  end
+
+  defp enqueue_worker(%{transport: :in_app} = receipt, _is_final_retry) do
+    # In-app delivery is synchronous — retry directly instead of via Oban.
+    # retry_from_receipt handles the full lifecycle (create notification + mark_sent),
+    # so return :already_handled to skip the caller's receipt status update.
+    case AshDispatch.Transports.InApp.retry_from_receipt(receipt) do
+      :ok -> {:ok, :already_handled}
+      error -> error
+    end
   end
 
   defp enqueue_worker(%{transport: transport} = receipt, _is_final_retry) do
