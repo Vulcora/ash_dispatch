@@ -146,12 +146,26 @@ defmodule AshDispatch.Transports.InApp do
 
           :ok
 
-        {:error, reason} ->
-          Logger.error(
-            "InApp retry failed: receipt_id=#{receipt.id}, reason=#{inspect(reason)}"
-          )
+        {:error, error} ->
+          # Duplicate idempotency key means the notification was already delivered —
+          # treat as success and mark the receipt as sent.
+          if idempotency_conflict?(error) do
+            Logger.debug(
+              "InApp retry: notification already exists (idempotency key match), marking receipt as sent: receipt_id=#{receipt.id}"
+            )
 
-          {:error, reason}
+            receipt
+            |> Ash.Changeset.for_update(:mark_sent, %{})
+            |> Ash.update(authorize?: false)
+
+            :ok
+          else
+            Logger.error(
+              "InApp retry failed: receipt_id=#{receipt.id}, reason=#{inspect(error)}"
+            )
+
+            {:error, error}
+          end
       end
     end
   end
@@ -225,13 +239,27 @@ defmodule AshDispatch.Transports.InApp do
             {:ok, notification}
 
           {:error, error} ->
-            Logger.error("""
-            Failed to create in-app notification:
-            User: #{notification_attrs.user_id}
-            Error: #{inspect(error)}
-            """)
+            # Idempotency conflict means the notification already exists —
+            # treat as success (race condition or duplicate dispatch).
+            if idempotency_conflict?(error) do
+              Logger.debug(
+                "InApp: notification already exists (idempotency key match), treating as success: event=#{context.event_id}, user=#{user_id}"
+              )
 
-            {:error, error}
+              # Look up existing notification to link to receipt
+              case find_by_idempotency_key(notification_resource, idempotency_key) do
+                {:ok, existing} -> {:ok, existing}
+                _ -> {:ok, :already_exists}
+              end
+            else
+              Logger.error("""
+              Failed to create in-app notification:
+              User: #{notification_attrs.user_id}
+              Error: #{inspect(error)}
+              """)
+
+              {:error, error}
+            end
         end
     end
   end
@@ -239,9 +267,16 @@ defmodule AshDispatch.Transports.InApp do
   # Update receipt with notification_id and mark as sent
   defp update_receipt_with_notification(receipt, result) do
     case result do
-      {:ok, notification} ->
+      {:ok, %{id: notification_id}} ->
         receipt
-        |> Ash.Changeset.for_update(:mark_sent, %{notification_id: notification.id})
+        |> Ash.Changeset.for_update(:mark_sent, %{notification_id: notification_id})
+        |> Ash.update!()
+
+      {:ok, :already_exists} ->
+        # Idempotency conflict — notification exists but we couldn't look it up.
+        # Mark as sent without linking notification_id.
+        receipt
+        |> Ash.Changeset.for_update(:mark_sent, %{})
         |> Ash.update!()
 
       {:error, :no_user_id} ->
@@ -314,4 +349,50 @@ defmodule AshDispatch.Transports.InApp do
       )
     end
   end
+
+  # Look up an existing notification by idempotency key
+  defp find_by_idempotency_key(notification_resource, key) do
+    require Ash.Query
+
+    notification_resource
+    |> Ash.Query.filter(idempotency_key == ^key)
+    |> Ash.Query.limit(1)
+    |> Ash.read(authorize?: false)
+    |> case do
+      {:ok, [notification]} -> {:ok, notification}
+      _ -> {:error, :not_found}
+    end
+  end
+
+  # Check if an Ash error contains a unique constraint violation on idempotency_key.
+  # Handles both direct error structs and nested Splode error wrappers.
+  defp idempotency_conflict?(error) do
+    errors = extract_errors(error)
+
+    Enum.any?(errors, fn
+      %{field: :idempotency_key, message: "has already been taken"} ->
+        true
+
+      %{private_vars: vars} when is_list(vars) ->
+        constraint = Keyword.get(vars, :constraint, "")
+        String.contains?(to_string(constraint), "idempotency")
+
+      error_item ->
+        # Fallback: check string representation for idempotency constraint violations
+        error_str = inspect(error_item)
+
+        String.contains?(error_str, "idempotency_key") and
+          String.contains?(error_str, "has already been taken")
+    end)
+  end
+
+  # Extract flat list of errors from potentially nested Ash/Splode error structures
+  defp extract_errors(%{errors: errors}) when is_list(errors) do
+    Enum.flat_map(errors, fn
+      %{errors: nested} when is_list(nested) -> extract_errors(%{errors: nested})
+      error -> [error]
+    end)
+  end
+
+  defp extract_errors(error), do: [error]
 end
