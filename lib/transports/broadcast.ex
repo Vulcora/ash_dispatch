@@ -8,6 +8,11 @@ defmodule AshDispatch.Transports.Broadcast do
 
   Receipt is created (audit trail) and immediately marked as sent.
 
+  ## Features
+
+  - `invalidates` — event-declared frontend cache keys included in payload
+  - `throttle_ms` — per-user+event rate limiting via ETS (metadata option)
+
   ## Channel Config
 
       [transport: :broadcast, audience: :user]
@@ -22,6 +27,9 @@ defmodule AshDispatch.Transports.Broadcast do
 
   require Logger
 
+  # ETS table for per-user+event throttle tracking. Created lazily.
+  @throttle_table :ash_dispatch_broadcast_throttle
+
   @doc "Delivers a broadcast event to user or admin PubSub channel."
   def deliver(receipt, context, channel, event_config) do
     pubsub = Config.pubsub_module()
@@ -30,28 +38,12 @@ defmodule AshDispatch.Transports.Broadcast do
       Logger.warning("Broadcast transport: no pubsub_module configured, skipping")
       {:ok, maybe_mark_skipped(receipt, "no_pubsub_module")}
     else
-      payload = build_payload(receipt, context, event_config)
-      event_name = derive_event_name(context.event_id)
+      throttle_ms = get_in(event_config, [:metadata, :throttle_ms])
 
-      result =
-        case channel.audience do
-          :admin ->
-            admin_topic = Config.admin_channel_topic()
-            pubsub.broadcast(admin_topic, event_name, payload)
-
-          _ ->
-            if receipt.user_id do
-              topic = "#{Config.channel_topic()}:#{receipt.user_id}"
-              pubsub.broadcast(topic, event_name, payload)
-            else
-              :no_user_id
-            end
-        end
-
-      case result do
-        :ok -> {:ok, maybe_mark_sent(receipt)}
-        :no_user_id -> {:ok, maybe_mark_skipped(receipt, "no_user_id")}
-        {:error, reason} -> {:ok, maybe_mark_failed(receipt, inspect(reason))}
+      if throttle_ms && throttled?(context.event_id, receipt.user_id, throttle_ms) do
+        {:ok, maybe_mark_skipped(receipt, "throttled")}
+      else
+        do_deliver(receipt, context, channel, event_config, pubsub)
       end
     end
   rescue
@@ -60,35 +52,102 @@ defmodule AshDispatch.Transports.Broadcast do
       {:error, e}
   end
 
+  defp do_deliver(receipt, context, channel, event_config, pubsub) do
+    payload = build_payload(receipt, context, event_config)
+    event_name = derive_event_name(context.event_id)
+
+    result =
+      case channel.audience do
+        :admin ->
+          admin_topic = Config.admin_channel_topic()
+          pubsub.broadcast(admin_topic, event_name, payload)
+
+        _ ->
+          if receipt.user_id do
+            topic = "#{Config.channel_topic()}:#{receipt.user_id}"
+            pubsub.broadcast(topic, event_name, payload)
+          else
+            :no_user_id
+          end
+      end
+
+    case result do
+      :ok -> {:ok, maybe_mark_sent(receipt)}
+      :no_user_id -> {:ok, maybe_mark_skipped(receipt, "no_user_id")}
+      {:error, reason} -> {:ok, maybe_mark_failed(receipt, inspect(reason))}
+    end
+  end
+
   defp build_payload(receipt, context, event_config) do
     base = Map.merge(context.data || %{}, context.variables || %{})
     content = receipt.content || %{}
     invalidates = event_config[:invalidates] || []
+    metadata = event_config[:metadata] || []
+
+    # Include toast rendering hints from metadata if present
+    toast_fields =
+      metadata
+      |> Keyword.take([:toast_variant, :toast_duration, :toast_sound])
+      |> Enum.into(%{})
 
     base
     |> maybe_put(:title, get_content(content, :title))
     |> maybe_put(:message, get_content(content, :message))
     |> maybe_put(:invalidates, if(invalidates != [], do: invalidates))
+    |> maybe_put(:toast, if(toast_fields != %{}, do: toast_fields))
     |> Map.put(:timestamp, (context.now || DateTime.utc_now()) |> DateTime.to_iso8601())
   end
+
+  # ── Throttle ──────────────────────────────────────────────────
+
+  defp throttled?(event_id, user_id, throttle_ms) do
+    ensure_throttle_table()
+    key = {event_id, user_id}
+    now = System.monotonic_time(:millisecond)
+
+    case :ets.lookup(@throttle_table, key) do
+      [{^key, last_sent}] when now - last_sent < throttle_ms ->
+        true
+
+      _ ->
+        :ets.insert(@throttle_table, {key, now})
+        false
+    end
+  end
+
+  defp ensure_throttle_table do
+    case :ets.whereis(@throttle_table) do
+      :undefined ->
+        :ets.new(@throttle_table, [:set, :public, :named_table, read_concurrency: true])
+
+      _ ->
+        :ok
+    end
+  rescue
+    ArgumentError -> :ok
+  end
+
+  # ── Helpers ───────────────────────────────────────────────────
 
   # "pipeline_events.chat_chunk" → "chat_chunk"
   defp derive_event_name(event_id) do
     event_id |> to_string() |> String.split(".") |> List.last()
   end
 
-  # Handle both real receipts (Ash structs) and pseudo-receipts (plain maps)
   defp maybe_mark_sent(%{id: nil} = receipt), do: receipt
+
   defp maybe_mark_sent(receipt) do
     receipt |> Ash.Changeset.for_update(:mark_sent, %{}) |> Ash.update!()
   end
 
   defp maybe_mark_skipped(%{id: nil} = receipt, _reason), do: receipt
+
   defp maybe_mark_skipped(receipt, reason) do
     receipt |> Ash.Changeset.for_update(:skip, %{error_message: reason}) |> Ash.update!()
   end
 
   defp maybe_mark_failed(%{id: nil} = receipt, _reason), do: receipt
+
   defp maybe_mark_failed(receipt, reason) do
     receipt |> Ash.Changeset.for_update(:mark_failed, %{error_message: reason}) |> Ash.update!()
   end
