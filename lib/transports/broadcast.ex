@@ -23,14 +23,14 @@ defmodule AshDispatch.Transports.Broadcast do
   require Logger
 
   @doc "Delivers a broadcast event to user or admin PubSub channel."
-  def deliver(receipt, context, channel, _event_config) do
+  def deliver(receipt, context, channel, event_config) do
     pubsub = Config.pubsub_module()
 
     if is_nil(pubsub) do
       Logger.warning("Broadcast transport: no pubsub_module configured, skipping")
       {:ok, maybe_mark_skipped(receipt, "no_pubsub_module")}
     else
-      payload = build_payload(receipt, context)
+      payload = build_payload(receipt, context, event_config)
       event_name = derive_event_name(context.event_id)
 
       result =
@@ -60,13 +60,15 @@ defmodule AshDispatch.Transports.Broadcast do
       {:error, e}
   end
 
-  defp build_payload(receipt, context) do
+  defp build_payload(receipt, context, event_config) do
     base = Map.merge(context.data || %{}, context.variables || %{})
     content = receipt.content || %{}
+    invalidates = event_config[:invalidates] || []
 
     base
     |> maybe_put(:title, get_content(content, :title))
     |> maybe_put(:message, get_content(content, :message))
+    |> maybe_put(:invalidates, if(invalidates != [], do: invalidates))
     |> Map.put(:timestamp, (context.now || DateTime.utc_now()) |> DateTime.to_iso8601())
   end
 
