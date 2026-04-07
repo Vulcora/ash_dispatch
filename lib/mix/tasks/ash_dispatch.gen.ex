@@ -989,8 +989,63 @@ defmodule Mix.Tasks.AshDispatch.Gen do
 
     domain = event.domain || "unknown"
 
-    ~s(  "#{event.event_id}": {\n    domain: "#{domain}",\n    channels: [#{channels_json}],\n  })
+    # Optional fields — only included when non-empty
+    invalidates = event[:invalidates] || []
+    metadata = normalize_metadata(event[:metadata])
+
+    extra_fields = []
+
+    extra_fields =
+      if metadata != %{} do
+        metadata_json = format_ts_object(metadata)
+        extra_fields ++ [~s(    metadata: #{metadata_json})]
+      else
+        extra_fields
+      end
+
+    extra_fields =
+      if invalidates != [] do
+        inv_json = invalidates |> Enum.map(&~s("#{&1}")) |> Enum.join(", ")
+        extra_fields ++ [~s(    invalidates: [#{inv_json}])]
+      else
+        extra_fields
+      end
+
+    trailing =
+      case extra_fields do
+        [] -> ""
+        fields -> ",\n" <> Enum.join(fields, ",\n")
+      end
+
+    ~s(  "#{event.event_id}": {\n    domain: "#{domain}",\n    channels: [#{channels_json}]#{trailing},\n  })
   end
+
+  defp normalize_metadata(nil), do: %{}
+  defp normalize_metadata(metadata) when is_list(metadata), do: Map.new(metadata)
+  defp normalize_metadata(metadata) when is_map(metadata), do: metadata
+
+  defp format_ts_object(map) when map_size(map) == 0, do: "{}"
+
+  defp format_ts_object(map) do
+    fields =
+      map
+      |> Enum.sort_by(fn {k, _v} -> to_string(k) end)
+      |> Enum.map(fn {key, value} ->
+        ts_key = to_string(key) |> String.replace("-", "_")
+        ts_val = format_ts_value(value)
+        ~s(#{ts_key}: #{ts_val})
+      end)
+      |> Enum.join(", ")
+
+    "{ #{fields} }"
+  end
+
+  defp format_ts_value(v) when is_atom(v), do: ~s("#{v}")
+  defp format_ts_value(v) when is_boolean(v), do: to_string(v)
+  defp format_ts_value(v) when is_integer(v), do: to_string(v)
+  defp format_ts_value(v) when is_float(v), do: to_string(v)
+  defp format_ts_value(v) when is_binary(v), do: ~s("#{v}")
+  defp format_ts_value(v), do: ~s("#{inspect(v)}")
 
   # ============================================================================
   # TypeScript Types (Counters) Generation

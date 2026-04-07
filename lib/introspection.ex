@@ -302,6 +302,7 @@ defmodule AshDispatch.Introspection do
       channels: normalize_channels(event.channels || [], event_locales),
       content: event.content,
       metadata: event.metadata,
+      invalidates: event.invalidates || [],
       trigger_on: event.trigger_on,
       data_key: event.data_key,
       locales: event_locales,
