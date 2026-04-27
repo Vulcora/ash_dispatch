@@ -1,37 +1,23 @@
 defmodule AshDispatch.PriorityTest do
   use ExUnit.Case, async: false
 
-  alias AshDispatch.Changes.DispatchEvent
+  alias AshDispatch.Notifier.Info
 
   describe "priority DSL field" do
     test "default priority is :standard" do
-      # Ticket.created has no explicit priority
-      action = Ash.Resource.Info.action(AshDispatch.Test.Ticket, :create)
+      # Ticket.created has no explicit priority. Read the persisted
+      # event_config via Notifier.Info (post-tx-semantics retrofit;
+      # see commit 79dc5db) instead of the legacy injected-change shape.
+      [event_config] = Info.dispatch_events_for(AshDispatch.Test.Ticket, :create)
 
-      dispatch_change =
-        Enum.find(action.changes, fn change ->
-          match?(%Ash.Resource.Change{change: {DispatchEvent, _}}, change)
-        end)
-
-      {DispatchEvent, opts} = dispatch_change.change
-      event_config = Keyword.get(opts, :event_config)
-
-      assert event_config.priority == :standard
+      assert event_config.event_config.priority == :standard
     end
 
     test "explicit priority is preserved in event_config" do
-      # Ticket.escalated has priority: :urgent
-      action = Ash.Resource.Info.action(AshDispatch.Test.Ticket, :close)
+      # Ticket.escalated has priority: :urgent (triggered_on :close).
+      [event_config] = Info.dispatch_events_for(AshDispatch.Test.Ticket, :close)
 
-      dispatch_change =
-        Enum.find(action.changes, fn change ->
-          match?(%Ash.Resource.Change{change: {DispatchEvent, _}}, change)
-        end)
-
-      {DispatchEvent, opts} = dispatch_change.change
-      event_config = Keyword.get(opts, :event_config)
-
-      assert event_config.priority == :urgent
+      assert event_config.event_config.priority == :urgent
     end
   end
 
