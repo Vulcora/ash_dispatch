@@ -99,6 +99,21 @@ defmodule AshDispatch.Changes.BroadcastCounterUpdate do
   - Broadcasting to connected clients
 
   This change just declares WHAT to broadcast and to WHOM.
+
+  ## Transaction semantics — same caveat as DispatchEvent
+
+  This change registers via `Ash.Changeset.after_action/2`, which
+  fires **synchronously inside the action's lifecycle, BEFORE any
+  surrounding `Ash.transaction/2` decides commit vs rollback**.
+
+  When wrapping a counter-emitting action in `Ash.transaction`, a
+  rollback after the counter has already broadcast leaves
+  subscribers with a phantom increment for a row that no longer
+  exists. Self-correcting on the next read query, but worth
+  acknowledging in tx-wrapped patterns.
+
+  See `AshDispatch.Changes.DispatchEvent` for the full caveat and
+  the future tx-aware retrofit plan (route through `Ash.Notifier`).
   """
 
   use Ash.Resource.Change

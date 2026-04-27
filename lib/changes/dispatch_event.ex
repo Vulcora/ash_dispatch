@@ -36,6 +36,32 @@ defmodule AshDispatch.Changes.DispatchEvent do
   - `load` - List of relationships to preload (optional)
   - `event_config` - Map for DSL-based events (optional for mode 1)
   - `data_key` - Atom key for standalone modules (required for mode 2)
+
+  ## Transaction semantics — important caveat
+
+  This change registers via `Ash.Changeset.after_action/2`, which
+  fires **synchronously inside the action's lifecycle, BEFORE any
+  surrounding `Ash.transaction/2` decides commit vs rollback**.
+
+  This is in contrast to `Ash.Notifier`, whose notifications are
+  accumulated in the process dictionary and fired post-commit by
+  `Ash.transaction` (see `Ash` module ~line 3935). On rollback,
+  Ash.Notifier notifications are dropped; AshDispatch dispatches
+  are NOT — they have already broadcast.
+
+  **Implications when wrapping in `Ash.transaction`:**
+  - Counter broadcasts may emit phantom increments for rolled-back
+    rows. Self-correcting on next read query (low severity).
+  - Audit-load-bearing dispatch events (e.g. permission
+    promotions, security-relevant events) may emit phantom audit
+    entries on rollback (high severity).
+
+  **Recommendation until this module is retrofitted to use
+  `Ash.Notifier`:** avoid wrapping audit-load-bearing
+  dispatch-emitting actions in `Ash.transaction`. For atomicity,
+  prefer saga-style compensating actions (manual destroy on
+  failure) so rollback emits its own `:destroyed` event that
+  pairs with the spurious `:created`.
   """
 
   use Ash.Resource.Change
