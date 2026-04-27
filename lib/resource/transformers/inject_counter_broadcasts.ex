@@ -1,57 +1,35 @@
 defmodule AshDispatch.Resource.Transformers.InjectCounterBroadcasts do
   @moduledoc """
-  Transformer that automatically injects counter broadcasting into actions.
+  Transformer that registers `AshDispatch.Notifier` and persists
+  per-action counter-broadcast config for resources using the
+  `counters` DSL block.
 
-  For each counter defined in the `counters` section, this transformer finds the
-  corresponding action(s) specified by `trigger_on` and adds a counter broadcasting
-  change to update counters after the action completes.
+  ## Pattern (post-tx-semantics retrofit)
 
-  ## Example
+  Pre-retrofit, this transformer injected
+  `change AshDispatch.Changes.BroadcastCounterUpdate` per action. The
+  change fired via `Ash.Changeset.after_action/2` synchronously inside
+  the action's transaction BEFORE commit/rollback, allowing phantom
+  counter increments to broadcast for rolled-back rows. Post-retrofit,
+  counter logic runs from `AshDispatch.Notifier`'s post-commit
+  notification path (or is dropped on error). See
+  `AshDispatch.Notifier` moduledoc for the architectural rationale.
 
-  Given this resource:
+  ## Persisted state
 
-      counters do
-        counter :pending_orders do
-          trigger_on [:create, :accept, :cancel]
-          counter_names [:pending_orders]
-          invalidates ["orders"]
-        end
-      end
-
-  The transformer will inject:
-
-      create :create do
-        # ... existing action logic ...
-
-        # AUTO-INJECTED:
-        change {AshDispatch.Changes.BroadcastCounterUpdate,
-                counter_names: [:pending_orders],
-                invalidates: ["orders"]}
-      end
-
-      update :accept do
-        # ... existing action logic ...
-
-        # AUTO-INJECTED:
-        change {AshDispatch.Changes.BroadcastCounterUpdate,
-                counter_names: [:pending_orders],
-                invalidates: ["orders"]}
-      end
-
-  ## Multiple Actions
-
-  If `trigger_on` is a list, the change is injected into all specified actions.
-
-  ## Counter Broadcast Integration
-
-  The injected change broadcasts counters using the configured `counter_broadcast_fn`
-  function.
+  - `:ash_dispatch_counter_broadcasts` — NEW;
+    `%{action_name => [counter_config_keyword_list, ...]}` for the
+    notifier to consume per-action.
+  - `:simple_notifiers` — adds `AshDispatch.Notifier` (idempotent if
+    `InjectDispatchChanges` already registered it).
   """
 
   use Spark.Dsl.Transformer
 
   alias Spark.Dsl.Transformer
   require Logger
+
+  @notifier AshDispatch.Notifier
 
   # Run after InjectDispatchChanges if it exists
   @impl true
@@ -62,103 +40,72 @@ defmodule AshDispatch.Resource.Transformers.InjectCounterBroadcasts do
 
   @impl true
   def transform(dsl_state) do
-    # Get all counters from the counters section
     counters = Transformer.get_entities(dsl_state, [:counters])
 
     if Enum.empty?(counters) do
-      # No counters defined, nothing to do
       {:ok, dsl_state}
     else
-      # For each counter, inject the broadcast change into the triggered action(s)
+      counter_broadcasts = build_counter_broadcasts(counters, dsl_state)
+
       dsl_state =
-        Enum.reduce(counters, dsl_state, fn counter, acc_dsl_state ->
-          inject_counter_broadcast(acc_dsl_state, counter)
-        end)
+        dsl_state
+        |> Transformer.persist(:ash_dispatch_counter_broadcasts, counter_broadcasts)
+        |> ensure_notifier_registered()
 
       {:ok, dsl_state}
     end
   end
 
-  # Private helpers
+  # ── Build per-action counter-config map ─────────────────────────
 
-  defp inject_counter_broadcast(dsl_state, counter) do
-    # Normalize trigger_on to always be a list
-    action_names =
-      case counter.trigger_on do
-        name when is_atom(name) -> [name]
-        names when is_list(names) -> names
-      end
+  # Same shape as the prior `change_opts` keyword list — kept as
+  # keyword list (not map) because `AshDispatch.Notifier.CounterHandler`
+  # uses Keyword.fetch!/get for fields like :counter_name, :resource,
+  # :query_filter, etc. Preserving the keyword shape avoids a translation
+  # layer and matches the prior change-injection contract verbatim.
+  defp build_counter_broadcasts(counters, dsl_state) do
+    counters
+    |> Enum.flat_map(fn counter ->
+      action_names =
+        case counter.trigger_on do
+          name when is_atom(name) -> [name]
+          names when is_list(names) -> names
+        end
 
-    # Inject counter broadcast change into each action
-    Enum.reduce(action_names, dsl_state, fn action_name, acc_dsl_state ->
-      inject_into_action(acc_dsl_state, action_name, counter)
+      counter_config = build_counter_config(counter, dsl_state)
+      Enum.map(action_names, fn action_name -> {action_name, counter_config} end)
     end)
+    |> Enum.group_by(
+      fn {action_name, _config} -> action_name end,
+      fn {_action_name, config} -> config end
+    )
   end
 
-  defp inject_into_action(dsl_state, action_name, counter) do
-    # Get the resource module from DSL state if not specified in counter
+  defp build_counter_config(counter, dsl_state) do
     resource = counter.resource || Transformer.get_persisted(dsl_state, :module)
-
-    # Default counter_name to the counter identifier if not explicitly set
     counter_name = counter.counter_name || counter.name
 
-    # Build the change options - declarative config with query details
-    change_opts =
-      [
-        counter_name: counter_name,
-        resource: resource,
-        query_filter: counter.query_filter,
-        audience: counter.audience,
-        invalidates: counter.invalidates,
-        authorize?: counter.authorize?
-      ]
-      |> maybe_add_user_id_path(counter.user_id_path)
-      |> maybe_add_scope(counter.scope)
-      |> maybe_add_filter_by_record(counter.filter_by_record)
+    [
+      counter_name: counter_name,
+      resource: resource,
+      query_filter: counter.query_filter,
+      audience: counter.audience,
+      invalidates: counter.invalidates,
+      authorize?: counter.authorize?
+    ]
+    |> maybe_add_user_id_path(counter.user_id_path)
+    |> maybe_add_scope(counter.scope)
+    |> maybe_add_filter_by_record(counter.filter_by_record)
+  end
 
-    # Find the action and add the change
-    case find_action(dsl_state, action_name) do
-      nil ->
-        # Action not found - log warning but don't fail
-        # (similar to dispatch events, validation happens elsewhere)
-        Logger.warning(
-          "[InjectCounterBroadcasts] Counter #{counter.name} references unknown action #{action_name}"
-        )
+  defp ensure_notifier_registered(dsl_state) do
+    existing = Transformer.get_persisted(dsl_state, :simple_notifiers) || []
 
-        dsl_state
-
-      action ->
-        # Add the BroadcastCounterUpdate change to the action
-        add_change_to_action(dsl_state, action, change_opts)
+    if @notifier in existing do
+      dsl_state
+    else
+      Transformer.persist(dsl_state, :simple_notifiers, [@notifier | existing])
     end
-  end
-
-  defp find_action(dsl_state, action_name) do
-    dsl_state
-    |> Transformer.get_entities([:actions])
-    |> Enum.find(fn action -> action.name == action_name end)
-  end
-
-  defp add_change_to_action(dsl_state, action, change_opts) do
-    # Build the change struct (Ash expects %Ash.Resource.Change{})
-    change = %Ash.Resource.Change{
-      change: {AshDispatch.Changes.BroadcastCounterUpdate, change_opts},
-      on: nil,
-      only_when_valid?: false,
-      description: "Auto-injected counter broadcaster",
-      where: [],
-      always_atomic?: false,
-      __spark_metadata__: nil
-    }
-
-    # Add the change to the action's changes list
-    existing_changes = Map.get(action, :changes, [])
-    updated_action = Map.put(action, :changes, existing_changes ++ [change])
-
-    # Replace this specific action in the DSL state
-    Transformer.replace_entity(dsl_state, [:actions], updated_action, fn existing_action ->
-      existing_action.name == action.name
-    end)
   end
 
   defp maybe_add_user_id_path(opts, nil), do: opts
