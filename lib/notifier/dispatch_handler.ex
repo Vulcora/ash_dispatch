@@ -23,6 +23,7 @@ defmodule AshDispatch.Notifier.DispatchHandler do
   """
 
   alias AshDispatch.{ChannelResolver, Config, Context, Dispatcher, EventResolver}
+  alias AshDispatch.Helpers.RecordReader
 
   require Logger
 
@@ -233,15 +234,20 @@ defmodule AshDispatch.Notifier.DispatchHandler do
   end
 
   defp extract_locale_from_record(record, locale_from, default_locale) do
+    # `RecordReader.safe_get/2` treats select-narrowed (`%Ash.NotLoaded{}`)
+    # fields as nil so the cond falls through to the next candidate rather
+    # than returning the sentinel. `Map.has_key?` checks whether the field
+    # exists on the struct at all (covers resources that don't define
+    # `:visitor_locale` or `:locale`).
     cond do
-      locale_from && Map.has_key?(record, locale_from) && Map.get(record, locale_from) ->
-        Map.get(record, locale_from)
+      locale_from && Map.has_key?(record, locale_from) && RecordReader.safe_get(record, locale_from) ->
+        RecordReader.safe_get(record, locale_from)
 
-      Map.has_key?(record, :visitor_locale) && record.visitor_locale ->
-        record.visitor_locale
+      Map.has_key?(record, :visitor_locale) && RecordReader.safe_get(record, :visitor_locale) ->
+        RecordReader.safe_get(record, :visitor_locale)
 
-      Map.has_key?(record, :locale) && record.locale ->
-        record.locale
+      Map.has_key?(record, :locale) && RecordReader.safe_get(record, :locale) ->
+        RecordReader.safe_get(record, :locale)
 
       true ->
         default_locale

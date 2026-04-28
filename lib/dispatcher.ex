@@ -31,6 +31,7 @@ defmodule AshDispatch.Dispatcher do
   alias AshDispatch.Naming
   alias AshDispatch.Transports
   alias AshDispatch.Event.RecipientExtractor
+  alias AshDispatch.Helpers.RecordReader
 
   require Logger
 
@@ -1241,7 +1242,7 @@ defmodule AshDispatch.Dispatcher do
 
     case Map.get(context.data, resource_key) do
       record when is_map(record) ->
-        Map.get(record, locale_field) || context.locale
+        RecordReader.safe_get(record, locale_field) || context.locale
 
       _ ->
         context.locale

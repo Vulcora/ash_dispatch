@@ -380,7 +380,28 @@ defmodule AshDispatch.Config do
   @doc """
   The PubSub module for broadcasting notifications.
 
-  Used by in-app transport to broadcast new notifications to user channels.
+  ## Contract
+
+  Must be an **endpoint-shaped** module exposing both:
+
+  - `subscribe(topic)` — for server-side consumers (e.g.
+    `Mosis.Dispatch.Subscriber` or any GenServer that reacts to
+    AshDispatch broadcasts in-process)
+  - `broadcast(topic, event, payload)` — used by
+    `AshDispatch.Transports.Broadcast` to publish to user / admin
+    channels and by `Transports.InApp` for new-notification pushes
+
+  Phoenix endpoints generate both functions automatically — set this
+  to your application's endpoint module:
+
+      config :ash_dispatch, pubsub_module: MyAppWeb.Endpoint
+
+  **Do NOT set this to a bare `Phoenix.PubSub` registered name** (e.g.
+  `MyApp.PubSub`). Those expose `Phoenix.PubSub.subscribe/2` (arity 2)
+  and `Phoenix.PubSub.broadcast/3` as functions on the `Phoenix.PubSub`
+  module itself, not on the registered-name atom — and consumers that
+  call `pubsub.subscribe(topic)` or `pubsub.broadcast(topic, …)`
+  directly would fail with `UndefinedFunctionError`.
   """
   @spec pubsub_module() :: module() | nil
   def pubsub_module do

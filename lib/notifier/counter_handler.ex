@@ -25,6 +25,7 @@ defmodule AshDispatch.Notifier.CounterHandler do
   """
 
   alias AshDispatch.Config
+  alias AshDispatch.Helpers.RecordReader
   alias AshDispatch.Helpers.ResourceIntrospection
 
   require Ash.Query
@@ -150,7 +151,7 @@ defmodule AshDispatch.Notifier.CounterHandler do
             (relationship_name && String.to_atom("#{relationship_name}_id")) ||
             :user_id
 
-        Map.get(record, user_id_field)
+        RecordReader.safe_get(record, user_id_field)
 
       path when is_list(path) ->
         case load_and_traverse_path(record, path) do
@@ -180,10 +181,10 @@ defmodule AshDispatch.Notifier.CounterHandler do
     end
   end
 
-  defp get_nested_value(record, [field]), do: Map.get(record, field)
+  defp get_nested_value(record, [field]), do: RecordReader.safe_get(record, field)
 
   defp get_nested_value(record, [field | rest]) do
-    case Map.get(record, field) do
+    case RecordReader.safe_get(record, field) do
       nil -> nil
       nested_record -> get_nested_value(nested_record, rest)
     end
@@ -239,7 +240,7 @@ defmodule AshDispatch.Notifier.CounterHandler do
     record_field = get_config_value(filter_config, :record_field, :id)
 
     if filter_field do
-      filter_value = Map.get(record, record_field)
+      filter_value = RecordReader.safe_get(record, record_field)
 
       if filter_value do
         import Ash.Query

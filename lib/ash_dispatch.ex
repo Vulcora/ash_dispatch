@@ -20,6 +20,9 @@ defmodule AshDispatch do
         repo: MyApp.Repo,
         mailer: MyApp.Mailer,
         endpoint: MyAppWeb.Endpoint,
+        # Must be endpoint-shaped (subscribe/1 + broadcast/3); see
+        # `AshDispatch.Config.pubsub_module/0` for the contract. Do NOT
+        # use a bare `Phoenix.PubSub` registered name like `MyApp.PubSub`.
         pubsub_module: MyAppWeb.Endpoint,
         user_resource: MyApp.Accounts.User,
         user_domain: MyApp.Accounts
