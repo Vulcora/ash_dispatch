@@ -271,8 +271,8 @@ defmodule AshDispatch.Notifier.DispatchHandler do
 
   defp get_base_url do
     cond do
-      endpoint = Config.endpoint() ->
-        endpoint.url()
+      url = endpoint_url() ->
+        url
 
       host = System.get_env("PHX_HOST") ->
         scheme = System.get_env("PHX_SCHEME", "https")
@@ -289,6 +289,33 @@ defmodule AshDispatch.Notifier.DispatchHandler do
 
       true ->
         "http://localhost:4000"
+    end
+  end
+
+  # Defensive wrapper around `endpoint.url/0`. The Phoenix endpoint
+  # caches its config in `:persistent_term`; when the endpoint module
+  # is configured (e.g. via `config :ash_dispatch, endpoint: …`) but
+  # `Endpoint.start_link/1` has not been called (mix-task BEAM,
+  # release tasks, retrospective harnesses), `Phoenix.Config.cache/3`
+  # raises `RuntimeError: could not find persistent term for endpoint
+  # … Make sure your endpoint is started`.
+  #
+  # Returning nil here lets the cond in `get_base_url/0` fall through
+  # to PHX_HOST / Config.base_url() / localhost without surfacing the
+  # raise as an [error] log on every dispatched event. The dispatch
+  # itself was already non-fatal (the outer rescue swallowed it), but
+  # the noise polluted every retrospective stdout.
+  defp endpoint_url do
+    case Config.endpoint() do
+      nil ->
+        nil
+
+      endpoint ->
+        try do
+          endpoint.url()
+        rescue
+          _ -> nil
+        end
     end
   end
 
