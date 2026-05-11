@@ -7,11 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-05-12
+
 ### Changed (substrate retrofit — tx-semantics)
 - **DispatchEvent and BroadcastCounterUpdate now route through `Ash.Notifier`**, not `Ash.Changeset.after_action/2`. Pre-retrofit, these changes fired synchronously inside the action's transaction BEFORE commit/rollback, allowing phantom dispatches and counter broadcasts when a wrapping `Ash.transaction/2` rolled back. Post-retrofit, work runs in `Ash.Notifier`'s commit-deferred firing path and is dropped on rollback (see Ash's `transaction/2` defer-and-fire-or-drop semantics). New shape: single `AshDispatch.Notifier` module + `AshDispatch.Notifier.Info` Spark Info reader; per-action config persisted into `dsl_state` by the `InjectDispatchChanges` and `InjectCounterBroadcasts` transformers and read at runtime by the notifier. Mirrors `Ash.Notifier.PubSub`'s canonical pattern.
 - **Behaviour fix: receipt creation is now post-commit only**. `DeliveryReceipt` rows previously could land for events whose triggering action subsequently rolled back. Post-retrofit they only land for actually-committed actions. Orphan receipts on rollback were a bug, not a feature.
 - **Removed `lib/changes/dispatch_event.ex` and `lib/changes/broadcast_counter_update.ex`** (845 LOC). Their orchestration logic moved to `lib/notifier/dispatch_handler.ex` and `lib/notifier/counter_handler.ex` respectively, exposed as public entry points the notifier calls.
 - **Canary regression net** added at `test/notifier_tx_semantics_test.exs` — two tests (`refute_receive` after force-rollback via raise, `refute_receive` inside the txn before commit) that lock in the contract going forward.
+- **DeliveryReceipt**: allow `:failed → :sent` transition for retry-after-failure paths. Previously the receipt was stuck in `:failed` even after a successful re-send.
+- **Broadcast transport**: drop per-event log warning when `pubsub_module: nil` (documented passive-shell posture); consumers wanting a presence check should read `Config.pubsub_module()` once at app boot.
 
 ### Added
 - Initial release of AshDispatch
@@ -44,5 +48,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DeliveryReceipt and Notification resources
 - Documentation structure with ex_doc
 
-[Unreleased]: https://github.com/Vulcora/ash_dispatch/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Vulcora/ash_dispatch/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Vulcora/ash_dispatch/compare/v0.1.0...v0.4.0
 [0.1.0]: https://github.com/Vulcora/ash_dispatch/releases/tag/v0.1.0
