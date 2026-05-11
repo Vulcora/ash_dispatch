@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-05-12
+
+### Added
+- **`:table` option on `Notification.Base` and `DeliveryReceipt.Base`**. Lets
+  consumer apps override the Postgres table name when their app already owns
+  `notifications` / `delivery_receipts` for a legacy notification system and
+  ash_dispatch needs to coexist rather than collide. Defaults preserve current
+  behavior (`"notifications"` / `"delivery_receipts"`), so existing consumers
+  upgrade transparently.
+
+  Example:
+
+      defmodule MyApp.Dispatch.Notification do
+        use AshDispatch.Resources.Notification.Base,
+          repo: MyApp.Repo,
+          domain: MyApp.Dispatch,
+          table: "dispatch_notifications"
+      end
+
 ## [0.4.0] - 2026-05-12
 
 ### Changed (substrate retrofit — tx-semantics)
@@ -48,6 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DeliveryReceipt and Notification resources
 - Documentation structure with ex_doc
 
-[Unreleased]: https://github.com/Vulcora/ash_dispatch/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Vulcora/ash_dispatch/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/Vulcora/ash_dispatch/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Vulcora/ash_dispatch/compare/v0.1.0...v0.4.0
 [0.1.0]: https://github.com/Vulcora/ash_dispatch/releases/tag/v0.1.0

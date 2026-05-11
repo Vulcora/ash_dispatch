@@ -38,6 +38,9 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
   - `:notification_resource` - (required) Your Notification resource module
   - `:user_resource` - User resource module for auto-created relationship (optional)
   - `:extensions` - Additional Ash extensions (e.g., `[AshTypescript.Resource]`)
+  - `:table` - Postgres table name. Defaults to `"delivery_receipts"`. Override
+    when the consumer app needs ash_dispatch resources under a separate
+    namespace (e.g., `table: "dispatch_delivery_receipts"`).
   """
 
   defmacro __using__(opts) do
@@ -46,6 +49,7 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
     notification_resource = Keyword.fetch!(opts, :notification_resource)
     user_resource = Keyword.get(opts, :user_resource)
     extra_extensions = Keyword.get(opts, :extensions, [])
+    table = Keyword.get(opts, :table, "delivery_receipts")
     all_extensions = [AshStateMachine] ++ extra_extensions
 
     quote do
@@ -56,7 +60,7 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
         extensions: unquote(all_extensions)
 
       postgres do
-        table "delivery_receipts"
+        table unquote(table)
         repo(unquote(repo))
 
         references do

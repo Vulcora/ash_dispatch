@@ -35,12 +35,16 @@ defmodule AshDispatch.Resources.Notification.Base do
   - `:repo` - (required) Ecto repo module
   - `:domain` - (required) Ash domain
   - `:extensions` - Additional Ash extensions (e.g., `[AshTypescript.Resource]`)
+  - `:table` - Postgres table name. Defaults to `"notifications"`. Override
+    when the consumer app already owns that table for a legacy notification
+    system and ash_dispatch needs to coexist (e.g., `table: "dispatch_notifications"`).
   """
 
   defmacro __using__(opts) do
     repo = Keyword.fetch!(opts, :repo)
     domain = Keyword.fetch!(opts, :domain)
     extra_extensions = Keyword.get(opts, :extensions, [])
+    table = Keyword.get(opts, :table, "notifications")
     # AshDispatch.Resource provides counter broadcasting DSL
     all_extensions = [AshDispatch.Resource] ++ extra_extensions
 
@@ -54,7 +58,7 @@ defmodule AshDispatch.Resources.Notification.Base do
       require Ash.Expr
 
       postgres do
-        table "notifications"
+        table unquote(table)
         repo(unquote(repo))
 
         identity_wheres_to_sql(unique_idempotency_key: "idempotency_key IS NOT NULL")
