@@ -35,7 +35,11 @@ defmodule AshDispatch.Transports.Broadcast do
     pubsub = Config.pubsub_module()
 
     if is_nil(pubsub) do
-      Logger.warning("Broadcast transport: no pubsub_module configured, skipping")
+      # `pubsub_module: nil` is the documented passive-shell posture
+      # (test mode / boot-without-Endpoint). Per-event warning here
+      # floods logs in the test suite where every dispatch hits this
+      # branch; consumers who want a startup-time presence check
+      # should call `Config.pubsub_module()` from their app boot.
       {:ok, maybe_mark_skipped(receipt, "no_pubsub_module")}
     else
       throttle_ms = get_in(event_config, [:metadata, :throttle_ms])

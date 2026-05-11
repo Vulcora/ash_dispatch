@@ -78,7 +78,7 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
         transitions do
           transition(:schedule, from: :pending, to: :scheduled)
           transition(:mark_sending, from: [:scheduled, :pending], to: :sending)
-          transition(:mark_sent, from: [:sending, :scheduled, :pending], to: :sent)
+          transition(:mark_sent, from: [:sending, :scheduled, :pending, :failed], to: :sent)
           transition(:mark_failed, from: [:sending, :scheduled, :pending], to: :failed)
 
           transition(:mark_failed_permanent,
