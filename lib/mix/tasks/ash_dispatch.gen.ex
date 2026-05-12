@@ -2141,7 +2141,8 @@ defmodule Mix.Tasks.AshDispatch.Gen do
         if (!channel || joinedRef.current) return
 
         channel.join()
-          .receive('ok', (response: ChannelJoinResponse) => {
+          .receive('ok', (rawResponse: unknown) => {
+            const response = rawResponse as ChannelJoinResponse
             console.log('[AshDispatch] Channel joined', response)
             joinedRef.current = true
 
@@ -2159,7 +2160,8 @@ defmodule Mix.Tasks.AshDispatch.Gen do
           })
 
         // Listen for counter updates
-        channel.on('counter_updated', (payload: CounterUpdatePayload) => {
+        channel.on('counter_updated', (rawPayload: unknown) => {
+          const payload = rawPayload as CounterUpdatePayload
           const counterName = payload.counter
           if (isValidCounter(counterName)) {
             setCounter(counterName, payload.value)
@@ -2544,7 +2546,8 @@ defmodule Mix.Tasks.AshDispatch.Gen do
           const channel = socket.channel(`#{channel_topic()}:${userId}`, {})
 
           // Listen for initial state (bulk counter load on connect)
-          channel.on('initial_state', (payload: { counters?: Record<string, number> }) => {
+          channel.on('initial_state', (rawPayload: unknown) => {
+            const payload = rawPayload as { counters?: Record<string, number> }
             if (!mountedRef.current) return
             if (payload.counters) {
               // Filter to only valid counters and update the store
@@ -2559,7 +2562,8 @@ defmodule Mix.Tasks.AshDispatch.Gen do
           })
 
           // Listen for new notifications
-          channel.on('new_notification', (notification: Notification) => {
+          channel.on('new_notification', (rawNotification: unknown) => {
+            const notification = rawNotification as Notification
             if (!mountedRef.current) return
             setNotifications((prev) => [notification, ...prev])
             if (!notification.read) {
@@ -2742,7 +2746,8 @@ defmodule Mix.Tasks.AshDispatch.Gen do
 
         const unsubs: (() => void)[] = []
 
-        unsubs.push(socket.on('new_notification', (notification: Notification) => {
+        unsubs.push(socket.on('new_notification', (rawNotification: unknown) => {
+          const notification = rawNotification as Notification
           setNotifications((prev) => [notification, ...prev])
           if (!notification.read) {
             incrementCounter('unread_notifications', 1)

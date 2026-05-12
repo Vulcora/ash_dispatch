@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-05-12
+
+### Fixed
+- **Catch the remaining 5 `channel.on`/`socket.on`/`channel.join().receive`
+  callsites the v0.4.2 sweep missed.** 0.4.2 only widened 3 of the 8
+  typed-payload callbacks in the SDK generator; consumers running TS
+  strict mode still saw `TS2345` on the rest:
+  - `hooks/use-channel.ts` — `channel.join().receive('ok', (response:
+    ChannelJoinResponse) → unknown)` and `channel.on('counter_updated',
+    (payload: CounterUpdatePayload) → unknown)`
+  - `hooks/use-notifications.ts` (standalone mode) — `channel.on('initial_state',
+    (payload: { counters?: ... }) → unknown)`,
+    `channel.on('new_notification', (notification: Notification) → unknown)`,
+    and `socket.on('new_notification', ...)`
+  All 8 sites now use the same `(rawX: unknown) => { const x = rawX as
+  T; ... }` pattern.
+
 ## [0.4.2] - 2026-05-12
 
 ### Fixed
@@ -83,7 +100,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DeliveryReceipt and Notification resources
 - Documentation structure with ex_doc
 
-[Unreleased]: https://github.com/Vulcora/ash_dispatch/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/Vulcora/ash_dispatch/compare/v0.4.3...HEAD
+[0.4.3]: https://github.com/Vulcora/ash_dispatch/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/Vulcora/ash_dispatch/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/Vulcora/ash_dispatch/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Vulcora/ash_dispatch/compare/v0.1.0...v0.4.0
