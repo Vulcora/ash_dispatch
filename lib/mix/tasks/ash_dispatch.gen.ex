@@ -1594,7 +1594,10 @@ defmodule Mix.Tasks.AshDispatch.Gen do
       """
 
             // Register built-in event: entity_change → entity store
-            channel.on('entity_change', (payload: { resource: string; action: string; data: Record<string, unknown> }) => {
+            // Widens callback till `unknown` så strict-mode TS-consumers inte
+            // failar på contravarians-mismatch.
+            channel.on('entity_change', (rawPayload: unknown) => {
+              const payload = rawPayload as { resource: string; action: string; data: Record<string, unknown> }
               if (!mountedRef.current) return
               useEntityStore.getState().handleChange(payload.resource, payload.action, payload.data)
               // Also fan out to any listeners
@@ -1738,7 +1741,12 @@ defmodule Mix.Tasks.AshDispatch.Gen do
             channelRef.current = channel
 
             // Register built-in events: initial_state and counter_updated
-            channel.on('initial_state', (payload: { counters?: Record<string, number> }) => {
+            // Note: phoenix-js types `channel.on`-callback som `(payload: unknown) => void`;
+            // vi widens till `unknown` på callback-signaturen och narrowar inuti via
+            // `as`-cast så strict-mode consumers (TS strict) inte failar på
+            // contravarians-mismatch mellan {counters} ↔ unknown.
+            channel.on('initial_state', (rawPayload: unknown) => {
+              const payload = rawPayload as { counters?: Record<string, number> }
               if (!mountedRef.current) return
               if (payload.counters) {
                 const validCounters: Record<string, number> = {}
@@ -1755,7 +1763,8 @@ defmodule Mix.Tasks.AshDispatch.Gen do
             })
             registeredEventsRef.current.add('initial_state')
 
-            channel.on('counter_updated', (payload: { counter: string; value: number }) => {
+            channel.on('counter_updated', (rawPayload: unknown) => {
+              const payload = rawPayload as { counter: string; value: number }
               if (!mountedRef.current) return
               if (isValidCounter(payload.counter)) {
                 setCounter(payload.counter as CounterName, payload.value)
@@ -2564,7 +2573,11 @@ defmodule Mix.Tasks.AshDispatch.Gen do
           })
 
           // Listen for counter updates (from UserChannel.broadcast_counter or custom broadcast)
-          channel.on('counter_updated', (payload: { counter: string; value: number; metadata?: { invalidate_queries?: string[] } }) => {
+          // Note: phoenix-js types callback som `(payload: unknown)`; widens till
+          // `unknown` och narrowar via `as`-cast så TS-strict consumers (saleflow
+          // m.fl.) inte failar på contravarians.
+          channel.on('counter_updated', (rawPayload: unknown) => {
+            const payload = rawPayload as { counter: string; value: number; metadata?: { invalidate_queries?: string[] } }
             if (!mountedRef.current) return
             if (isValidCounter(payload.counter)) {
               setCounter(payload.counter as CounterName, payload.value)
@@ -2740,8 +2753,10 @@ defmodule Mix.Tasks.AshDispatch.Gen do
         }))
 
         // Counter values are already updated by SocketProvider's built-in handler.
-        // Only subscribe here for query invalidation metadata.
-        unsubs.push(socket.on('counter_updated', (payload: { counter: string; value: number; metadata?: { invalidate_queries?: string[] } }) => {
+        // Only subscribe here for query invalidation metadata. Same `unknown` →
+        // narrow pattern som channel.on ovan.
+        unsubs.push(socket.on('counter_updated', (rawPayload: unknown) => {
+          const payload = rawPayload as { counter: string; value: number; metadata?: { invalidate_queries?: string[] } }
           if (payload.metadata?.invalidate_queries?.length && onInvalidateRef.current) {
             onInvalidateRef.current(payload.metadata.invalidate_queries)
           }
@@ -2878,7 +2893,6 @@ defmodule Mix.Tasks.AshDispatch.Gen do
 
     "use client"
 
-    import { useState } from 'react'
     import { useNotificationContext } from './notification-provider'
 
     // ============================================================================

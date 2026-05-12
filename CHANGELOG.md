@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-05-12
+
+### Fixed
+- **TypeScript SDK generator emits strict-mode-clean channel handlers.**
+  Previously, `channel.on('initial_state', (payload: {...}) => {...})` failed
+  to type-check in consumers running `strict: true` (saleflow) because
+  phoenix-js types the callback parameter as `(payload: unknown)` and TS
+  function-parameter contravariance rejects narrower handler types.
+  Generator now widens all `channel.on`/`socket.on` callbacks to
+  `(rawPayload: unknown)` and narrows via an inline `as`-cast. Affects
+  `socket-provider.tsx` (3 sites: `initial_state`, `counter_updated`,
+  `entity_change`) and `hooks/use-notifications.ts` (2 sites:
+  `channel.on('counter_updated')` + `socket.on('counter_updated')`).
+- **`notification-bell.tsx` no longer imports unused `useState`.** Was
+  emitting a `TS6133` violation under `noUnusedLocals`.
+
 ## [0.4.1] - 2026-05-12
 
 ### Added
@@ -67,7 +83,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DeliveryReceipt and Notification resources
 - Documentation structure with ex_doc
 
-[Unreleased]: https://github.com/Vulcora/ash_dispatch/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/Vulcora/ash_dispatch/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/Vulcora/ash_dispatch/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/Vulcora/ash_dispatch/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Vulcora/ash_dispatch/compare/v0.1.0...v0.4.0
 [0.1.0]: https://github.com/Vulcora/ash_dispatch/releases/tag/v0.1.0
