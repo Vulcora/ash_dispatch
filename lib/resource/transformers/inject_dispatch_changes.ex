@@ -225,6 +225,7 @@ defmodule AshDispatch.Resource.Transformers.InjectDispatchChanges do
         locales: get_val.(:locales, []),
         webhook_url: get_val.(:webhook_url, nil),
         deduplicate_group: get_val.(:deduplicate_group, nil),
+        optional: get_val.(:optional, false),
         opts: get_val.(:opts, %{})
       }
     end)

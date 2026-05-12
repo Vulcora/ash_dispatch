@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-05-12
+
+### Added
+- **Pluggable SMS transport backend.** `AshDispatch.Transports.SMS` now
+  delegates to a consumer-configured module implementing the new
+  `AshDispatch.SMSBackend` behaviour. Configure with
+  `config :ash_dispatch, :sms_backend, MyApp.SMS`. When no backend is
+  configured the receipt is still marked `:skipped` with
+  `error_message: "transport_not_implemented"`, preserving the prior
+  stub behavior for consumers that haven't wired SMS yet.
+- **`optional: true` channel option.** When a channel is marked optional
+  and recipient identifier extraction fails (e.g. SMS channel for a
+  user with no `phone_number`), the dispatcher logs and skips that
+  channel rather than crashing the whole dispatch. Non-optional channels
+  still re-raise as before.
+
 ## [0.4.3] - 2026-05-12
 
 ### Fixed

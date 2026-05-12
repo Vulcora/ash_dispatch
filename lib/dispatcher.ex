@@ -313,6 +313,12 @@ defmodule AshDispatch.Dispatcher do
 
   defp dispatch_with_receipt(context, channel, event_config, recipient) do
     case create_receipt(context, channel, event_config, recipient) do
+      {:ok, :skipped_optional} ->
+        # Optional channel that can't be delivered (e.g. SMS recipient
+        # without a phone number). Counted as success — the channel
+        # opted into "best-effort" delivery via `optional: true`.
+        {:ok, :skipped_optional}
+
       {:ok, receipt} ->
         case dispatch_to_transport(receipt, context, channel, event_config) do
           {:ok, updated_receipt} ->
@@ -414,8 +420,20 @@ defmodule AshDispatch.Dispatcher do
     # Build full content for the receipt
     content = build_receipt_content(context, channel, event_config)
 
-    # Extract recipient identifier and name using configured fields
-    recipient_identifier = extract_recipient_identifier(recipient, channel, event_config)
+    # Extract recipient identifier and name using configured fields.
+    # `:skip` is the soft-fail return when `channel.optional: true` and
+    # the identifier can't be extracted — propagate up so the caller
+    # skips this channel without crashing the whole dispatch.
+    case extract_recipient_identifier(recipient, channel, event_config) do
+      :skip ->
+        {:ok, :skipped_optional}
+
+      recipient_identifier ->
+        do_create_receipt(context, channel, event_config, recipient, content, recipient_identifier)
+    end
+  end
+
+  defp do_create_receipt(context, channel, event_config, recipient, content, recipient_identifier) do
     recipient_name = extract_recipient_name(recipient, channel, event_config)
     recipient_user_id = get_user_id(recipient)
 
@@ -478,7 +496,11 @@ defmodule AshDispatch.Dispatcher do
     |> Ash.create(authorize?: false, skip_unknown_inputs: [:notification_id])
   end
 
-  # Extract recipient identifier using RecipientExtractor with cascading config
+  # Extract recipient identifier using RecipientExtractor with cascading config.
+  # When the channel is marked `optional: true` and the identifier can't be
+  # extracted (e.g. SMS channel where the user has no phone_number), we
+  # log + return `:skip` instead of crashing the whole dispatch — the
+  # caller skips the receipt creation for this channel only.
   defp extract_recipient_identifier(recipient, channel, event_config) do
     RecipientExtractor.extract_identifier(
       recipient,
@@ -488,15 +510,24 @@ defmodule AshDispatch.Dispatcher do
     )
   rescue
     error ->
-      Logger.error("""
-      Failed to extract recipient identifier
-      Transport: #{channel.transport}
-      Audience: #{channel.audience}
-      Recipient: #{inspect(recipient)}
-      Error: #{inspect(error)}
-      """)
+      if Map.get(channel, :optional, false) do
+        Logger.info(
+          "Skipping optional channel — recipient has no #{channel.transport} identifier " <>
+            "(transport=#{channel.transport} audience=#{channel.audience})"
+        )
 
-      reraise error, __STACKTRACE__
+        :skip
+      else
+        Logger.error("""
+        Failed to extract recipient identifier
+        Transport: #{channel.transport}
+        Audience: #{channel.audience}
+        Recipient: #{inspect(recipient)}
+        Error: #{inspect(error)}
+        """)
+
+        reraise error, __STACKTRACE__
+      end
   end
 
   # Extract recipient name using RecipientExtractor (returns nil if not configured)

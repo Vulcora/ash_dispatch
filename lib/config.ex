@@ -256,6 +256,21 @@ defmodule AshDispatch.Config do
     Application.get_env(:ash_dispatch, :swoosh_mailer)
   end
 
+  @doc """
+  The SMS backend module — should implement `AshDispatch.SMSBackend`.
+  Returns `nil` when no backend is configured, in which case the SMS
+  transport marks receipts `:skipped`.
+
+  ## Example
+
+      config :ash_dispatch,
+        sms_backend: MyApp.SMS
+  """
+  @spec sms_backend() :: module() | nil
+  def sms_backend do
+    Application.get_env(:ash_dispatch, :sms_backend)
+  end
+
   # ============================================================================
   # URL Building
   # ============================================================================
