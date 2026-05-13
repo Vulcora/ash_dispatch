@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.6] - 2026-05-13
+
+### Security
+
+- **Auto-escape `{@var}` expansions in HTML email templates.**
+  `TemplateResolver.render_template_content/4` previously rewrote
+  HEEx-style `{@var}` markers to plain EEx `<%= @var %>` and evaluated
+  the result via `EEx.eval_string/2`, which does NOT HTML-escape
+  interpolated values. Any user-controlled string flowing through
+  `prepare_template_assigns/2` (lead name, contract recipient, customer
+  comment, etc.) landed raw in the rendered email — a real markup
+  injection vector.
+
+  The preprocessor now wraps every auto-converted `{@var}` expansion in
+  `AshDispatch.SafeRender.escape/1` for `format: :html` so escape is the
+  default, matching Phoenix HEEx semantics. Text formats are unaffected
+  — `email.text.eex` and similar still emit `<%= @var %>` plain
+  (text/plain has no HTML semantics).
+
+  **Migration:** if your templates intentionally embed safe pre-rendered
+  HTML, mark those expressions explicitly:
+
+      <p>{raw(@trusted_block)}</p>
+      <!-- or, fully qualified -->
+      <p>{AshDispatch.SafeRender.raw(@trusted_block)}</p>
+
+  `{:safe, iodata}` tuples (Phoenix.HTML's standard "already escaped"
+  marker) also pass through `escape/1` unchanged, so existing
+  Phoenix.HTML interop keeps working.
+
+### Added
+
+- `AshDispatch.SafeRender` module (`escape/1` + `raw/1`).
+
 ## [0.4.5] - 2026-05-13
 
 ### Added

@@ -479,8 +479,13 @@ defmodule AshDispatch.TemplateResolver do
   end
 
   defp render_template_content(template_content, assigns, format, opts) do
-    # Preprocess HEEx-style attribute syntax to EEx syntax
-    preprocessed = preprocess_heex_attributes(template_content)
+    # Preprocess HEEx-style attribute syntax to EEx syntax. For :html
+    # format the preprocessor wraps `{@var}` expansions in
+    # `AshDispatch.SafeRender.escape/1` so user-controlled assigns can't
+    # inject markup into the rendered output — matching Phoenix HEEx
+    # auto-escape semantics. Other formats (text, etc.) are emitted as
+    # plain `<%= @var %>` and rely on the format's own quoting rules.
+    preprocessed = preprocess_heex_attributes(template_content, format)
 
     # Normalize assigns (convert struct to map if needed)
     normalized_assigns = if is_struct(assigns), do: Map.from_struct(assigns), else: assigns
@@ -539,7 +544,7 @@ defmodule AshDispatch.TemplateResolver do
           |> Map.put_new(:subject, "")
 
         # Preprocess and render layout (locale already set by render_template_content)
-        preprocessed = preprocess_heex_attributes(layout_content)
+        preprocessed = preprocess_heex_attributes(layout_content, format)
         rendered = EEx.eval_string(preprocessed, assigns: layout_assigns)
 
         {:ok, rendered}
@@ -589,22 +594,28 @@ defmodule AshDispatch.TemplateResolver do
     end
   end
 
-  # Preprocessor to convert HEEx-style interpolation to EEx syntax
+  # Preprocessor to convert HEEx-style interpolation to EEx syntax.
+  # For `format == :html`, `{@var}` expansions are wrapped in
+  # `AshDispatch.SafeRender.escape/1` so they auto-escape (matching
+  # Phoenix HEEx). Non-HTML formats emit `<%= … %>` unchanged.
+  #
   # Handles:
-  # 1. attr={@variable} → attr="<%= @variable %>"
-  # 2. attr={"string #{@var}"} → attr="<%= "string #{@var}" %>"
-  # 3. {@variable} → <%= @variable %>
-  defp preprocess_heex_attributes(template) do
+  # 1. attr={@variable} → attr="<%= AshDispatch.SafeRender.escape(@variable) %>" (html)
+  #                     → attr="<%= @variable %>"                                (text)
+  # 2. attr={"string #{@var}"} → attr="<%= "string #{@var}" %>" (unchanged — full Elixir)
+  # 3. {@variable} → <%= AshDispatch.SafeRender.escape(@variable) %>  (html)
+  #               → <%= @variable %>                                  (text)
+  defp preprocess_heex_attributes(template, format) do
     template
     |> convert_attribute_syntax()
-    |> convert_standalone_patterns()
+    |> convert_standalone_patterns(format)
   end
 
   # Elixir keywords/macros that should be converted when used in HEEx {} syntax
   @elixir_keywords ~w(if unless case cond for with)
 
   # Convert standalone {@ and #{@ patterns, but NOT inside <%= ... %> tags
-  defp convert_standalone_patterns(template) do
+  defp convert_standalone_patterns(template, format) do
     parts = Regex.split(~r/<%=|%>/, template, include_captures: true)
 
     parts
@@ -621,7 +632,7 @@ defmodule AshDispatch.TemplateResolver do
 
         # Otherwise, convert {@ and #{@ patterns
         true ->
-          convert_heex_expressions(part)
+          convert_heex_expressions(part, format)
       end
     end)
     |> Enum.join("")
@@ -629,35 +640,69 @@ defmodule AshDispatch.TemplateResolver do
 
   # Convert HEEx curly-brace expressions to EEx <%= %> syntax
   # Handles nested braces correctly by using a stateful parser
-  defp convert_heex_expressions(text) do
-    do_convert_heex_expressions(text, "")
+  defp convert_heex_expressions(text, format) do
+    do_convert_heex_expressions(text, "", format)
   end
 
-  defp do_convert_heex_expressions("", acc), do: acc
+  defp do_convert_heex_expressions("", acc, _format), do: acc
 
-  defp do_convert_heex_expressions(<<?\#, ?\{, rest::binary>>, acc) do
+  defp do_convert_heex_expressions(<<?\#, ?\{, rest::binary>>, acc, format) do
     # String interpolation - skip it
-    do_convert_heex_expressions(rest, acc <> "\#{")
+    do_convert_heex_expressions(rest, acc <> "\#{", format)
   end
 
-  defp do_convert_heex_expressions(<<?{::utf8, rest::binary>>, acc) do
+  defp do_convert_heex_expressions(<<?{::utf8, rest::binary>>, acc, format) do
     # Found opening brace - try to extract complete expression
     case extract_balanced_expression(rest, 0, "") do
       {:ok, expr, remaining} ->
         if should_convert_expression?(expr) do
-          do_convert_heex_expressions(remaining, acc <> "<%= " <> expr <> " %>")
+          rendered = render_expression(expr, format)
+          do_convert_heex_expressions(remaining, acc <> rendered, format)
         else
-          do_convert_heex_expressions(remaining, acc <> "{" <> expr <> "}")
+          do_convert_heex_expressions(remaining, acc <> "{" <> expr <> "}", format)
         end
 
       :error ->
         # No matching brace, keep as-is
-        do_convert_heex_expressions(rest, acc <> "{")
+        do_convert_heex_expressions(rest, acc <> "{", format)
     end
   end
 
-  defp do_convert_heex_expressions(<<char::utf8, rest::binary>>, acc) do
-    do_convert_heex_expressions(rest, acc <> <<char::utf8>>)
+  defp do_convert_heex_expressions(<<char::utf8, rest::binary>>, acc, format) do
+    do_convert_heex_expressions(rest, acc <> <<char::utf8>>, format)
+  end
+
+  # Wrap the expansion in SafeRender.escape/1 for HTML formats so plain
+  # `{@var}` auto-escapes. For non-HTML formats emit plain `<%= … %>`.
+  # Already wrapped in an explicit `AshDispatch.SafeRender.raw(…)` call?
+  # Strip the marker and skip the escape — matches Phoenix HEEx's
+  # `Phoenix.HTML.raw/1` opt-out for trusted markup.
+  defp render_expression(expr, :html) do
+    trimmed = String.trim(expr)
+
+    case strip_raw_call(trimmed) do
+      {:ok, inner} ->
+        "<%= " <> inner <> " %>"
+
+      :no ->
+        "<%= AshDispatch.SafeRender.escape(" <> trimmed <> ") %>"
+    end
+  end
+
+  defp render_expression(expr, _format), do: "<%= " <> expr <> " %>"
+
+  # Match `AshDispatch.SafeRender.raw(EXPR)` or `raw(EXPR)` exactly.
+  defp strip_raw_call(expr) do
+    cond do
+      String.starts_with?(expr, "AshDispatch.SafeRender.raw(") and String.ends_with?(expr, ")") ->
+        {:ok, String.slice(expr, String.length("AshDispatch.SafeRender.raw(") .. -2//1)}
+
+      String.starts_with?(expr, "raw(") and String.ends_with?(expr, ")") ->
+        {:ok, String.slice(expr, String.length("raw(") .. -2//1)}
+
+      true ->
+        :no
+    end
   end
 
   # Extract a balanced expression handling nested braces and strings
