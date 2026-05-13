@@ -131,10 +131,46 @@ At runtime, locale is resolved in this order (highest to lowest):
 
 1. **Channel-level `locale`** - Static locale on channel (e.g., `locale: "sv"`)
 2. **Channel-level `locale_from`** - Dynamic from record field
-3. **Event-level `locale_from`** - Field configured on event
-4. **Resource-level `locale_from`** - Field configured on resource
-5. **Common field names** - Auto-detected: `visitor_locale`, `locale`
-6. **Config default** - `config :ash_dispatch, default_locale: "sv"`
+3. **Recipient `:locale`** *(since 0.4.5)* - When the recipient struct has a non-empty `:locale` field, it takes precedence over the event/resource/auto-detect fallback chain. Typically this is `User.locale` for `audience: :user` — letting one channel render different locales for different recipients in the same dispatch with no per-recipient code in the worker.
+4. **Event-level `locale_from`** - Field configured on event
+5. **Resource-level `locale_from`** - Field configured on resource
+6. **Common field names** - Auto-detected: `visitor_locale`, `locale`
+7. **Config default** - `config :ash_dispatch, default_locale: "sv"`
+
+### Per-recipient example (0.4.5+)
+
+```elixir
+# User schema has a :locale attribute
+defmodule MyApp.Accounts.User do
+  attributes do
+    attribute :locale, :string, default: "en"
+  end
+end
+
+# Event fans out to two recipients (seller + admin), each with their
+# own locale on their User record.
+defmodule MyApp.Events.OrderShipped do
+  use AshDispatch.Event
+
+  def channels(_) do
+    [
+      %Channel{transport: :email, audience: :user, time: {:in, 0}},
+      %Channel{transport: :email, audience: :admin, time: {:in, 0}}
+    ]
+  end
+
+  # notification_title/2 + prepare_template_assigns/2 use the macro
+  # form of `dgettext` — locale is set by the dispatcher per recipient
+  # so each one sees their own language.
+  def notification_title(_, _), do: dgettext("default", "Order shipped")
+end
+
+# Worker just dispatches — no per-recipient locale plumbing:
+AshDispatch.Dispatcher.dispatch("orders.shipped", %{order: order})
+```
+
+A Swedish seller and an English admin will each receive the email
+in their own language from one `dispatch/2` call.
 
 ## Template Fallback Chain
 

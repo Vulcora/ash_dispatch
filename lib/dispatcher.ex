@@ -417,8 +417,12 @@ defmodule AshDispatch.Dispatcher do
   end
 
   defp create_receipt(context, channel, event_config, recipient) do
-    # Build full content for the receipt
-    content = build_receipt_content(context, channel, event_config)
+    # Build full content for the receipt. Recipient is threaded in so
+    # per-recipient locale resolution (recipient.locale) can flip the
+    # rendered subject/body/text per recipient — multi-recipient channels
+    # no longer share a single pre-rendered content blob when locales
+    # differ.
+    content = build_receipt_content(context, channel, event_config, recipient)
 
     # Extract recipient identifier and name using configured fields.
     # `:skip` is the soft-fail return when `channel.optional: true` and
@@ -449,8 +453,11 @@ defmodule AshDispatch.Dispatcher do
     # Extract source resource info for linking (e.g., link receipt to order)
     {source_type, source_id} = extract_source_info(context, event_config)
 
-    # Resolve locale for traceability (which template was rendered)
-    locale = resolve_channel_locale(channel, context)
+    # Resolve locale for traceability (which template was rendered).
+    # Per-recipient locale (recipient.locale) is considered so the receipt
+    # records the actual locale that was used to render the recipient's
+    # content blob.
+    locale = resolve_channel_locale(channel, context, recipient)
 
     # Build receipt attributes
     attrs = %{
@@ -630,7 +637,15 @@ defmodule AshDispatch.Dispatcher do
     end
   end
 
-  defp build_receipt_content(context, channel, event_config) do
+  defp build_receipt_content(context, channel, event_config, recipient) do
+    # Set per-recipient Gettext locale BEFORE rendering callbacks so any
+    # `dgettext` invocations inside `prepare_template_assigns`,
+    # `notification_title/message`, content-string interpolation, and
+    # `EEx.eval_string` template rendering pick up the right locale.
+    # This is the same backend referenced via the `:gettext_backend`
+    # config — set to a no-op when not configured.
+    apply_recipient_locale(channel, context, recipient)
+
     # Resolve module with runtime fallback (handles compilation order issues)
     module = resolve_event_module(event_config, context)
 
@@ -638,7 +653,7 @@ defmodule AshDispatch.Dispatcher do
       case module do
         nil ->
           # Pure inline DSL - use inline content only
-          build_inline_content(context, channel, event_config)
+          build_inline_content(context, channel, event_config, recipient)
 
         module ->
           # Hybrid mode: module + inline DSL
@@ -656,12 +671,15 @@ defmodule AshDispatch.Dispatcher do
             end
 
           # Step 2: Build module content (with enhanced context)
-          module_content = build_module_content(enhanced_context, channel, module, event_config)
+          module_content =
+            build_module_content(enhanced_context, channel, module, event_config, recipient)
 
           # Step 3: Check if there's inline DSL content to merge
           if has_inline_content?(event_config, channel) do
             # Build inline content with enhanced context (so interpolation has access to module assigns)
-            inline_content = build_inline_content(enhanced_context, channel, event_config)
+            inline_content =
+              build_inline_content(enhanced_context, channel, event_config, recipient)
+
             # Inline DSL takes precedence over module callbacks
             Map.merge(module_content, inline_content)
           else
@@ -678,6 +696,29 @@ defmodule AshDispatch.Dispatcher do
     end
   end
 
+  # Set Gettext locale to the resolved per-channel-per-recipient locale.
+  # No-op when no backend is configured or when the resolved locale is nil.
+  defp apply_recipient_locale(channel, context, recipient) do
+    case Config.gettext_backend() do
+      nil ->
+        :ok
+
+      backend ->
+        case resolve_channel_locale(channel, context, recipient) do
+          locale when is_binary(locale) and locale != "" ->
+            try do
+              apply(Gettext, :put_locale, [backend, locale])
+              :ok
+            rescue
+              _ -> :ok
+            end
+
+          _ ->
+            :ok
+        end
+    end
+  end
+
   # Check if there's inline DSL content configuration
   defp has_inline_content?(event_config, channel) do
     # Check if channel or event has content/metadata defined
@@ -687,7 +728,7 @@ defmodule AshDispatch.Dispatcher do
       (event_config[:metadata] && length(event_config[:metadata]) > 0)
   end
 
-  defp build_inline_content(context, channel, event_config) do
+  defp build_inline_content(context, channel, event_config, recipient) do
     # Prefer channel-level content/metadata, fall back to event-level
     # This allows both patterns:
     # 1. Transport-specific: channels: [[transport: :email, content: [subject: "..."]]]
@@ -710,8 +751,11 @@ defmodule AshDispatch.Dispatcher do
     transport_content =
       case channel.transport do
         :email ->
-          # Try to render templates (convention-based or explicit path)
-          {html_body, text_body} = render_inline_email_templates(context, channel, event_config)
+          # Try to render templates (convention-based or explicit path).
+          # Recipient threaded through so locale resolution can pick
+          # recipient.locale when present.
+          {html_body, text_body} =
+            render_inline_email_templates(context, channel, event_config, recipient)
 
           # Build content - only include fields with actual values (to not overwrite module callbacks in hybrid mode)
           %{}
@@ -782,7 +826,7 @@ defmodule AshDispatch.Dispatcher do
   end
 
   # Render email templates for inline DSL events
-  defp render_inline_email_templates(context, channel, event_config) do
+  defp render_inline_email_templates(context, channel, event_config, recipient) do
     # Get template configuration
     template_path = event_config[:template_path]
     event_id = context.event_id
@@ -792,8 +836,9 @@ defmodule AshDispatch.Dispatcher do
     # Resource name for template path resolution
     resource_name = event_config[:resource_name]
     variant = channel.variant
-    # Locale priority: channel.locale > channel.locale_from (dynamic) > context.locale
-    locale = resolve_channel_locale(channel, context)
+    # Locale priority: channel.locale > channel.locale_from (dynamic) >
+    # recipient.locale > context.locale
+    locale = resolve_channel_locale(channel, context, recipient)
 
     # Prepare template assigns
     assigns = Context.template_assigns(context)
@@ -939,7 +984,7 @@ defmodule AshDispatch.Dispatcher do
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
-  defp build_module_content(context, channel, module, _event_config) do
+  defp build_module_content(context, channel, module, _event_config, recipient) do
     base_content = %{
       transport: channel.transport,
       audience: channel.audience
@@ -952,8 +997,9 @@ defmodule AshDispatch.Dispatcher do
           # Get variant for template resolution
           # Prefer channel.variant (from inline DSL) over EventResolver callback
           variant = channel.variant || EventResolver.template_variant(module, context, channel)
-          # Locale priority: channel.locale > channel.locale_from (dynamic) > context.locale
-          locale = resolve_channel_locale(channel, context)
+          # Locale priority: channel.locale > channel.locale_from (dynamic) >
+          # recipient.locale > context.locale
+          locale = resolve_channel_locale(channel, context, recipient)
 
           # Prepare template assigns using EventResolver
           base_assigns = safe_prepare_template_assigns(module, context, channel)
@@ -1249,16 +1295,32 @@ defmodule AshDispatch.Dispatcher do
   # Resolve locale for a channel with priority:
   # 1. channel.locale - static locale configured on channel
   # 2. channel.locale_from - dynamic locale from record field
-  # 3. context.locale - event-level locale (already resolved from record or default)
-  defp resolve_channel_locale(channel, context) do
+  # 3. recipient.locale - per-recipient preference (NEW in 0.4.5; only
+  #    consulted when the recipient struct carries a non-nil `:locale`
+  #    field — typically a User record for `audience: :user`)
+  # 4. context.locale - event-level locale (already resolved from record
+  #    or default)
+  @doc false
+  def resolve_channel_locale(channel, context, recipient) do
     cond do
       # Static locale on channel has highest priority
       channel.locale ->
         channel.locale
 
-      # Dynamic locale from record field
+      # Dynamic locale from record field. When the field is set but
+      # the record's value is nil/missing, cascade through the rest of
+      # the chain (recipient.locale → context.locale) instead of
+      # bailing on `context.locale`. Makes `locale_from` describe a
+      # *preference*, not a hard constraint.
       channel.locale_from ->
-        extract_locale_from_context(context, channel.locale_from)
+        record_locale(context, channel.locale_from) ||
+          recipient_locale(recipient) || context.locale
+
+      # Per-recipient locale (e.g. User.locale) — wins over the
+      # event/resource-level fallback so each recipient sees their own
+      # language.
+      locale = recipient_locale(recipient) ->
+        locale
 
       # Fall back to context locale (event-level)
       true ->
@@ -1266,19 +1328,33 @@ defmodule AshDispatch.Dispatcher do
     end
   end
 
-  # Extract locale from a specific field in context.data
-  defp extract_locale_from_context(context, locale_field) do
-    # The primary resource is stored under resource_key
+  # Extract `:locale` from a recipient struct/map. Returns nil if the
+  # field is missing, nil, or not a non-empty binary — we explicitly
+  # reject empty strings so a blank `User.locale` doesn't shadow
+  # downstream fallbacks.
+  defp recipient_locale(nil), do: nil
+
+  defp recipient_locale(recipient) when is_map(recipient) do
+    case Map.get(recipient, :locale) do
+      locale when is_binary(locale) and locale != "" -> locale
+      _ -> nil
+    end
+  end
+
+  defp recipient_locale(_), do: nil
+
+  # Read `locale_field` off `context.data[resource_key]`. Returns nil
+  # (not `context.locale`) when missing so the caller controls the
+  # cascade. Treats `%Ash.NotLoaded{}` as nil via RecordReader.
+  defp record_locale(context, locale_field) do
     resource_key = context.resource_key
 
     case Map.get(context.data, resource_key) do
-      record when is_map(record) ->
-        RecordReader.safe_get(record, locale_field) || context.locale
-
-      _ ->
-        context.locale
+      record when is_map(record) -> RecordReader.safe_get(record, locale_field)
+      _ -> nil
     end
   end
+
 
   # Wrap prepare_template_assigns with helpful error messages for unloaded relationships
   # Uses EventResolver for safe callback execution, but adds extra error handling for NotLoaded

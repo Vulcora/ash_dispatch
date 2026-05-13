@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-05-13
+
+### Added
+- **Per-recipient locale resolution.** When a channel resolves to a
+  multi-recipient audience (e.g. seller + admin), each recipient's
+  rendered notification content now follows their own `recipient.locale`
+  field. The resolution priority is:
+
+      1. channel.locale       (static override)
+      2. channel.locale_from  (channel-level dynamic on primary record)
+      3. recipient.locale     (NEW — auto-detected when recipient struct has it)
+      4. event/resource locale_from + auto-detected visitor_locale/locale
+      5. context.locale + Config.default_locale()
+
+  This makes multilingual sends — e.g. a customer-facing email to a
+  Swedish lead, plus an internal email to an English admin — render in
+  each recipient's preferred language from one event dispatch, with no
+  per-recipient code in the calling worker. The recipient struct just
+  needs a `:locale` field (typically a `User` record); audiences that
+  expose user records via `RecipientResolver.to_recipient/1` get this
+  for free.
+
+### Changed
+- `Dispatcher.build_receipt_content/4` now threads `recipient` into
+  `build_module_content`, `build_inline_content`, and
+  `render_inline_email_templates`. Subject + html/text bodies are now
+  rendered per recipient with the correct locale, instead of once per
+  channel. Pre-render side: the resolved locale is also stamped on the
+  receipt for analytics/traceability.
+- `Gettext.put_locale/2` is now invoked automatically inside
+  `build_receipt_content` (via the new `apply_recipient_locale/3`
+  helper) when `:gettext_backend` is configured. Consumer code that
+  was previously calling `Gettext.put_locale` itself before
+  `Dispatcher.dispatch/2` to influence content can drop that — the
+  dispatcher handles it per-recipient.
+
 ## [0.4.4] - 2026-05-12
 
 ### Added
