@@ -110,18 +110,66 @@ defmodule AshDispatch.VariableInterpolator do
   """
   @spec interpolate(String.t(), map(), atom()) :: String.t()
   def interpolate(template, data, resource_key) when is_binary(template) do
+    interpolate_against(template, data, resource_key)
+  end
+
+  def interpolate(nil, _data, _resource_key), do: ""
+  def interpolate(template, _data, _resource_key) when not is_binary(template), do: ""
+
+  defp interpolate_against(template, data, resource_key) do
     # Get the main resource record
     resource = Map.get(data, resource_key) || Map.get(data, to_string(resource_key))
 
     # Find all variables in template
     Regex.replace(~r/\{\{([^}]+)\}\}/, template, fn _, var_name ->
       var_name = String.trim(var_name)
-      resolve_variable(var_name, resource) |> to_string_safe()
+
+      # Look in three places, in order:
+      # 1. The main resource (most common — `{{id}}`, `{{user.name}}`).
+      # 2. Top-level keys in `data` (so `prepare_template_assigns/2`-
+      #    returned values land in `{{my_computed_var}}` without forcing
+      #    callers to nest them under the resource).
+      # 3. Other resources passed via `data_map` (e.g. `{{order.user.name}}`
+      #    when both `:order` and `:user` are present at top level).
+      resolved =
+        case resolve_variable(var_name, resource) do
+          nil ->
+            resolve_top_level(var_name, data)
+
+          "" ->
+            # `resolve_top_level/2` only kicks in if the resource didn't
+            # produce a meaningful value. Empty string from the resource
+            # is treated as "not found" so a computed assign with the same
+            # name can still surface.
+            resolve_top_level(var_name, data) || ""
+
+          val ->
+            val
+        end
+
+      to_string_safe(resolved)
     end)
   end
 
-  def interpolate(nil, _data, _resource_key), do: ""
-  def interpolate(template, _data, _resource_key) when not is_binary(template), do: ""
+  # Resolve `{{my_var}}` (or `{{a.b}}`) against the top-level `data` map.
+  # Used as a fallback when the main resource doesn't carry the variable
+  # — typically values injected by `prepare_template_assigns/2`.
+  defp resolve_top_level(var_name, data) when is_map(data) do
+    cond do
+      String.contains?(var_name, ".") ->
+        resolve_nested_path(String.split(var_name, "."), data)
+
+      true ->
+        try do
+          key = String.to_existing_atom(var_name)
+          Map.get(data, key) || Map.get(data, var_name)
+        rescue
+          ArgumentError -> Map.get(data, var_name)
+        end
+    end
+  end
+
+  defp resolve_top_level(_var, _data), do: nil
 
   # Private functions
 

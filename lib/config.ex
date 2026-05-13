@@ -196,6 +196,29 @@ defmodule AshDispatch.Config do
     Application.get_env(:ash_dispatch, :gettext_backend)
   end
 
+  @doc """
+  Default Gettext domain used to translate DSL content strings.
+
+  When a channel's `:notification_title`, `:notification_message`,
+  `:subject`, etc. is defined as a literal in `dispatch do ... end`,
+  `Dispatcher.translate_content/2` looks up the string via
+  `Gettext.dgettext(backend, gettext_domain(), msgid)` before variable
+  interpolation runs.
+
+  Defaults to `"notifications"` so existing projects keep working.
+  Override per app:
+
+      config :ash_dispatch, :gettext_domain, "default"
+
+  Projects that already extract i18n strings to `default.po` (e.g.
+  multi-locale Phoenix apps) can consolidate their DSL content
+  alongside the rest of their translations.
+  """
+  @spec gettext_domain() :: String.t()
+  def gettext_domain do
+    Application.get_env(:ash_dispatch, :gettext_domain, "notifications")
+  end
+
   # ============================================================================
   # Email Configuration
   # ============================================================================

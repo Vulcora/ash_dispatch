@@ -784,7 +784,7 @@ defmodule AshDispatch.Dispatcher do
             )
           )
           |> maybe_put(:action_url, interpolate(content_config[:action_url], context))
-          |> maybe_put(:action_label, content_config[:action_label])
+          |> maybe_put(:action_label, interpolate(content_config[:action_label], context))
 
         :discord ->
           %{
@@ -962,8 +962,16 @@ defmodule AshDispatch.Dispatcher do
   defp interpolate(value, _context), do: value
 
   # Translate content string via Gettext if a backend is configured.
-  # The content string is the msgid, looked up in the "notifications" domain.
+  # The content string is the msgid, looked up in the configured domain
+  # (`AshDispatch.Config.gettext_domain/0`, default `"notifications"`).
   # Gettext calls are dynamic to avoid requiring gettext as a dependency.
+  #
+  # **Locale handling:** if `locale` is non-nil we set it explicitly;
+  # otherwise we trust the process-level locale that
+  # `apply_recipient_locale/3` already put in place (per-recipient
+  # resolution from 0.4.5). Previously this unconditionally reset the
+  # locale to `"en"` for nil input, which silently undid recipient-locale
+  # resolution for DSL-content lookups.
   defp translate_content(string, locale) do
     case AshDispatch.Config.gettext_backend() do
       nil ->
@@ -971,8 +979,11 @@ defmodule AshDispatch.Dispatcher do
 
       backend ->
         if Code.ensure_loaded?(Gettext) do
-          apply(Gettext, :put_locale, [backend, locale || "en"])
-          apply(Gettext, :dgettext, [backend, "notifications", string])
+          if is_binary(locale) and locale != "" do
+            apply(Gettext, :put_locale, [backend, locale])
+          end
+
+          apply(Gettext, :dgettext, [backend, AshDispatch.Config.gettext_domain(), string])
         else
           string
         end
