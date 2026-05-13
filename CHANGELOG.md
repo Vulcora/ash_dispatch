@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.8] - 2026-05-14
+
+### Fixed
+
+- **Process-local Gettext locale leak after dispatch.** `Gettext.put_locale/2`
+  is process-local. `apply_recipient_locale/3` mutates the running
+  process's locale so per-recipient renders pick up the right language.
+  Until now, after `build_receipt_content/4` returned, the process was
+  left with **the last recipient's locale** — which meant a worker that
+  dispatched event A to a `locale="en"` user and then ran any `t()`
+  call for its own purposes (audit logging, custom emails, follow-up
+  derivations) would see the leaked "en" locale instead of the locale
+  the worker started with.
+
+  Fix: `build_receipt_content/4` now captures `current_locale/0` before
+  applying the recipient locale and restores it in an `after` block. Each
+  receipt build is fully isolated; the caller's process locale is
+  unchanged on return.
+
+  Caught via crash-hunt regression: `t()` between two dispatches now
+  renders correctly against the worker's surrounding locale.
+
 ## [0.4.7] - 2026-05-14
 
 This release unlocks **DSL-only locale-aware events**. Combined with

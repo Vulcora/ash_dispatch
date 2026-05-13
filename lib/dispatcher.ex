@@ -644,8 +644,24 @@ defmodule AshDispatch.Dispatcher do
     # `EEx.eval_string` template rendering pick up the right locale.
     # This is the same backend referenced via the `:gettext_backend`
     # config — set to a no-op when not configured.
+    #
+    # `Gettext.put_locale/2` is process-local, so we wrap the body in
+    # `try/after` to restore whatever locale was in effect when this
+    # receipt started building. Without that, a worker that dispatches
+    # to user A (locale="en") and then runs unrelated `t()` calls in
+    # the same process would observe the leaked "en" locale until the
+    # next explicit `put_locale`. See PR with regression test.
+    prev_locale = current_locale()
     apply_recipient_locale(channel, context, recipient)
 
+    try do
+      do_build_receipt_content(context, channel, event_config, recipient)
+    after
+      restore_locale(prev_locale)
+    end
+  end
+
+  defp do_build_receipt_content(context, channel, event_config, recipient) do
     # Resolve module with runtime fallback (handles compilation order issues)
     module = resolve_event_module(event_config, context)
 
@@ -693,6 +709,51 @@ defmodule AshDispatch.Dispatcher do
       Map.put(base_content, :policy, to_string(channel.policy))
     else
       base_content
+    end
+  end
+
+  # Read the current process-level Gettext locale so `build_receipt_content/4`
+  # can restore it after rendering. Returns nil when no backend is configured
+  # or when `Gettext` isn't loaded.
+  defp current_locale do
+    case Config.gettext_backend() do
+      nil ->
+        nil
+
+      backend ->
+        if Code.ensure_loaded?(Gettext) do
+          try do
+            apply(Gettext, :get_locale, [backend])
+          rescue
+            _ -> nil
+          end
+        else
+          nil
+        end
+    end
+  end
+
+  # Restore a previously-captured Gettext locale. Used in the `after`
+  # block of `build_receipt_content/4` so per-recipient locale changes
+  # don't leak to subsequent code paths in the same process.
+  defp restore_locale(nil), do: :ok
+
+  defp restore_locale(locale) when is_binary(locale) do
+    case Config.gettext_backend() do
+      nil ->
+        :ok
+
+      backend ->
+        if Code.ensure_loaded?(Gettext) do
+          try do
+            apply(Gettext, :put_locale, [backend, locale])
+            :ok
+          rescue
+            _ -> :ok
+          end
+        else
+          :ok
+        end
     end
   end
 
