@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.7] - 2026-05-14
+
+This release unlocks **DSL-only locale-aware events**. Combined with
+0.4.6's HEEx auto-escape, an entire event can live in
+`dispatch do … end` blocks with just `prepare_template_assigns/2`
+left in the event module for derived assigns.
+
+### Added
+
+- **Configurable Gettext domain** for DSL content lookups
+  (`AshDispatch.Config.gettext_domain/0`, default `"notifications"`).
+  Apps with existing `default.po` setups can do
+  `config :ash_dispatch, :gettext_domain, "default"` to share one
+  translation bundle across the codebase.
+
+- **Top-level `template_assigns` interpolation in `VariableInterpolator`.**
+  When a variable doesn't match a field on the main resource, the
+  interpolator now falls back to top-level keys in `data`. Lets
+  `prepare_template_assigns/2`-returned values be addressed directly as
+  `{{my_computed_var}}` instead of awkwardly stuffing them onto the
+  resource struct.
+
+### Fixed
+
+- **`translate_content/2` no longer overwrites recipient locale.**
+  Previously, when `context.locale` was nil the function unconditionally
+  reset Gettext to `"en"` — silently undoing the per-recipient locale
+  that `apply_recipient_locale/3` had just set. Now only overrides on
+  explicit non-empty locale; trusts the process-level locale otherwise.
+
+- **`action_label` now goes through `interpolate/2`** for `:in_app`
+  channels — parity with `title`/`message`/`subject` so DSL-declared
+  labels participate in both `{{var}}` substitution AND the gettext
+  translation pipeline. Previously rendered raw.
+
 ## [0.4.6] - 2026-05-13
 
 ### Security
