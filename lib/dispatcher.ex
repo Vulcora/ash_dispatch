@@ -91,6 +91,30 @@ defmodule AshDispatch.Dispatcher do
   # Function head with default parameter
   def dispatch(event_id, data, variables \\ %{})
 
+  # Module-typed overload — resolve event_id via EventRegistry reverse-lookup.
+  # Eliminates hand-typed event_id strings at call sites (typo risk). Forge.Binding
+  # 019e2795-afd4 (Mosis project) — surfaced during predict_incremental wiring
+  # where the dispatch ID `"admin_events.corpus_fill_completed"` was typed by hand
+  # at the emission site with no compile-time validation against the DSL.
+  #
+  # Usage:
+  #     AshDispatch.Dispatcher.dispatch(MyApp.Events.OrderCreated, %{...}, %{...})
+  # Equivalent to:
+  #     AshDispatch.Dispatcher.dispatch(MyApp.Events.OrderCreated.id() or registry-id, ...)
+  def dispatch(module, data, variables)
+      when is_atom(module) and is_map(data) and is_map(variables) do
+    case resolve_event_id_for_module(module) do
+      {:ok, event_id} ->
+        dispatch(event_id, data, variables)
+
+      :error ->
+        {:error,
+         {:event_module_not_registered,
+          "module #{inspect(module)} is not registered in any Ash domain's dispatch DSL — " <>
+            "either register it via `event(:x, module: #{inspect(module)})` or use the string-id form."}}
+    end
+  end
+
   def dispatch(event_id, data, variables)
       when is_binary(event_id) and is_map(data) and is_map(variables) do
     # Use centralized EventResolver for consistent event lookup
@@ -1483,5 +1507,16 @@ defmodule AshDispatch.Dispatcher do
     """
 
     reraise RuntimeError.exception(message), stacktrace
+  end
+
+  # Reverse-lookup: module → event_id via EventRegistry.
+  # Used by the module-typed dispatch/3 overload to resolve dispatch IDs
+  # from event modules instead of hand-typed strings.
+  @spec resolve_event_id_for_module(module()) :: {:ok, String.t()} | :error
+  defp resolve_event_id_for_module(module) do
+    case Enum.find(AshDispatch.EventRegistry.get_event_modules(), fn {_id, mod} -> mod == module end) do
+      {event_id, _module} when is_binary(event_id) -> {:ok, event_id}
+      _ -> :error
+    end
   end
 end
