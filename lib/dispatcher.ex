@@ -22,6 +22,9 @@ defmodule AshDispatch.Dispatcher do
   - `:slack` → `AshDispatch.Transports.Slack` (async via Oban)
   - `:sms` → `AshDispatch.Transports.SMS` (async via Oban)
   - `:webhook` → `AshDispatch.Transports.Webhook` (async via Oban)
+  - `:broadcast` → `AshDispatch.Transports.Broadcast` (lightweight, no receipt)
+  - `:oban` → `AshDispatch.Transports.Oban` (lightweight, enqueues
+    arbitrary worker named in event `:metadata`; no receipt)
   """
 
   alias AshDispatch.Config
@@ -305,6 +308,11 @@ defmodule AshDispatch.Dispatcher do
   end
 
   defp skip_receipt_for_transport?(:broadcast), do: true
+  # The Oban transport's audit trail IS the enqueued `oban_jobs` row;
+  # no separate DeliveryReceipt is created. Producers who want a
+  # receipt should pair `:oban` with another transport on the same
+  # event.
+  defp skip_receipt_for_transport?(:oban), do: true
   defp skip_receipt_for_transport?(_), do: false
 
   defp extract_user_id_from_recipient(%{id: id}), do: id
@@ -1217,6 +1225,9 @@ defmodule AshDispatch.Dispatcher do
 
       :broadcast ->
         Transports.Broadcast.deliver(receipt, context, channel, event_config)
+
+      :oban ->
+        Transports.Oban.deliver(receipt, context, channel, event_config)
 
       unknown ->
         Logger.warning("Unknown transport: #{unknown}, skipping delivery")
