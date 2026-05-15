@@ -3,6 +3,23 @@ defmodule AshDispatch.NamingTest do
 
   alias AshDispatch.Naming
 
+  describe "wire_event_name/1 (F15)" do
+    test "splits dotted event_id and takes last segment" do
+      assert Naming.wire_event_name("pipeline_events.chat_chunk") == "chat_chunk"
+      assert Naming.wire_event_name("orders.created") == "created"
+      assert Naming.wire_event_name("admin_events.corpus_fill_completed") ==
+               "corpus_fill_completed"
+    end
+
+    test "atom event_ids stringify" do
+      assert Naming.wire_event_name(:report_resolved) == "report_resolved"
+    end
+
+    test "single-segment event_id passes through" do
+      assert Naming.wire_event_name("simple") == "simple"
+    end
+  end
+
   describe "filename/4" do
     test "generates basic filename with audience" do
       assert Naming.filename("email", :user, nil, "html") == "email.user.html"

@@ -83,6 +83,33 @@ defmodule AshDispatch.Naming do
   def event_id(_resource, event_name), do: "unknown.#{event_name}"
 
   @doc """
+  Derive the wire-name from an event_id by splitting on `.` and taking
+  the last segment. Used by the broadcast transport (and any future
+  transport that needs a Phoenix-channel-friendly event name).
+
+  Per-event override is available via `AshDispatch.Event.wire_event_name/0`
+  (defaults to this string transform). F15 — review-deep 2026-05-15.
+
+  ## Examples
+
+      iex> AshDispatch.Naming.wire_event_name("pipeline_events.chat_chunk")
+      "chat_chunk"
+
+      iex> AshDispatch.Naming.wire_event_name(:report_resolved)
+      "report_resolved"
+
+      iex> AshDispatch.Naming.wire_event_name("orders.created")
+      "created"
+  """
+  @spec wire_event_name(String.t() | atom()) :: String.t()
+  def wire_event_name(event_id) do
+    event_id
+    |> to_string()
+    |> String.split(".")
+    |> List.last()
+  end
+
+  @doc """
   Extract the domain name from a resource module.
 
   Takes the second-to-last module segment and converts to snake_case.

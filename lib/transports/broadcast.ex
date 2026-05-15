@@ -135,9 +135,13 @@ defmodule AshDispatch.Transports.Broadcast do
 
   # ── Helpers ───────────────────────────────────────────────────
 
-  # "pipeline_events.chat_chunk" → "chat_chunk"
+  # F15 (review-deep 2026-05-15) — wire-event-name derivation moved
+  # to `AshDispatch.Naming.wire_event_name/1`. Per-event override is
+  # available via the `wire_event_name/0` callback on `AshDispatch.Event`
+  # (default impl in __using__: split-and-last); transports route here
+  # so the convention stays centralized.
   defp derive_event_name(event_id) do
-    event_id |> to_string() |> String.split(".") |> List.last()
+    AshDispatch.Naming.wire_event_name(event_id)
   end
 
   defp maybe_mark_sent(%{id: nil} = receipt), do: receipt
