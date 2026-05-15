@@ -14,7 +14,11 @@ defmodule AshDispatch.Dsl.Transformers.ValidateChannels do
   alias Spark.Dsl.Transformer
   alias Spark.Error.DslError
 
-  @valid_transports [:email, :in_app, :discord, :sms, :slack, :webhook]
+  # F1 — transports are now derived from the Registry, not hardcoded.
+  # Pre-F1 this list missed `:broadcast` and `:oban` (added later); DSL
+  # events declaring those channels would have failed validation.
+  defp valid_transports, do: AshDispatch.Transport.Registry.atoms()
+
   @valid_policies [:always, :skip_if_read]
 
   @impl true
@@ -43,9 +47,11 @@ defmodule AshDispatch.Dsl.Transformers.ValidateChannels do
 
   # Validate transport types
   defp validate_transport_types(channels, dsl_state) do
+    valid = valid_transports()
+
     invalid_channels =
       Enum.filter(channels, fn channel ->
-        channel.transport not in @valid_transports
+        channel.transport not in valid
       end)
 
     case invalid_channels do
@@ -60,7 +66,7 @@ defmodule AshDispatch.Dsl.Transformers.ValidateChannels do
            message: """
            Invalid transport type: #{inspect(channel.transport)}
 
-           Valid transport types: #{inspect(@valid_transports)}
+           Valid transport types: #{inspect(valid)}
            """
          )}
     end

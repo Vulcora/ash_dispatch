@@ -80,4 +80,24 @@ defmodule AshDispatch.Transport.Registry do
       :error -> false
     end
   end
+
+  @doc """
+  Required event-metadata keys for the transport (F4). Returns `[]`
+  for unknown atoms — `ValidateChannels` will already have raised
+  on the unknown transport itself.
+  """
+  @spec required_event_metadata_keys(atom()) :: [atom()]
+  def required_event_metadata_keys(atom) when is_atom(atom) do
+    case module_for(atom) do
+      {:ok, module} ->
+        if function_exported?(module, :required_event_metadata_keys, 0) do
+          module.required_event_metadata_keys()
+        else
+          []
+        end
+
+      :error ->
+        []
+    end
+  end
 end

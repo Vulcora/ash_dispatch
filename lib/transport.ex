@@ -71,9 +71,25 @@ defmodule AshDispatch.Transport do
   """
   @callback skip_receipt?() :: boolean()
 
+  @doc """
+  Event metadata keys this transport REQUIRES at the event-registration
+  layer (F4). `ValidateChannels` enforces presence at compile-time —
+  an event registering a `[transport: :oban]` channel must declare
+  `metadata: [oban_worker: ...]` or the DSL fails with a precise
+  `Spark.Error.DslError` pointing at the registration site.
+
+  Defaults to `[]` (no required keys). `:oban` overrides to `[:oban_worker]`.
+
+  Optional — transports that don't need event metadata return `[]`.
+  """
+  @callback required_event_metadata_keys() :: [atom()]
+
+  @optional_callbacks required_event_metadata_keys: 0
+
   defmacro __using__(opts) do
     atom = Keyword.fetch!(opts, :atom)
     skip_receipt? = Keyword.get(opts, :skip_receipt?, false)
+    required_keys = Keyword.get(opts, :required_event_metadata_keys, [])
 
     quote do
       @behaviour AshDispatch.Transport
@@ -84,7 +100,10 @@ defmodule AshDispatch.Transport do
       @impl AshDispatch.Transport
       def skip_receipt?, do: unquote(skip_receipt?)
 
-      defoverridable transport_atom: 0, skip_receipt?: 0
+      @impl AshDispatch.Transport
+      def required_event_metadata_keys, do: unquote(required_keys)
+
+      defoverridable transport_atom: 0, skip_receipt?: 0, required_event_metadata_keys: 0
     end
   end
 end
