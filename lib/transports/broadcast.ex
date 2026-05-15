@@ -1,4 +1,6 @@
 defmodule AshDispatch.Transports.Broadcast do
+  use AshDispatch.Transport, atom: :broadcast, skip_receipt?: true
+
   @moduledoc """
   Lightweight PubSub broadcast transport for real-time events.
 

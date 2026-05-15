@@ -1,4 +1,6 @@
 defmodule AshDispatch.Transports.Slack do
+  use AshDispatch.Transport, atom: :slack, skip_receipt?: false
+
   @moduledoc """
   Slack webhook transport.
 

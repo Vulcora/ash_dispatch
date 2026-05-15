@@ -1,4 +1,6 @@
 defmodule AshDispatch.Transports.InApp do
+  use AshDispatch.Transport, atom: :in_app, skip_receipt?: false
+
   @moduledoc """
   In-app notification transport.
 

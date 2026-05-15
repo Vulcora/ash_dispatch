@@ -1,4 +1,6 @@
 defmodule AshDispatch.Transports.Email do
+  use AshDispatch.Transport, atom: :email, skip_receipt?: false
+
   @moduledoc """
   Email transport via Oban jobs.
 

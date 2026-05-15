@@ -32,7 +32,6 @@ defmodule AshDispatch.Dispatcher do
   alias AshDispatch.ChannelResolver
   alias AshDispatch.EventResolver
   alias AshDispatch.Naming
-  alias AshDispatch.Transports
   alias AshDispatch.Event.RecipientExtractor
   alias AshDispatch.Helpers.RecordReader
 
@@ -307,13 +306,13 @@ defmodule AshDispatch.Dispatcher do
     end
   end
 
-  defp skip_receipt_for_transport?(:broadcast), do: true
-  # The Oban transport's audit trail IS the enqueued `oban_jobs` row;
-  # no separate DeliveryReceipt is created. Producers who want a
-  # receipt should pair `:oban` with another transport on the same
-  # event.
-  defp skip_receipt_for_transport?(:oban), do: true
-  defp skip_receipt_for_transport?(_), do: false
+  # F1 — receipt-skip is now declared on each Transport via the
+  # `use AshDispatch.Transport, skip_receipt?: bool` macro. Lookup
+  # routes through `AshDispatch.Transport.Registry` so adding a
+  # lightweight transport (broadcast / oban / future) is a single
+  # `use` line — no Dispatcher edit needed.
+  defp skip_receipt_for_transport?(transport_atom),
+    do: AshDispatch.Transport.Registry.skip_receipt?(transport_atom)
 
   defp extract_user_id_from_recipient(%{id: id}), do: id
   defp extract_user_id_from_recipient(%{"id" => id}), do: id
@@ -1203,37 +1202,21 @@ defmodule AshDispatch.Dispatcher do
     EventResolver.notification_type(module, context)
   end
 
+  # F1 — transport dispatch routes through `AshDispatch.Transport.Registry`
+  # (compile-time `atom => module` map). Adding a transport is one new
+  # file + one entry in the registry's @transports list — no edit here.
   defp dispatch_to_transport(receipt, context, channel, event_config) do
-    case channel.transport do
-      :in_app ->
-        Transports.InApp.deliver(receipt, context, channel, event_config)
+    case AshDispatch.Transport.Registry.module_for(channel.transport) do
+      {:ok, module} ->
+        module.deliver(receipt, context, channel, event_config)
 
-      :email ->
-        Transports.Email.deliver(receipt, context, channel, event_config)
-
-      :discord ->
-        Transports.Discord.deliver(receipt, context, channel, event_config)
-
-      :slack ->
-        Transports.Slack.deliver(receipt, context, channel, event_config)
-
-      :sms ->
-        Transports.SMS.deliver(receipt, context, channel, event_config)
-
-      :webhook ->
-        Transports.Webhook.deliver(receipt, context, channel, event_config)
-
-      :broadcast ->
-        Transports.Broadcast.deliver(receipt, context, channel, event_config)
-
-      :oban ->
-        Transports.Oban.deliver(receipt, context, channel, event_config)
-
-      unknown ->
-        Logger.warning("Unknown transport: #{unknown}, skipping delivery")
+      :error ->
+        Logger.warning("Unknown transport: #{channel.transport}, skipping delivery")
 
         receipt
-        |> Ash.Changeset.for_update(:skip, %{error_message: "Unknown transport: #{unknown}"})
+        |> Ash.Changeset.for_update(:skip, %{
+          error_message: "Unknown transport: #{channel.transport}"
+        })
         |> Ash.update()
     end
   end

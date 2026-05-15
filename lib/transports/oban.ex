@@ -1,4 +1,6 @@
 defmodule AshDispatch.Transports.Oban do
+  use AshDispatch.Transport, atom: :oban, skip_receipt?: true
+
   @moduledoc """
   Oban-job-enqueue transport.
 

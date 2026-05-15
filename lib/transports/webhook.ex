@@ -1,4 +1,6 @@
 defmodule AshDispatch.Transports.Webhook do
+  use AshDispatch.Transport, atom: :webhook, skip_receipt?: false
+
   @moduledoc """
   Generic webhook transport.
 

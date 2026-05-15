@@ -1,4 +1,6 @@
 defmodule AshDispatch.Transports.Discord do
+  use AshDispatch.Transport, atom: :discord, skip_receipt?: false
+
   @moduledoc """
   Discord webhook transport.
 

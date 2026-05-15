@@ -1,4 +1,6 @@
 defmodule AshDispatch.Transports.SMS do
+  use AshDispatch.Transport, atom: :sms, skip_receipt?: false
+
   @moduledoc """
   SMS transport — delegates to a consumer-configured backend.
 

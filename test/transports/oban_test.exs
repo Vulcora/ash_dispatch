@@ -24,21 +24,23 @@ defmodule AshDispatch.Transports.ObanTest do
       assert function_exported?(ObanTransport, :deliver, 4)
     end
 
-    test "dispatcher's receipt-skip table includes :oban" do
-      # `skip_receipt_for_transport?/1` is private; assert behaviour
-      # via the public dispatch path's compiled shape — see
-      # `lib/dispatcher.ex`. We do a textual check on the dispatcher
-      # source to catch accidental regressions on the receipt-skip
-      # list (both `:broadcast` and `:oban` must stay there).
-      source = File.read!("lib/dispatcher.ex")
-      assert source =~ "skip_receipt_for_transport?(:oban), do: true"
-      assert source =~ "skip_receipt_for_transport?(:broadcast), do: true"
-    end
+    test "Transport.Registry includes :oban (post-F1 behaviour-driven)" do
+      # F1 post-refactor: receipt-skip + transport routing both consult
+      # `AshDispatch.Transport.Registry` instead of hardcoded case
+      # statements in dispatcher.ex. Assert the registry contract
+      # directly.
+      assert {:ok, AshDispatch.Transports.Oban} =
+               AshDispatch.Transport.Registry.module_for(:oban)
 
-    test "dispatcher's transport-routing case includes :oban" do
-      source = File.read!("lib/dispatcher.ex")
+      assert AshDispatch.Transport.Registry.skip_receipt?(:oban) == true
 
-      assert source =~ "Transports.Oban.deliver(receipt, context, channel, event_config)"
+      # Sister: :broadcast must stay receipt-skip (canary against
+      # accidentally flipping :broadcast's flag during transport
+      # refactors).
+      assert AshDispatch.Transport.Registry.skip_receipt?(:broadcast) == true
+
+      # Sanity: a non-skip transport stays non-skip.
+      assert AshDispatch.Transport.Registry.skip_receipt?(:email) == false
     end
   end
 
