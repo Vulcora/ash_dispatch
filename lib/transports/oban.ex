@@ -82,9 +82,10 @@ defmodule AshDispatch.Transports.Oban do
     metadata = event_config[:metadata] || []
     worker = Keyword.get(metadata, :oban_worker)
     unique_keys = Keyword.get(metadata, :oban_unique_keys)
+    enabled_parameter = Keyword.get(metadata, :oban_enabled_parameter)
 
-    case worker do
-      nil ->
+    cond do
+      is_nil(worker) ->
         Logger.warning(
           "AshDispatch :oban transport: event #{inspect(context.event_id)} is " <>
             "registered with `transport: :oban` but no `:oban_worker` in metadata. " <>
@@ -93,8 +94,23 @@ defmodule AshDispatch.Transports.Oban do
 
         {:ok, Map.put(receipt, :status, :skipped)}
 
-      worker_module when is_atom(worker_module) ->
-        do_enqueue(receipt, context, worker_module, unique_keys)
+      # F2 — dispatch-layer enable-gate. When the event declares
+      # `:oban_enabled_parameter`, consult the configured gate-check
+      # module (host-app pluggable). If gate returns false, skip the
+      # enqueue at the DISPATCH layer — Oban queue never sees the job,
+      # the worker doesn't need a self-gate. Telemetry emitted so
+      # observability survives.
+      not is_nil(enabled_parameter) and not parameter_enabled?(enabled_parameter) ->
+        :telemetry.execute(
+          [:ash_dispatch, :oban, :gated_disabled],
+          %{count: 1},
+          %{event_id: context.event_id, parameter: enabled_parameter, worker: worker}
+        )
+
+        {:ok, Map.put(receipt, :status, :skipped)}
+
+      true ->
+        do_enqueue(receipt, context, worker, unique_keys)
     end
   rescue
     e ->
@@ -104,6 +120,35 @@ defmodule AshDispatch.Transports.Oban do
       )
 
       {:error, e}
+  end
+
+  # F2 — host-app-pluggable parameter gate. Defaults to "always enabled"
+  # when no module is configured (the AshDispatch library has no opinion
+  # on what a parameter means). Mosis wires `Mosis.AshDispatch.ParameterGate`
+  # via application config; that adapter reads from `Mosis.Parameter`
+  # / `ParameterStore`.
+  #
+  # Failure modes: a misconfigured gate (raises) is treated as ENABLED
+  # — the safer default (over-fire vs silent-drop). Logged at :warning
+  # so operators see substrate misconfiguration.
+  defp parameter_enabled?(parameter_atom) do
+    case Application.get_env(:ash_dispatch, :gate_check_module) do
+      nil ->
+        true
+
+      module when is_atom(module) ->
+        try do
+          module.enabled?(parameter_atom)
+        rescue
+          e ->
+            Logger.warning(
+              "AshDispatch :oban transport: gate_check_module #{inspect(module)} raised on " <>
+                "#{inspect(parameter_atom)} — #{inspect(e)}. Defaulting to enabled."
+            )
+
+            true
+        end
+    end
   end
 
   defp do_enqueue(receipt, context, worker_module, unique_keys) do
