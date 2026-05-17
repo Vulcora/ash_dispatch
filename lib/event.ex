@@ -485,13 +485,25 @@ defmodule AshDispatch.Event do
     ]
 
   @doc false
-  defmacro __using__(_opts) do
+  defmacro __using__(opts) do
+    transports = Keyword.get(opts, :transports, [])
+    custom_topic_opts = Keyword.get(transports, :custom_topic)
+
+    transport_quoted =
+      if custom_topic_opts do
+        AshDispatch.Event.CustomTopic.inject(custom_topic_opts)
+      else
+        nil
+      end
+
     quote do
       @behaviour AshDispatch.Event
 
       use Spark.Dsl, default_extensions: [extensions: [unquote(__MODULE__)]]
 
       import AshDispatch.Channel, only: [channel: 2, channel: 3]
+
+      unquote(transport_quoted)
 
       # Default implementations that read from DSL first, then fallback
 
