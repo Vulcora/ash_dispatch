@@ -385,17 +385,91 @@ defmodule AshDispatch.RecipientResolver.Resolver do
       resolve_by_query([role: :admin, is_active: true], MyApp.Accounts.User)
   """
   def resolve_by_query(filter, user_resource) when is_list(filter) do
-    case user_resource
-         |> Ash.Query.filter_input(filter)
-         |> Ash.read(authorize?: false) do
-      {:ok, users} ->
-        users
+    # Dispatch is a side-channel — recipient resolution must NEVER raise
+    # into the caller. `Ash.read` returns `{:ok, _} | {:error, _}` for
+    # normal Ash error paths, but two failure modes raise through the
+    # call:
+    #
+    #   1. Query construction — `Ash.Query.filter_input/2` raises when
+    #      `user_resource` isn't a valid Ash resource module (e.g. a
+    #      misconfigured `recipient_user_resource`).
+    #   2. Auto-loaded calculations during read — e.g. AshCloak
+    #      `decrypt_by_default` raises through the calculation pipeline
+    #      when the Cloak vault hasn't started. (Mosis 2026-05-20
+    #      receipt: minimal-boot mix task fired binding_declared
+    #      dispatch → resolver → User read → vault-not-started crash;
+    #      aborted the parent binding creation.)
+    #
+    # A raise here would bubble up to the parent operation that
+    # triggered the dispatch and abort it. The whole point of dispatch
+    # is to be observational; degrade to "no recipients delivered" +
+    # structured warning instead.
+    try do
+      query =
+        user_resource
+        |> Ash.Query.filter_input(filter)
+        |> scope_to_recipient_fields(user_resource)
 
-      {:error, error} ->
-        Logger.warning("[AshDispatch.RecipientResolver] Query failed: #{inspect(error)}")
+      case Ash.read(query, authorize?: false) do
+        {:ok, users} ->
+          users
+
+        {:error, error} ->
+          Logger.warning("[AshDispatch.RecipientResolver] Query failed: #{inspect(error)}")
+
+          []
+      end
+    rescue
+      error ->
+        Logger.warning("""
+        [AshDispatch.RecipientResolver] resolve_by_query/2 raised — dispatch \
+        side-channel degraded to [] recipients to protect parent operation.
+          resource: #{inspect(user_resource)}
+          filter:   #{inspect(filter)}
+          error:    #{Exception.format(:error, error, __STACKTRACE__)}\
+        """)
 
         []
     end
+  end
+
+  # Narrow the user-resource read to attributes the dispatch pipeline
+  # actually reads. Without this scoping, `Ash.read` defaults to selecting
+  # every attribute, which triggers any auto-loaded calculations on the
+  # resource (e.g. AshCloak `decrypt_by_default` decrypt calcs). For a
+  # recipient-lookup query that only needs identifier + display fields,
+  # decrypting unrelated PII columns is gratuitous work and a needless
+  # failure surface (vault not started, key rotation in progress, etc.).
+  #
+  # Falls back to the unscoped query if `recipient_fields` config is
+  # empty or none of the configured fields exist on the resource (mis-
+  # configuration — preserve previous behavior rather than read zero
+  # columns).
+  defp scope_to_recipient_fields(query, user_resource) do
+    case recipient_field_select(user_resource) do
+      [] -> query
+      fields -> Ash.Query.select(query, fields)
+    end
+  end
+
+  defp recipient_field_select(user_resource) do
+    configured =
+      AshDispatch.Config.recipient_fields()
+      |> Enum.flat_map(fn {_transport, transport_config} ->
+        identifier = transport_config |> Keyword.get(:identifier) |> List.wrap()
+        name = transport_config |> Keyword.get(:name, []) |> List.wrap()
+        identifier ++ name
+      end)
+      |> Enum.reject(&is_nil/1)
+      |> then(&[:id | &1])
+      |> Enum.uniq()
+
+    resource_attrs =
+      user_resource
+      |> Ash.Resource.Info.attributes()
+      |> MapSet.new(& &1.name)
+
+    Enum.filter(configured, &MapSet.member?(resource_attrs, &1))
   end
 
   @doc """

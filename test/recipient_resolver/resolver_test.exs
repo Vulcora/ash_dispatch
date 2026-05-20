@@ -141,6 +141,35 @@ defmodule AshDispatch.RecipientResolver.ResolverTest do
     end
   end
 
+  describe "resolve_by_query/2 — defensive rescue" do
+    # Dispatch is a side-channel; recipient resolution must never raise
+    # into the caller. The classic trap (2026-05-20 Mosis receipt):
+    # `decrypt_by_default` AshCloak calculations get auto-loaded by the
+    # user-resource read here; if the Cloak vault hasn't started, the
+    # calculation raises through the Ash pipeline and bubbles up to the
+    # operation that created the dispatching record (a Forge.Binding,
+    # in that case), aborting it.
+    #
+    # The rescue is deliberately broad — ANY raise from the read path
+    # is degraded to `[]` + warning. The fix needs to survive arbitrary
+    # third-party calculation modules misbehaving, not just Cloak.
+
+    test "passing a non-existent resource module returns [] and logs warning" do
+      # `Ash.read` against a module that doesn't implement the resource
+      # protocol raises an `UndefinedFunctionError` / `Protocol.UndefinedError`
+      # depending on Ash version — either way it's a raise, not an
+      # `{:error, _}` tuple. Confirms the try/rescue wrapping does its job.
+      log =
+        capture_log(fn ->
+          result = Resolver.resolve_by_query([id: "anything"], __MODULE__.NotAResource)
+          assert result == []
+        end)
+
+      assert log =~ "[AshDispatch.RecipientResolver]"
+      assert log =~ "resolve_by_query/2 raised"
+    end
+  end
+
   describe "apply_filter/2" do
     # We test apply_filter indirectly through the module's private function behavior
     # by testing the full resolve flow, but we can test the filter matching logic
