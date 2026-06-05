@@ -11,7 +11,6 @@ defmodule AshDispatch.RecipientResolver.Resolver do
   - `resolve` - Custom resolver function
   """
 
-  require Ash.Query
   require Logger
 
   @doc """

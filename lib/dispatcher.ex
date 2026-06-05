@@ -144,10 +144,26 @@ defmodule AshDispatch.Dispatcher do
             # Use centralized ChannelResolver for consistent priority logic
             channels = ChannelResolver.resolve(event_id, event_module, context)
 
-            # Build event config
-            event_config = %{
-              module: event_module
-            }
+            # Build event config — pull the inline event's :metadata +
+            # :content into event_config so transports that depend on
+            # them (e.g. AshDispatch.Transports.Oban needs
+            # event_config[:metadata][:oban_worker]) read the substrate
+            # the DSL declared. Pre-fix, event_config only carried
+            # :module, so :oban transport always logged
+            # "missing oban_worker in metadata" and silently skipped
+            # the enqueue. ω.13.swarm-2c103-test-bugs.
+            event_config =
+              case AshDispatch.EventRegistry.find_event(event_id) do
+                {:ok, event_info} ->
+                  %{
+                    module: event_module,
+                    metadata: event_info[:metadata] || [],
+                    content: event_info[:content] || []
+                  }
+
+                {:error, _} ->
+                  %{module: event_module}
+              end
 
             # Dispatch to all channels
             # Deduplication is opt-in via deduplicate_in_app: true in event config
@@ -1036,8 +1052,6 @@ defmodule AshDispatch.Dispatcher do
   rescue
     _ -> nil
   end
-
-  defp derive_event_dir_from_module(_, _), do: nil
 
   # Interpolate variables in a string template
   defp interpolate(nil, _context), do: nil

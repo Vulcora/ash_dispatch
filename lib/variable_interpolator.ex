@@ -169,8 +169,6 @@ defmodule AshDispatch.VariableInterpolator do
     end
   end
 
-  defp resolve_top_level(_var, _data), do: nil
-
   # Private functions
 
   # Resolve a variable from the resource
@@ -253,8 +251,6 @@ defmodule AshDispatch.VariableInterpolator do
   defp to_string_safe(value) when is_atom(value), do: Atom.to_string(value)
   defp to_string_safe(value) when is_integer(value), do: Integer.to_string(value)
   defp to_string_safe(value) when is_float(value), do: Float.to_string(value)
-  defp to_string_safe(true), do: "true"
-  defp to_string_safe(false), do: "false"
 
   defp to_string_safe(%DateTime{} = dt) do
     DateTime.to_string(dt)

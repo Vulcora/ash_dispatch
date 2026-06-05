@@ -154,20 +154,6 @@ defmodule AshDispatch.Event.Helpers do
           # New format: follow relationships, then apply filter
           resolve_via_relationship_and_filter(context, relationship_path, filter)
         end
-
-      # Not configured
-      nil ->
-        # Only warn if channel is not marked as optional
-        unless Map.get(channel, :optional, false) do
-          Logger.warning("""
-          [AshDispatch] No recipient configuration for audience :#{audience}.
-
-          Tip: If this audience is expected to have no recipients sometimes, add `optional: true` to the channel:
-               [transport: :#{Map.get(channel, :transport, :your_transport)}, audience: :#{audience}, optional: true]
-          """)
-        end
-
-        []
     end
   end
 
@@ -399,7 +385,6 @@ defmodule AshDispatch.Event.Helpers do
     Enum.reduce(path, data, fn key, acc ->
       case acc do
         map when is_map(map) -> Map.get(map, key)
-        struct when is_struct(struct) -> Map.get(struct, key)
         _ -> nil
       end
     end)

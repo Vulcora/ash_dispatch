@@ -27,7 +27,6 @@ defmodule AshDispatch.Resource.Transformers.InjectCounterBroadcasts do
   use Spark.Dsl.Transformer
 
   alias Spark.Dsl.Transformer
-  require Logger
 
   @notifier AshDispatch.Notifier
 

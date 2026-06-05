@@ -76,7 +76,6 @@ defmodule AshDispatch.TemplateResolver do
       # → Looks for: email.admin.html.heex → email.html.heex → default.html.heex
   """
 
-  require EEx
   require Logger
 
   @doc """
@@ -272,8 +271,6 @@ defmodule AshDispatch.TemplateResolver do
 
   # Derive directory from module's source file (for development mode)
   # Returns nil if source info is not available (e.g., in releases)
-  defp derive_module_dir(nil), do: nil
-
   defp derive_module_dir(event_module) do
     case event_module.__info__(:compile)[:source] do
       nil -> nil
@@ -796,20 +793,20 @@ defmodule AshDispatch.TemplateResolver do
   defp do_convert_attributes(template, acc, :normal) do
     case Regex.run(~r/(?<![#"])(\w+)=\{/, template, return: :index) do
       [{match_start, match_len}, {attr_start, attr_len}] ->
-        <<before::binary-size(match_start), _match::binary-size(match_len), rest::binary>> =
+        <<before::binary-size(^match_start), _match::binary-size(^match_len), rest::binary>> =
           template
 
-        <<_skip::binary-size(attr_start), attr_name::binary-size(attr_len), _::binary>> = template
+        <<_skip::binary-size(^attr_start), attr_name::binary-size(^attr_len), _::binary>> = template
 
         case find_matching_brace(rest) do
           {:ok, content, consumed_len} ->
             converted = ~s(#{attr_name}="<%= #{content} %>")
-            <<_content_and_brace::binary-size(consumed_len + 1), remaining::binary>> = rest
+            <<_content_and_brace::binary-size(^consumed_len + 1), remaining::binary>> = rest
             do_convert_attributes(remaining, acc <> before <> converted, :normal)
 
           :error ->
             kept_len = match_start + match_len
-            <<kept::binary-size(kept_len), new_rest::binary>> = template
+            <<kept::binary-size(^kept_len), new_rest::binary>> = template
             do_convert_attributes(new_rest, acc <> kept, :normal)
         end
 

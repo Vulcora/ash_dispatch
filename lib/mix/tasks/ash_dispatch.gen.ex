@@ -1024,8 +1024,6 @@ defmodule Mix.Tasks.AshDispatch.Gen do
   defp normalize_metadata(metadata) when is_list(metadata), do: Map.new(metadata)
   defp normalize_metadata(metadata) when is_map(metadata), do: metadata
 
-  defp format_ts_object(map) when map_size(map) == 0, do: "{}"
-
   defp format_ts_object(map) do
     fields =
       map
@@ -1040,8 +1038,8 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     "{ #{fields} }"
   end
 
-  defp format_ts_value(v) when is_atom(v), do: ~s("#{v}")
   defp format_ts_value(v) when is_boolean(v), do: to_string(v)
+  defp format_ts_value(v) when is_atom(v), do: ~s("#{v}")
   defp format_ts_value(v) when is_integer(v), do: to_string(v)
   defp format_ts_value(v) when is_float(v), do: to_string(v)
   defp format_ts_value(v) when is_binary(v), do: ~s("#{v}")

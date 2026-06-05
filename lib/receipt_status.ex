@@ -43,8 +43,6 @@ defmodule AshDispatch.ReceiptStatus do
       end
   """
 
-  require Logger
-
   @doc """
   Marks a receipt as "sending" (delivery in progress).
 

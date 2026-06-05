@@ -85,7 +85,7 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
       %{
         event_id: event_id,
         description: get_event_description(event_module, event_id),
-        domain: (event_config && event_config.domain) |> to_string_or_nil(),
+        domain: event_config.domain |> to_string_or_nil(),
         channels: format_channels(channels),
         required_context: get_required_context(event_id),
         example_context: get_example_context(event_id, event_module),

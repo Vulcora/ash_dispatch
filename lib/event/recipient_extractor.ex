@@ -89,8 +89,6 @@ defmodule AshDispatch.Event.RecipientExtractor do
       # → Calls MyApp.extract_lead_email(lead)
   """
 
-  require Logger
-
   @doc """
   Extracts the recipient identifier (email, phone, webhook URL, etc.) based on transport and audience.
 
@@ -208,6 +206,8 @@ defmodule AshDispatch.Event.RecipientExtractor do
     end)
   end
 
+  defp extract_field(_recipient, nil), do: nil
+
   defp extract_field(recipient, field) when is_atom(field) do
     recipient
     |> Map.get(field)
@@ -237,8 +237,6 @@ defmodule AshDispatch.Event.RecipientExtractor do
     |> fun.()
     |> unwrap_ci_string()
   end
-
-  defp extract_field(_recipient, nil), do: nil
 
   defp extract_field(recipient, field_spec) do
     raise """
