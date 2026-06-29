@@ -1,9 +1,10 @@
 # AshDispatch
 
+[![Hex.pm](https://img.shields.io/hexpm/v/ash_dispatch.svg)](https://hex.pm/packages/ash_dispatch)
+[![Hexdocs](https://img.shields.io/badge/hex-docs-purple.svg)](https://hexdocs.pm/ash_dispatch)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Documentation](https://img.shields.io/badge/docs-online-blue.svg)](https://ash-dispatch-docs.pages.dev)
 
-**Status:** 🚧 **Active Development** - Extracting proven notification engine from Magasin into reusable Ash extension
+> ⚠️ **Experimental — `v0.5`, public launch.** AshDispatch was just open-sourced and is **very early / experimental**. It already powers notifications in a production application (this is the extracted, generalized engine), but the public API is still settling and **may change between minor versions**. Pin an exact version, expect rough edges, and please [open issues](https://github.com/Vulcora/ash_dispatch/issues) — feedback now directly shapes 1.0.
 
 ---
 
@@ -125,7 +126,7 @@ mix ash.migrate
 ```elixir
 def deps do
   [
-    {:ash_dispatch, "~> 0.1.0"}
+    {:ash_dispatch, "~> 0.5.0"}
   ]
 end
 ```
@@ -336,14 +337,19 @@ Deep integration with Ash actions, Oban jobs, and the Ash ecosystem.
 ### 6. Centralized Logic
 Channel resolution, event discovery, and naming all use centralized modules to ensure consistency and maintainability.
 
-## Development Status
+## Project Status
 
-**Current:** ✅ Resource extension complete and tested
-**Next:** 🚧 Runtime dispatcher and Domain extension
+**`v0.5` — public launch, experimental.** AshDispatch is published on [Hex](https://hex.pm/packages/ash_dispatch) and open for use, but it's early days:
+
+- ✅ **Working today:** the resource DSL, runtime dispatcher, delivery receipts, in-app / email / SMS / webhook / Discord / Slack / broadcast / `:oban` / `:custom_topic` transports, Oban-backed async delivery and retries, real-time counters, localization, and the generated TypeScript SDK.
+- 🧪 **Experimental:** the public API is still settling and may change between minor versions before `1.0`. Some transports and helpers are less battle-tested than others.
+- 🗺️ **Toward 1.0:** API stabilization, broader transport coverage, and more docs/examples.
+
+It's extracted from a production application, so the core paths are proven — but treat the public package as experimental and pin an exact version.
 
 ## Contributing
 
-This is currently being extracted from [Magasin](https://github.com/fyndgrossisten/magasin) where it has been running in production. Once stabilized, it will be published as a standalone package.
+AshDispatch is open source and contributions are welcome. Issues and PRs go to [github.com/Vulcora/ash_dispatch](https://github.com/Vulcora/ash_dispatch). Since the API is still evolving, please open an issue to discuss larger changes before submitting a PR.
 
 ## License
 

@@ -63,7 +63,7 @@ If you prefer manual setup or need more control, follow the steps below.
 # mix.exs
 def deps do
   [
-    {:ash_dispatch, "~> 0.1.0"},
+    {:ash_dispatch, "~> 0.5.0"},
     {:oban, "~> 2.17"},  # Required for async delivery
     {:swoosh, "~> 1.16"} # Required for email transport
   ]
@@ -1364,6 +1364,6 @@ end
 
 ## Help & Support
 
-- [GitHub Issues](https://github.com/magasin/ash_dispatch/issues)
+- [GitHub Issues](https://github.com/Vulcora/ash_dispatch/issues)
 - [Ash Community](https://ash-hq.org)
 - [Documentation](../README.md)

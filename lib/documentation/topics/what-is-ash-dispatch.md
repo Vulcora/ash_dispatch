@@ -253,15 +253,16 @@ sequenceDiagram
 3. **After Success**: `DispatchEvent` change runs
 4. **Create Receipt**: `DeliveryReceipt` Ash resource created with full content (status: `:pending`)
 5. **Dispatch**: For each channel:
-   - **In-App**: ✅ Create `Notification`, update receipt to `:sent` immediately (via Ash changeset)
-   - **Email**: 🚧 Enqueue Oban job (mocked), update receipt to `:scheduled` (via Ash changeset)
-   - **Webhook**: 🚧 Enqueue Oban job (mocked), update receipt to `:scheduled` (via Ash changeset)
-6. **Async Delivery**: 🚧 Oban jobs send emails/webhooks, update receipt status
-7. **Retry on Failure**: 🚧 Failed receipts automatically retry via cron job
+   - **In-App**: Create `Notification`, update receipt to `:sent` immediately (via Ash changeset)
+   - **Email**: Enqueue Oban job, update receipt to `:scheduled` (via Ash changeset)
+   - **Webhook**: Enqueue Oban job, update receipt to `:scheduled` (via Ash changeset)
+6. **Async Delivery**: Oban workers send emails/webhooks and update receipt status
+7. **Retry on Failure**: Failed receipts automatically retry via the retry worker
 
-**Legend:**
-- ✅ Fully implemented with real resources
-- 🚧 Working with mocks (Oban jobs log instead of enqueueing)
+**Note:** Email is sent through a pluggable backend. The default
+`AshDispatch.EmailBackend.Mock` logs instead of sending — configure the
+Swoosh backend (`AshDispatch.EmailBackend.Swoosh`) to deliver real mail.
+See [Configuration](configuration.md).
 
 ## Progressive Complexity
 

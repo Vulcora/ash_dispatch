@@ -481,13 +481,13 @@ import { executeRpc } from '@/lib/ash_rpc'
 // 1. List available events
 const { data: events } = useQuery({
   queryKey: ['manual-trigger-events'],
-  queryFn: () => executeRpc('Magasin.Deliveries.ManualTrigger', 'list_available_events', {}),
+  queryFn: () => executeRpc('MyApp.Notifications.ManualTrigger', 'list_available_events', {}),
 })
 
 // 2. Preview an event
 const previewEvent = async (eventId: string, userId: string) => {
   const result = await executeRpc(
-    'Magasin.Deliveries.ManualTrigger',
+    'MyApp.Notifications.ManualTrigger',
     'preview_for_resource',
     {
       event_id: eventId,
@@ -505,7 +505,7 @@ const previewEvent = async (eventId: string, userId: string) => {
 // 3. Send the event
 const sendEvent = async (eventId: string, userId: string) => {
   const result = await executeRpc(
-    'Magasin.Deliveries.ManualTrigger',
+    'MyApp.Notifications.ManualTrigger',
     'trigger',
     {
       event_id: eventId,
@@ -1158,4 +1158,4 @@ end
 
 ---
 
-**Need help?** [Open an issue](https://github.com/magasin/ash_dispatch/issues) or join the [Ash community](https://ash-hq.org).
+**Need help?** [Open an issue](https://github.com/Vulcora/ash_dispatch/issues) or join the [Ash community](https://ash-hq.org).
