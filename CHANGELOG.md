@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-06-29
+
+First public release on hex.pm since `0.1.4` — brings the public package
+up to current. Headline additions are two new transports and a formal
+`Transport` behaviour.
+
+### Added
+
+- **`:oban` transport.** Dispatch an event straight to an Oban worker,
+  eliminating the manual dispatch+enqueue dance. Wired via
+  `use AshDispatch.Event, transports: [oban: [...]]`.
+  - **Compile-time validation**: an `:oban` channel now requires
+    `:oban_worker` metadata (previously a soft runtime warning + a
+    `:skipped` receipt that left operators staring at an empty queue).
+  - **Dispatch-layer enable-gate** via a pluggable
+    `config :ash_dispatch, :gate_check_module`. A disabled gate skips
+    the enqueue entirely (emitting `[:ash_dispatch, :oban, :gated_disabled]`
+    telemetry) instead of burning queue capacity on a no-op worker.
+    No gate configured → always enabled; a raising gate → defaults to
+    enabled (over-fire is safer than a silent drop) and logs a warning.
+
+- **`:custom_topic` transport.** A lightweight per-record PubSub
+  broadcaster (`AshDispatch.Event.CustomTopic`) for fire-and-forget
+  broadcasts that need no recipients, content, or `DeliveryReceipt`s.
+  Topic accepts a string or a `{Module, :function}` MFA for per-record
+  routing. Generates overridable `topic/0,1`, `event_name/0`,
+  `safe_broadcast/1,2` helpers wrapping `Phoenix.PubSub.broadcast/3`
+  with rescue + log + `[:ash_dispatch, :custom_topic, :broadcast_failure]`
+  telemetry. The heavyweight Spark DSL path is unchanged when no
+  `:transports` option is passed.
+
+- **`AshDispatch.Transport` behaviour + Registry.** Dispatcher routing
+  is now derived from a registry of transports rather than hardcoded,
+  giving new transports a single integration point.
+
+- **Module-typed `dispatch/3` overload** on `AshDispatch.Dispatcher`,
+  resolving `event_id` via the `EventRegistry`.
+
+- **`AshDispatch.Naming.wire_event_name/1`**, consolidating the
+  dotted-split-and-take-last logic previously private to the Broadcast
+  transport so other transports can reuse it.
+
+### Fixed
+
+- **`RecipientResolver` never aborts the parent operation.** Dispatch is
+  a side-channel: recipient resolution now wraps its body in
+  `try/rescue`, so a bad `user_resource` config or a raise from an
+  auto-loaded calculation (e.g. an unstarted Cloak vault) degrades to
+  `[]` recipients + a structured warning instead of bubbling an
+  exception up and aborting the caller's transaction.
+
+- **Cleared all Elixir 1.20 compiler warnings** (unused requires,
+  unreachable `defp` clauses, bitstring `size(...)` pins, always-truthy
+  guards). Behavior-preserving.
+
 ## [0.4.8] - 2026-05-14
 
 ### Fixed
