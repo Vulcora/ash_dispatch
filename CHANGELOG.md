@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-06-29
+
+Documentation-only release. Rebrands the project for its public launch.
+
+### Changed
+
+- **README rebranded for the `0.5` public launch.** Hex.pm + HexDocs
+  badges, a prominent "experimental, API may change before 1.0" caveat,
+  install instructions bumped to `~> 0.5`, and reworked Project Status /
+  Contributing sections (dropping the pre-launch "being extracted / will
+  be published" framing).
+- Generic `MyApp.*` module names in the manual-dispatch tutorial
+  (previously referenced an internal application name), and issue links
+  point at the public repo.
+- Corrected the dispatch-flow legend in *What is AshDispatch?* — email
+  and webhook delivery run on real Oban workers; the mock is only the
+  default email backend.
+
 ## [0.5.0] - 2026-06-29
 
 First public release on hex.pm since `0.1.4` — brings the public package
