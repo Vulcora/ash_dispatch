@@ -92,7 +92,9 @@ defmodule AshDispatch.EmailBackend.Swoosh do
       {:ok, %{id: "msg_123", provider: :swoosh}}
   """
   @spec send_email(map()) :: {:ok, map()} | {:error, any()}
-  def send_email(%{to: to, from: from, subject: subject, html_body: html, text_body: text}) do
+  def send_email(
+        %{to: to, from: from, subject: subject, html_body: html, text_body: text} = params
+      ) do
     import Swoosh.Email
 
     # Get configured mailer module
@@ -114,6 +116,19 @@ defmodule AshDispatch.EmailBackend.Swoosh do
       |> subject(subject)
       |> html_body(html)
       |> text_body(text)
+      |> then(fn built ->
+        params
+        |> Map.get(:attachments, [])
+        |> Enum.reduce(built, fn a, acc ->
+          Swoosh.Email.attachment(
+            acc,
+            Swoosh.Attachment.new({:data, a.data},
+              filename: a.filename,
+              content_type: a.content_type
+            )
+          )
+        end)
+      end)
 
     # Send via mailer
     case mailer.deliver(email) do

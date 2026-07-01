@@ -394,6 +394,17 @@ defmodule AshDispatch.EventResolver do
   end
 
   @doc """
+  Get email attachments for a channel via the optional `attachments/2` callback.
+
+  Returns a list of attachment maps (each with `:filename`, `:content_type`,
+  `:data`). Events without the callback → `[]`.
+  """
+  @spec attachments(module(), Context.t(), AshDispatch.Channel.t()) :: [map()]
+  def attachments(module, context, channel) do
+    call_if_exported(module, :attachments, [context, channel], default: [])
+  end
+
+  @doc """
   Check if module exports both body_html and body_text callbacks.
   Used to determine if we should use callbacks instead of templates.
   """

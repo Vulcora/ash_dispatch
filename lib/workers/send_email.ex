@@ -187,7 +187,8 @@ defmodule AshDispatch.Workers.SendEmail do
       from: from,
       subject: args["subject"] || receipt.subject,
       html_body: args["html_body"] || receipt.body_html,
-      text_body: args["text_body"] || receipt.body_text
+      text_body: args["text_body"] || receipt.body_text,
+      attachments: decode_attachments(args["attachments"])
     }
 
     # Check for configured email backend
@@ -208,6 +209,26 @@ defmodule AshDispatch.Workers.SendEmail do
         backend.send_email(email_params)
     end
   end
+
+  # Decode attachments from Oban job args (base64 `data` → raw binary) into the
+  # shape the email backend expects: `%{filename:, content_type:, data:}`.
+  # Robust against nil/missing (events without an `attachments/2` callback).
+  defp decode_attachments(nil), do: []
+
+  defp decode_attachments(list) when is_list(list) do
+    Enum.flat_map(list, fn
+      %{"filename" => filename, "content_type" => content_type, "data" => data_b64} ->
+        case Base.decode64(data_b64) do
+          {:ok, data} -> [%{filename: filename, content_type: content_type, data: data}]
+          :error -> []
+        end
+
+      _ ->
+        []
+    end)
+  end
+
+  defp decode_attachments(_), do: []
 
   defp parse_from_field(%{"name" => name, "email" => email}), do: {name, email}
   defp parse_from_field(%{"email" => email}), do: email
