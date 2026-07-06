@@ -111,6 +111,10 @@ defmodule AshDispatch.Workers.SendWebhook do
   # Private functions
 
   defp process_webhook(receipt, args) do
+    # Resume the delivery context the enqueuer stored alongside the job, so a
+    # retried webhook picks up the same computed headers/state it was built with.
+    args = Map.merge(args, restore_context(args))
+
     # Mark as sending
     {:ok, receipt} = ReceiptStatus.mark_sending(receipt)
 
@@ -129,6 +133,17 @@ defmodule AshDispatch.Workers.SendWebhook do
         {:error, reason}
     end
   end
+
+  # Decode the base64 delivery context the enqueuer stored with the job. Returns
+  # a plain map of resumed assigns (empty when the job carries none).
+  defp restore_context(%{"context" => blob}) when is_binary(blob) do
+    case Base.decode64!(blob) |> :erlang.binary_to_term() do
+      ctx when is_map(ctx) -> ctx
+      _ -> %{}
+    end
+  end
+
+  defp restore_context(_), do: %{}
 
   defp send_webhook(args) do
     webhook_url = args["webhook_url"]

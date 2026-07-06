@@ -160,10 +160,12 @@ defmodule AshDispatch.VariableInterpolator do
         resolve_nested_path(String.split(var_name, "."), data)
 
       true ->
-        # Resolve dynamic template variables that may not have been seen at
-        # compile time (computed assigns, user-defined template keys).
-        key = String.to_atom(var_name)
-        Map.get(data, key) || Map.get(data, var_name)
+        try do
+          key = String.to_existing_atom(var_name)
+          Map.get(data, key) || Map.get(data, var_name)
+        rescue
+          ArgumentError -> Map.get(data, var_name)
+        end
     end
   end
 
