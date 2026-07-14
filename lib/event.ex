@@ -150,6 +150,25 @@ defmodule AshDispatch.Event do
   """
   @callback subject(context(), channel()) :: String.t()
 
+  @typedoc """
+  An email attachment: raw binary `data` plus metadata. The transport
+  base64-encodes `data` for JSONB Oban args; the email backend decodes and
+  attaches it (e.g. via `Swoosh.Email.attachment/2`).
+  """
+  @type attachment :: %{filename: String.t(), content_type: String.t(), data: binary()}
+
+  @doc """
+  Email attachments for a channel (optional).
+
+  Return a list of `t:attachment/0` maps. Events without this callback send no
+  attachments. Only the email transport consults it.
+
+      def attachments(context, %Channel{transport: :email}) do
+        [%{filename: "invoice.pdf", content_type: "application/pdf", data: pdf_binary}]
+      end
+  """
+  @callback attachments(context(), channel()) :: [attachment()]
+
   @doc """
   Email from address as {name, email} tuple.
   """
@@ -460,6 +479,7 @@ defmodule AshDispatch.Event do
     notification_message: 2,
     action_label: 2,
     action_url: 2,
+    attachments: 2,
     prepare_template_assigns: 2,
     sample_data: 0,
     generate_send_variables: 2,
