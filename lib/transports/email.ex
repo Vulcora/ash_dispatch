@@ -52,6 +52,7 @@ defmodule AshDispatch.Transports.Email do
 
   alias AshDispatch.Channel
   alias AshDispatch.Config
+  alias AshDispatch.EventResolver
 
   require Logger
 
@@ -117,7 +118,8 @@ defmodule AshDispatch.Transports.Email do
       "subject" => receipt.subject,
       "from" => from,
       "html_body" => receipt.body_html,
-      "text_body" => receipt.body_text
+      "text_body" => receipt.body_text,
+      "attachments" => resolve_attachments(context, channel)
     }
 
     # Calculate schedule time
@@ -135,6 +137,28 @@ defmodule AshDispatch.Transports.Email do
       {:error, error} ->
         Logger.error("Failed to enqueue email job: #{inspect(error)}")
         {:error, error}
+    end
+  end
+
+  # Resolve the event's attachments (optional `attachments/2` callback) and
+  # base64-encode the raw binary `data` so it survives JSONB Oban-arg
+  # serialization. Events without the callback → `[]` (EventResolver default).
+  # `SendEmail` decodes these back to binary before handing them to the backend.
+  defp resolve_attachments(context, channel) do
+    case EventResolver.find_module(context.event_id) do
+      {:ok, module} ->
+        module
+        |> EventResolver.attachments(context, channel)
+        |> Enum.map(fn a ->
+          %{
+            "filename" => a.filename,
+            "content_type" => a.content_type,
+            "data" => Base.encode64(a.data)
+          }
+        end)
+
+      _ ->
+        []
     end
   end
 

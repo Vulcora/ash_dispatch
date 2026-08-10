@@ -92,6 +92,48 @@ defmodule AshDispatch.EmailBackend.SwooshTest do
       assert_email_sent(subject: "Test Subject")
     end
 
+    test "attaches files when :attachments provided" do
+      capture_log(fn ->
+        result =
+          SwooshBackend.send_email(%{
+            to: "user@example.com",
+            from: "noreply@example.com",
+            subject: "With calendar",
+            html_body: "<p>Invite</p>",
+            text_body: "Invite",
+            attachments: [
+              %{
+                filename: "mote.ics",
+                content_type: "text/calendar",
+                data: "BEGIN:VCALENDAR\nEND:VCALENDAR"
+              }
+            ]
+          })
+
+        assert {:ok, %{provider: :swoosh}} = result
+      end)
+
+      assert_email_sent(fn email ->
+        assert [%Swoosh.Attachment{filename: "mote.ics", content_type: "text/calendar"}] =
+                 email.attachments
+      end)
+    end
+
+    test "sends without attachments when :attachments omitted (backward compatible)" do
+      capture_log(fn ->
+        assert {:ok, %{provider: :swoosh}} =
+                 SwooshBackend.send_email(%{
+                   to: "user@example.com",
+                   from: "noreply@example.com",
+                   subject: "No attach",
+                   html_body: "<p>Hi</p>",
+                   text_body: "Hi"
+                 })
+      end)
+
+      assert_email_sent(fn email -> assert email.attachments == [] end)
+    end
+
     test "handles Swedish characters in sender name" do
       capture_log(fn ->
         result =
