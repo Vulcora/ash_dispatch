@@ -55,6 +55,15 @@ defmodule AshDispatch.Test.Ticket do
         notification_title: "Ticket Assigned"
       ]
 
+    # Sensitive-content event for testing ScrubSensitiveContent
+    event :otp_issued,
+      trigger_on: :manual,
+      channels: [
+        [transport: :email, audience: :user]
+      ],
+      content: [subject: "Your code"],
+      metadata: [sensitive_content: true]
+
     # Urgent event for testing priority flow
     event :escalated,
       trigger_on: :close,

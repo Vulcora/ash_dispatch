@@ -145,6 +145,19 @@ config :ash_dispatch,
 
 This copies templates to `priv/ash_dispatch/templates/` during compilation, ensuring they're available at runtime. See [Code Generation](lib/documentation/topics/code-generation.md) for details.
 
+**Also required: the retry cron.** Failed deliveries are only ever retried by `AshDispatch.Workers.RetryFailedDeliveries` — Oban's own job retries no-op once a receipt is `:failed`. Schedule it (and give it its `:default` queue):
+
+```elixir
+config :my_app, Oban,
+  queues: [emails: 10, default: 5],
+  plugins: [
+    {Oban.Plugins.Cron,
+     crontab: [{"*/15 * * * *", AshDispatch.Workers.RetryFailedDeliveries}]}
+  ]
+```
+
+Optional hardening, both new in 0.5.4: `AshDispatch.WebhookHandlers.Resend.verify/3` verifies the Svix signature on Resend webhooks before you process them, and `AshDispatch.Workers.ScrubSensitiveContent` (cron) blanks stored bodies of events declaring `metadata: [sensitive_content: true]` — for OTP codes and reset links that should not live in the database forever. See [Delivery Receipts](lib/documentation/topics/delivery-receipts.md).
+
 ## Quick Example
 
 ```elixir

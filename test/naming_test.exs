@@ -7,6 +7,7 @@ defmodule AshDispatch.NamingTest do
     test "splits dotted event_id and takes last segment" do
       assert Naming.wire_event_name("pipeline_events.chat_chunk") == "chat_chunk"
       assert Naming.wire_event_name("orders.created") == "created"
+
       assert Naming.wire_event_name("admin_events.corpus_fill_completed") ==
                "corpus_fill_completed"
     end

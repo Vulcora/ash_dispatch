@@ -162,9 +162,7 @@ defmodule AshDispatch.Transports.InApp do
 
             :ok
           else
-            Logger.error(
-              "InApp retry failed: receipt_id=#{receipt.id}, reason=#{inspect(error)}"
-            )
+            Logger.error("InApp retry failed: receipt_id=#{receipt.id}, reason=#{inspect(error)}")
 
             {:error, error}
           end

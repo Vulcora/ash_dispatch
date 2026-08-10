@@ -18,7 +18,10 @@ defmodule AshDispatch.TemplateResolverHtmlEscapeTest do
 
   defp with_temp_templates(templates, fun) do
     tmp_dir = System.tmp_dir!()
-    test_dir = Path.join(tmp_dir, "ash_dispatch_escape_test_#{:erlang.unique_integer([:positive])}")
+
+    test_dir =
+      Path.join(tmp_dir, "ash_dispatch_escape_test_#{:erlang.unique_integer([:positive])}")
+
     File.mkdir_p!(test_dir)
 
     try do

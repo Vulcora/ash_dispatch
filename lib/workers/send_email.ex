@@ -251,10 +251,7 @@ defmodule AshDispatch.Workers.SendEmail do
     end
   end
 
-  # No configured backend used to fall through to a [MOCK] log that marked
-  # the receipt :sent — a receipt claiming delivery that never happened.
-  # A missing backend is a config state, not a delivery: skip with a reason
-  # so the paper trail stays honest.
+  # A missing backend is a config state, not a delivery — skip, don't mock-send.
   defp check_email_backend_configured do
     if Config.email_backend() do
       :continue

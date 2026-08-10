@@ -342,6 +342,31 @@ config :ash_dispatch,
   preference_provider: MyApp.NotificationPreferences
 ```
 
+## Webhook Signature Verification
+
+Resend webhooks mutate receipt state (opened/bounced/delivered), so verify
+the Svix signature before handing the payload to `process_webhook/1`:
+
+```elixir
+case AshDispatch.WebhookHandlers.Resend.verify(raw_body, headers, secret) do
+  :ok -> AshDispatch.WebhookHandlers.Resend.process_webhook(params)
+  {:error, _} -> # respond 400
+end
+```
+
+`raw_body` must be the request body exactly as received — cache it before
+your JSON parser runs. See `AshDispatch.WebhookHandlers.Resend.verify/4`.
+
+## Sensitive Content Retention
+
+Receipts store full rendered bodies, which for OTP codes and password-reset
+links means live secrets in the database. Declare such events with
+`metadata: [sensitive_content: true]` and schedule
+`AshDispatch.Workers.ScrubSensitiveContent` (cron): bodies older than
+`config :ash_dispatch, :scrub_after_hours` (default 24) are blanked while
+recipient, subject, status and delivery timestamps stay intact. `:failed`
+receipts are left for the retry path first.
+
 ## Next Steps
 
 - [Configuration](configuration.md) - All configuration options including `send_now_authorizer`

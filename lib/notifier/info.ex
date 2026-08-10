@@ -41,7 +41,8 @@ defmodule AshDispatch.Notifier.Info do
   Returns `[]` when none are registered.
   """
   @spec dispatch_events_for(module(), atom()) :: [event_config()]
-  def dispatch_events_for(resource, action_name) when is_atom(resource) and is_atom(action_name) do
+  def dispatch_events_for(resource, action_name)
+      when is_atom(resource) and is_atom(action_name) do
     resource
     |> Spark.Dsl.Extension.get_persisted(:ash_dispatch_dispatch_events, %{})
     |> Map.get(action_name, [])

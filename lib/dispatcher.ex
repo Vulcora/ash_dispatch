@@ -191,6 +191,31 @@ defmodule AshDispatch.Dispatcher do
   end
 
   @doc """
+  `dispatch/3` wrapped in rescue + log, always returning `:ok`. Never raises.
+
+  For call sites where dispatch failure must NOT fail the upstream operation:
+  background fan-out signals, observability events, admin broadcasts. Where
+  delivery failure should fail the caller (transactional side-effects,
+  user-facing notifications the action depends on), call `dispatch/3`
+  directly and handle the return value.
+  """
+  @spec dispatch_safely(String.t() | module(), map(), map()) :: :ok
+  def dispatch_safely(event, data \\ %{}, variables \\ %{}) do
+    case dispatch(event, data, variables) do
+      {:ok, _} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("dispatch_safely: #{inspect(event)} failed: #{inspect(reason)}")
+        :ok
+    end
+  rescue
+    error ->
+      Logger.warning("dispatch_safely: #{inspect(event)} raised: #{Exception.message(error)}")
+      :ok
+  end
+
+  @doc """
   Low-level dispatch function that dispatches to a specific channel with a pre-built context.
 
   This is used internally and by DSL-based events that build their own context.
@@ -480,7 +505,14 @@ defmodule AshDispatch.Dispatcher do
         {:ok, :skipped_optional}
 
       recipient_identifier ->
-        do_create_receipt(context, channel, event_config, recipient, content, recipient_identifier)
+        do_create_receipt(
+          context,
+          channel,
+          event_config,
+          recipient,
+          content,
+          recipient_identifier
+        )
     end
   end
 
@@ -1248,15 +1280,15 @@ defmodule AshDispatch.Dispatcher do
       nil
     else
       # Strategy 1: Check if any value in data IS the user module struct
+      # Strategy 2: Use Ash introspection to find user via relationships
+      # Strategy 3: Accept bare map with :id under :user or :actor key
+      # (manual pipeline events pass %{user: %{id: user_id}} without loading the full struct)
       Enum.find_value(data, fn {_key, value} ->
         if is_struct(value) && value.__struct__ == user_module do
           value
         end
       end) ||
-        # Strategy 2: Use Ash introspection to find user via relationships
         find_user_via_ash_relationships(data, user_module) ||
-        # Strategy 3: Accept bare map with :id under :user or :actor key
-        # (manual pipeline events pass %{user: %{id: user_id}} without loading the full struct)
         extract_bare_user_map(data)
     end
   end
@@ -1462,7 +1494,6 @@ defmodule AshDispatch.Dispatcher do
     end
   end
 
-
   # Wrap prepare_template_assigns with helpful error messages for unloaded relationships
   # Uses EventResolver for safe callback execution, but adds extra error handling for NotLoaded
   defp safe_prepare_template_assigns(module, context, channel) do
@@ -1525,7 +1556,9 @@ defmodule AshDispatch.Dispatcher do
   # from event modules instead of hand-typed strings.
   @spec resolve_event_id_for_module(module()) :: {:ok, String.t()} | :error
   defp resolve_event_id_for_module(module) do
-    case Enum.find(AshDispatch.EventRegistry.get_event_modules(), fn {_id, mod} -> mod == module end) do
+    case Enum.find(AshDispatch.EventRegistry.get_event_modules(), fn {_id, mod} ->
+           mod == module
+         end) do
       {event_id, _module} when is_binary(event_id) -> {:ok, event_id}
       _ -> :error
     end
