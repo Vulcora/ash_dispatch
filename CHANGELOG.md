@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   coexists with dependencies that require hackney 4.x (e.g. stripity_stripe
   3.x). hackney is only used when Swoosh is configured with a hackney-based
   API client; projects using other adapters are unaffected.
+- Downgraded the per-dispatch "No :user_module configured" log line from
+  warning to debug. An app without a user resource is a valid configuration
+  (custom recipient resolvers handle non-user recipients); the two
+  recipient-resolution failure diagnostics keep their warning level.
 
 ## [Unreleased]
 
