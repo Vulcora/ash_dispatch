@@ -16,6 +16,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   warning to debug. An app without a user resource is a valid configuration
   (custom recipient resolvers handle non-user recipients); the two
   recipient-resolution failure diagnostics keep their warning level.
+- `SendEmail` with no `:email_backend` configured now marks the receipt
+  `:skipped` ("no email_backend configured") with a warning, instead of
+  logging `[MOCK]` and marking it `:sent` — a receipt claiming a delivery
+  that never happened.
+- `ValidateCanRetry` (the receipt `:retry` action) now reads
+  `config :ash_dispatch, :max_retries` (default 5) instead of a hardcoded 5
+  that silently overrode the same knob `RetryFailedDeliveries` honors.
+
+### Deprecated
+- `AshDispatch.Resources.ManualTrigger` (the legacy non-Base variant): its
+  `:trigger` action fails `Dispatcher.dispatch/3`'s map guard with a
+  `FunctionClauseError`. Use `AshDispatch.Resources.ManualTrigger.Base`.
+  Removal planned for 0.6.
+
+### Added
+- `BACKLOG.md`: design-level findings from the 2026-08-10 cross-app
+  integration audit (retry semantics, ManualTrigger trigger no-op arguments,
+  sensitive-content retention, webhook signature verification, dead surface).
 
 ## [Unreleased]
 

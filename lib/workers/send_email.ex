@@ -128,6 +128,7 @@ defmodule AshDispatch.Workers.SendEmail do
       # Check skip_email_delivery config first (dev mode)
       # Then check skip_if_read policy and user preferences
       with :continue <- check_skip_email_delivery(),
+           :continue <- check_email_backend_configured(),
            :continue <- check_skip_if_read_policy(receipt),
            :send <- check_user_preferences(receipt) do
         # Mark as sending - handle race condition gracefully
@@ -226,6 +227,19 @@ defmodule AshDispatch.Workers.SendEmail do
       {:skip, "email delivery disabled (dev mode)"}
     else
       :continue
+    end
+  end
+
+  # No configured backend used to fall through to a [MOCK] log that marked
+  # the receipt :sent — a receipt claiming delivery that never happened.
+  # A missing backend is a config state, not a delivery: skip with a reason
+  # so the paper trail stays honest.
+  defp check_email_backend_configured do
+    if Config.email_backend() do
+      :continue
+    else
+      Logger.warning("No :email_backend configured in :ash_dispatch config — email skipped")
+      {:skip, "no email_backend configured"}
     end
   end
 
