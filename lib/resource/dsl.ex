@@ -65,7 +65,14 @@ defmodule AshDispatch.Resource.Dsl do
             end
           end
       """,
-      entities: [event_entity(), entity_changes_entity(), resource_meta_entity(), audience_prefix_entity(), audience_entity(), locales_entity()],
+      entities: [
+        event_entity(),
+        entity_changes_entity(),
+        resource_meta_entity(),
+        audience_prefix_entity(),
+        audience_entity(),
+        locales_entity()
+      ],
       sections: []
     }
   end

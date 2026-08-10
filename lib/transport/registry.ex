@@ -90,7 +90,10 @@ defmodule AshDispatch.Transport.Registry do
   def required_event_metadata_keys(atom) when is_atom(atom) do
     case module_for(atom) do
       {:ok, module} ->
-        if function_exported?(module, :required_event_metadata_keys, 0) do
+        # ensure_loaded: function_exported?/3 is false for modules the lazy
+        # loader hasn't touched yet (dev/test interactive mode).
+        if Code.ensure_loaded?(module) and
+             function_exported?(module, :required_event_metadata_keys, 0) do
           module.required_event_metadata_keys()
         else
           []

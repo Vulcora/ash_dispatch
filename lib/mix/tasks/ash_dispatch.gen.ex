@@ -110,7 +110,9 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     warn_if_no_dispatch_resources(otp_app, events, counters)
 
     if opts[:verbose] do
-      Mix.shell().info("Found #{length(events)} events, #{length(counters)} counters, #{length(resource_metas)} resource metas, #{length(entity_change_resources)} entity change resources")
+      Mix.shell().info(
+        "Found #{length(events)} events, #{length(counters)} counters, #{length(resource_metas)} resource metas, #{length(entity_change_resources)} entity change resources"
+      )
 
       if sdk_enabled do
         Mix.shell().info("TypeScript SDK output: #{sdk_base_path(otp_app)}")
@@ -127,7 +129,11 @@ defmodule Mix.Tasks.AshDispatch.Gen do
         if(sdk_enabled, do: check_typescript_events_status(otp_app, events), else: nil),
       typescript_types:
         if(sdk_enabled, do: check_typescript_types_status(otp_app, counters), else: nil),
-      sdk_files: if(sdk_enabled, do: check_sdk_status(otp_app, resource_metas, entity_change_resources), else: [])
+      sdk_files:
+        if(sdk_enabled,
+          do: check_sdk_status(otp_app, resource_metas, entity_change_resources),
+          else: []
+        )
     }
 
     total_missing = count_missing(missing)
@@ -369,19 +375,21 @@ defmodule Mix.Tasks.AshDispatch.Gen do
       # Introspect state machine states if AshStateMachine is used
       states = introspect_states(resource)
 
-      [%{
-        key: key,
-        label: label,
-        plural: plural,
-        nav_path: nav_path,
-        states: states,
-        resource: resource,
-        color_theme: meta && meta.color_theme,
-        icon: meta && meta.icon,
-        discovery_mode: meta && meta.discovery_mode,
-        feature_key: meta && meta.feature_key,
-        order: meta && meta.order
-      }]
+      [
+        %{
+          key: key,
+          label: label,
+          plural: plural,
+          nav_path: nav_path,
+          states: states,
+          resource: resource,
+          color_theme: meta && meta.color_theme,
+          icon: meta && meta.icon,
+          discovery_mode: meta && meta.discovery_mode,
+          feature_key: meta && meta.feature_key,
+          order: meta && meta.order
+        }
+      ]
     else
       []
     end
@@ -415,7 +423,10 @@ defmodule Mix.Tasks.AshDispatch.Gen do
       try do
         initial = AshStateMachine.Info.state_machine_initial_states!(resource)
         all_states = AshStateMachine.Info.state_machine_all_states(resource)
-        if all_states && all_states != [], do: Enum.map(all_states, &to_string/1), else: Enum.map(initial, &to_string/1)
+
+        if all_states && all_states != [],
+          do: Enum.map(all_states, &to_string/1),
+          else: Enum.map(initial, &to_string/1)
       rescue
         _ -> []
       end
@@ -457,16 +468,18 @@ defmodule Mix.Tasks.AshDispatch.Gen do
           status_field = config.status_field || detect_state_attribute(resource)
 
           # Determine summary fields — label fields + status + id
-          summary_fields = [:id] ++ label_fields ++ (if status_field, do: [status_field], else: [])
+          summary_fields = [:id] ++ label_fields ++ if status_field, do: [status_field], else: []
 
-          [%{
-            key: key,
-            resource: resource,
-            trigger_on: config.trigger_on,
-            label_fields: label_fields,
-            status_field: status_field,
-            summary_fields: Enum.uniq(summary_fields)
-          }]
+          [
+            %{
+              key: key,
+              resource: resource,
+              trigger_on: config.trigger_on,
+              label_fields: label_fields,
+              status_field: status_field,
+              summary_fields: Enum.uniq(summary_fields)
+            }
+          ]
 
         _ ->
           []
@@ -556,26 +569,35 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     base_path = sdk_base_path(otp_app)
 
     if base_path do
-      sdk_files = [
-        {"store.ts", &generate_store_content/0},
-        {"channel.ts", &generate_channel_content/0},
-        {"socket-provider.tsx", fn -> generate_socket_provider_content(entity_change_resources) end},
-        {"index.ts", fn -> generate_index_content(resource_metas, entity_change_resources) end},
-        {"hooks/use-channel.ts", &generate_use_channel_content/0},
-        {"hooks/use-user-channel.ts", &generate_use_user_channel_content/0},
-        {"hooks/use-counter.ts", &generate_use_counter_content/0},
-        {"hooks/use-notifications.ts", &generate_use_notifications_content/0},
-        {"notification-provider.tsx", &generate_notification_provider_content/0},
-        {"notification-bell.tsx", &generate_notification_bell_content/0},
-        {"README.md", &generate_readme_content/0}
-      ] ++
-        if(entity_change_resources != [], do: [
-          {"entity-store.ts", fn -> generate_entity_store_content(entity_change_resources) end},
-          {"hooks/use-entity.ts", &generate_use_entity_content/0}
-        ], else: []) ++
-        if(resource_metas != [], do: [
-          {"resources.ts", fn -> generate_resources_content(resource_metas) end}
-        ], else: [])
+      sdk_files =
+        [
+          {"store.ts", &generate_store_content/0},
+          {"channel.ts", &generate_channel_content/0},
+          {"socket-provider.tsx",
+           fn -> generate_socket_provider_content(entity_change_resources) end},
+          {"index.ts", fn -> generate_index_content(resource_metas, entity_change_resources) end},
+          {"hooks/use-channel.ts", &generate_use_channel_content/0},
+          {"hooks/use-user-channel.ts", &generate_use_user_channel_content/0},
+          {"hooks/use-counter.ts", &generate_use_counter_content/0},
+          {"hooks/use-notifications.ts", &generate_use_notifications_content/0},
+          {"notification-provider.tsx", &generate_notification_provider_content/0},
+          {"notification-bell.tsx", &generate_notification_bell_content/0},
+          {"README.md", &generate_readme_content/0}
+        ] ++
+          if(entity_change_resources != [],
+            do: [
+              {"entity-store.ts",
+               fn -> generate_entity_store_content(entity_change_resources) end},
+              {"hooks/use-entity.ts", &generate_use_entity_content/0}
+            ],
+            else: []
+          ) ++
+          if(resource_metas != [],
+            do: [
+              {"resources.ts", fn -> generate_resources_content(resource_metas) end}
+            ],
+            else: []
+          )
 
       # Generate all SDK files and check for changes (like events.ts/types.ts)
       sdk_files
@@ -1582,31 +1604,33 @@ defmodule Mix.Tasks.AshDispatch.Gen do
   end
 
   defp generate_socket_provider_content(entity_change_resources) do
-    entity_store_import = if entity_change_resources != [] do
-      "\nimport { useEntityStore } from './entity-store'"
-    else
-      ""
-    end
+    entity_store_import =
+      if entity_change_resources != [] do
+        "\nimport { useEntityStore } from './entity-store'"
+      else
+        ""
+      end
 
-    entity_change_handler = if entity_change_resources != [] do
-      """
+    entity_change_handler =
+      if entity_change_resources != [] do
+        """
 
-            // Register built-in event: entity_change → entity store
-            // Widens callback till `unknown` så strict-mode TS-consumers inte
-            // failar på contravarians-mismatch.
-            channel.on('entity_change', (rawPayload: unknown) => {
-              const payload = rawPayload as { resource: string; action: string; data: Record<string, unknown> }
-              if (!mountedRef.current) return
-              useEntityStore.getState().handleChange(payload.resource, payload.action, payload.data)
-              // Also fan out to any listeners
-              const handlers = listenersRef.current.get('entity_change')
-              if (handlers) handlers.forEach((h) => h(payload))
-            })
-            registeredEventsRef.current.add('entity_change')
-      """
-    else
-      ""
-    end
+              // Register built-in event: entity_change → entity store
+              // Widens callback till `unknown` så strict-mode TS-consumers inte
+              // failar på contravarians-mismatch.
+              channel.on('entity_change', (rawPayload: unknown) => {
+                const payload = rawPayload as { resource: string; action: string; data: Record<string, unknown> }
+                if (!mountedRef.current) return
+                useEntityStore.getState().handleChange(payload.resource, payload.action, payload.data)
+                // Also fan out to any listeners
+                const handlers = listenersRef.current.get('entity_change')
+                if (handlers) handlers.forEach((h) => h(payload))
+              })
+              registeredEventsRef.current.add('entity_change')
+        """
+      else
+        ""
+      end
 
     """
     // ⚠️  AUTO-GENERATED by mix ash_dispatch.gen — DO NOT EDIT
@@ -1826,26 +1850,28 @@ defmodule Mix.Tasks.AshDispatch.Gen do
   end
 
   defp generate_index_content(resource_metas, entity_change_resources) do
-    entity_store_exports = if entity_change_resources != [] do
-      """
+    entity_store_exports =
+      if entity_change_resources != [] do
+        """
 
-      // Entity store
-      export { useEntityStore, type EntitySnapshot, type EntityStoreState } from './entity-store'
-      export { useEntity } from './hooks/use-entity'
-      """
-    else
-      ""
-    end
+        // Entity store
+        export { useEntityStore, type EntitySnapshot, type EntityStoreState } from './entity-store'
+        export { useEntity } from './hooks/use-entity'
+        """
+      else
+        ""
+      end
 
-    resources_exports = if resource_metas != [] do
-      """
+    resources_exports =
+      if resource_metas != [] do
+        """
 
-      // Resource metadata
-      export { RESOURCES, resourcePath, resourceLabel, type ResourceType } from './resources'
-      """
-    else
-      ""
-    end
+        // Resource metadata
+        export { RESOURCES, resourcePath, resourceLabel, type ResourceType } from './resources'
+        """
+      else
+        ""
+      end
 
     """
     // ⚠️  AUTO-GENERATED by mix ash_dispatch.gen — DO NOT EDIT
@@ -1979,8 +2005,12 @@ defmodule Mix.Tasks.AshDispatch.Gen do
       |> Enum.uniq()
 
     case all_label_fields do
-      [] -> "undefined"
-      [field] -> "(data.#{field} as string | undefined)"
+      [] ->
+        "undefined"
+
+      [field] ->
+        "(data.#{field} as string | undefined)"
+
       fields ->
         fields
         |> Enum.map(&"(data.#{&1} as string | undefined)")
@@ -1997,8 +2027,12 @@ defmodule Mix.Tasks.AshDispatch.Gen do
       |> Enum.uniq()
 
     case all_status_fields do
-      [] -> "undefined"
-      [field] -> "(data.#{field} as string | undefined)"
+      [] ->
+        "undefined"
+
+      [field] ->
+        "(data.#{field} as string | undefined)"
+
       fields ->
         fields
         |> Enum.map(&"(data.#{&1} as string | undefined)")
@@ -2042,12 +2076,13 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     resource_entries =
       resource_metas
       |> Enum.map(fn meta ->
-        states_str = if meta.states != [] do
-          states_list = meta.states |> Enum.map(&"\"#{&1}\"") |> Enum.join(", ")
-          ", states: [#{states_list}]"
-        else
-          ""
-        end
+        states_str =
+          if meta.states != [] do
+            states_list = meta.states |> Enum.map(&"\"#{&1}\"") |> Enum.join(", ")
+            ", states: [#{states_list}]"
+          else
+            ""
+          end
 
         extra =
           [
@@ -3221,7 +3256,8 @@ defmodule Mix.Tasks.AshDispatch.Gen do
       if content_strings == [] do
         0
       else
-        catalog_module = Module.concat([Macro.camelize(to_string(otp_app)), "Events", "I18nCatalog"])
+        catalog_module =
+          Module.concat([Macro.camelize(to_string(otp_app)), "Events", "I18nCatalog"])
 
         dgettext_calls =
           Enum.map_join(content_strings, "\n", fn str ->
@@ -3251,12 +3287,13 @@ defmodule Mix.Tasks.AshDispatch.Gen do
         # edits and refuses to advance). Formatting here makes regen == committed.
         content = IO.iodata_to_binary(Code.format_string!(raw)) <> "\n"
 
-        path = Path.join([
-          "lib",
-          to_string(otp_app),
-          "events",
-          "i18n_catalog.ex"
-        ])
+        path =
+          Path.join([
+            "lib",
+            to_string(otp_app),
+            "events",
+            "i18n_catalog.ex"
+          ])
 
         # Only write if content changed
         existing = File.read(path)

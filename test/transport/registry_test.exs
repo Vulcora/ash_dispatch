@@ -62,6 +62,8 @@ defmodule AshDispatch.Transport.RegistryTest do
   describe "Transport behaviour conformance" do
     test "every registered transport implements transport_atom/0 and skip_receipt?/0" do
       for module <- Registry.all() do
+        assert Code.ensure_loaded?(module)
+
         assert function_exported?(module, :transport_atom, 0),
                "#{inspect(module)} missing transport_atom/0"
 
@@ -76,6 +78,7 @@ defmodule AshDispatch.Transport.RegistryTest do
     test "every transport's atom matches the Registry key" do
       for module <- Registry.all() do
         atom = module.transport_atom()
+
         assert {:ok, ^module} = Registry.module_for(atom),
                "Registry mismatch for #{inspect(module)} (atom: #{inspect(atom)})"
       end

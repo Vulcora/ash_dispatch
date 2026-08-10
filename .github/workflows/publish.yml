@@ -31,7 +31,22 @@ jobs:
       - name: Run tests
         run: mix test
 
+      # Pushing main without a version bump must not fail the pipeline —
+      # only publish when the version is new on hex.pm.
+      - name: Check if version already published
+        id: guard
+        run: |
+          VERSION=$(mix run --no-start -e 'IO.puts(Mix.Project.config()[:version])' | tail -1)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if mix hex.package fetch ash_dispatch "$VERSION" -o /tmp/probe.tar 2>/dev/null; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "ash_dispatch $VERSION is already on hex.pm — skipping publish."
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish to Hex.pm (public)
+        if: steps.guard.outputs.published == 'false'
         run: mix hex.publish --yes
         env:
           HEX_API_KEY: ${{ secrets.HEX_API_KEY }}

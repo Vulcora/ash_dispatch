@@ -50,6 +50,107 @@ defmodule AshDispatch.WebhookHandlers.Resend do
 
   require Logger
 
+  @default_tolerance_s 300
+
+  @doc """
+  Verifies a Resend webhook's Svix signature before you hand the payload to
+  `process_webhook/1`. Without this the endpoint is unauthenticated receipt
+  mutation — anyone who guesses a provider id can mark mail opened/bounced.
+
+  Resend signs `"svix-id.svix-timestamp.raw_body"` with HMAC-SHA256 using
+  the base64 key from the `whsec_`-prefixed signing secret, base64-encoding
+  the result. The `svix-signature` header can carry several space-separated
+  `v1,<sig>` entries during secret rotation — any match passes. Comparison
+  is constant-time; the timestamp must be within `:tolerance_s` seconds
+  (default #{@default_tolerance_s}) of now.
+
+  ## Parameters
+
+  - `raw_body` - the request body EXACTLY as received (cache it before your
+    JSON parser consumes it — a re-encoded body will not verify)
+  - `headers` - map with `"svix-id"`, `"svix-timestamp"`, `"svix-signature"`
+    (e.g. built from `Plug.Conn.get_req_header/2`)
+  - `secret` - the signing secret from Resend's dashboard (`whsec_...`)
+  - `opts` - `:tolerance_s` (replay window), `:now` (unix seconds, for tests)
+
+  ## Returns
+
+  - `:ok` on a valid signature
+  - `{:error, :missing_headers | :invalid_secret | :invalid_timestamp |
+    :stale_timestamp | :signature_mismatch}`
+
+  ## Example (Phoenix controller)
+
+      def handle(conn, params) do
+        raw = conn.assigns[:raw_body]
+        headers = %{
+          "svix-id" => List.first(get_req_header(conn, "svix-id")),
+          "svix-timestamp" => List.first(get_req_header(conn, "svix-timestamp")),
+          "svix-signature" => List.first(get_req_header(conn, "svix-signature"))
+        }
+
+        case Resend.verify(raw, headers, System.fetch_env!("RESEND_WEBHOOK_SECRET")) do
+          :ok -> # ... Resend.process_webhook(params)
+          {:error, _} -> conn |> put_status(400) |> json(%{error: "invalid signature"})
+        end
+      end
+  """
+  def verify(raw_body, headers, secret, opts \\ [])
+
+  def verify(raw_body, %{} = headers, secret, opts) when is_binary(raw_body) do
+    with {:ok, id, ts, signatures} <- required_headers(headers),
+         {:ok, key} <- decode_secret(secret),
+         :ok <- check_freshness(ts, opts) do
+      expected = Base.encode64(:crypto.mac(:hmac, :sha256, key, "#{id}.#{ts}.#{raw_body}"))
+
+      valid? =
+        signatures
+        |> String.split(" ", trim: true)
+        |> Enum.any?(fn entry ->
+          case String.split(entry, ",", parts: 2) do
+            ["v1", sig] -> Plug.Crypto.secure_compare(sig, expected)
+            _ -> false
+          end
+        end)
+
+      if valid?, do: :ok, else: {:error, :signature_mismatch}
+    end
+  end
+
+  defp required_headers(headers) do
+    with id when is_binary(id) and id != "" <- headers["svix-id"],
+         ts when is_binary(ts) and ts != "" <- headers["svix-timestamp"],
+         sigs when is_binary(sigs) and sigs != "" <- headers["svix-signature"] do
+      {:ok, id, ts, sigs}
+    else
+      _ -> {:error, :missing_headers}
+    end
+  end
+
+  defp decode_secret("whsec_" <> b64), do: decode_secret(b64)
+
+  defp decode_secret(b64) when is_binary(b64) do
+    case Base.decode64(b64) do
+      {:ok, key} -> {:ok, key}
+      :error -> {:error, :invalid_secret}
+    end
+  end
+
+  defp decode_secret(_), do: {:error, :invalid_secret}
+
+  defp check_freshness(ts, opts) do
+    tolerance = Keyword.get(opts, :tolerance_s, @default_tolerance_s)
+    now = Keyword.get(opts, :now, System.system_time(:second))
+
+    case Integer.parse(ts) do
+      {t, ""} ->
+        if abs(now - t) <= tolerance, do: :ok, else: {:error, :stale_timestamp}
+
+      _ ->
+        {:error, :invalid_timestamp}
+    end
+  end
+
   @doc """
   Process a Resend webhook event.
 

@@ -692,10 +692,10 @@ defmodule AshDispatch.TemplateResolver do
   defp strip_raw_call(expr) do
     cond do
       String.starts_with?(expr, "AshDispatch.SafeRender.raw(") and String.ends_with?(expr, ")") ->
-        {:ok, String.slice(expr, String.length("AshDispatch.SafeRender.raw(") .. -2//1)}
+        {:ok, String.slice(expr, String.length("AshDispatch.SafeRender.raw(")..-2//1)}
 
       String.starts_with?(expr, "raw(") and String.ends_with?(expr, ")") ->
-        {:ok, String.slice(expr, String.length("raw(") .. -2//1)}
+        {:ok, String.slice(expr, String.length("raw(")..-2//1)}
 
       true ->
         :no
@@ -796,7 +796,8 @@ defmodule AshDispatch.TemplateResolver do
         <<before::binary-size(^match_start), _match::binary-size(^match_len), rest::binary>> =
           template
 
-        <<_skip::binary-size(^attr_start), attr_name::binary-size(^attr_len), _::binary>> = template
+        <<_skip::binary-size(^attr_start), attr_name::binary-size(^attr_len), _::binary>> =
+          template
 
         case find_matching_brace(rest) do
           {:ok, content, consumed_len} ->

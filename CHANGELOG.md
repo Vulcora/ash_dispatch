@@ -5,18 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5.3] - 2026-08-11
+## [Unreleased]
 
-0.5.2 was never published — its changes ship here together with the
-attachment work.
+## [0.5.4] - 2026-08-11
+
+0.5.2 was never published — its changes ship here. (An earlier changelog
+revision folded them into 0.5.3; in fact 0.5.3 had already been published
+2026-07-14 with the attachment work alone, so they ship as 0.5.4.)
 
 ### Added
-- End-to-end email attachment support: events can implement
-  `attachments/2`; attachments flow through the Oban job (base64) into the
-  Swoosh backend (#5).
+- **Resend webhook signature verification**:
+  `AshDispatch.WebhookHandlers.Resend.verify/3` — Svix HMAC over
+  `svix-id.svix-timestamp.raw_body` with constant-time comparison,
+  multi-signature support (secret rotation) and a replay window. Ported
+  from swedishspytours, where it was the only verified endpoint in the
+  fleet; siteflow/magasin expose unauthenticated receipt mutation today.
+- **Sensitive-content scrubbing**:
+  `AshDispatch.Workers.ScrubSensitiveContent` (cron) blanks `body_text`/
+  `body_html` of receipts whose event declares
+  `metadata: [sensitive_content: true]` once they are older than
+  `config :ash_dispatch, :scrub_after_hours` (default 24). Receipts in
+  `:failed` are left for the retry path first. Replaces app-level scrub
+  workers (swedishspytours' KvittoSkrubb).
+- **`Dispatcher.dispatch_safely/3`** — rescue-and-log wrapper for
+  fire-and-forget dispatch from code paths that must never be felled by a
+  notification failure. mosis carries two hand-rolled copies of this
+  (`Mosis.AshDispatch.dispatch_safely`, `AshDispatchAdapters.BestEffort`);
+  they can be retired on upgrade.
 - `BACKLOG.md`: design-level findings from the 2026-08-10 cross-app
   integration audit (retry semantics, ManualTrigger trigger no-op arguments,
-  sensitive-content retention, webhook signature verification, dead surface).
+  dead surface).
+- CI: `ci.yml` runs format check + tests on every PR and push to main;
+  `publish.yml` gained a version guard so re-pushing an already-published
+  version no longer fails the pipeline.
 
 ### Changed
 - Widened optional `hackney` constraint to `~> 1.9 or ~> 4.0` so the library
@@ -41,7 +62,12 @@ attachment work.
   `FunctionClauseError`. Use `AshDispatch.Resources.ManualTrigger.Base`.
   Removal planned for 0.6.
 
-## [Unreleased]
+## [0.5.3] - 2026-07-14
+
+### Added
+- End-to-end email attachment support: events can implement
+  `attachments/2`; attachments flow through the Oban job (base64) into the
+  Swoosh backend (#5).
 
 ## [0.5.1] - 2026-06-29
 

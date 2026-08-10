@@ -169,4 +169,58 @@ defmodule AshDispatch.WebhookHandlers.ResendTest do
       assert updated.failed_at != nil
     end
   end
+
+  describe "verify/4" do
+    @secret_key :crypto.strong_rand_bytes(24)
+    @secret "whsec_" <> Base.encode64(@secret_key)
+
+    defp sign(body, id, ts, key \\ @secret_key) do
+      "v1," <> Base.encode64(:crypto.mac(:hmac, :sha256, key, "#{id}.#{ts}.#{body}"))
+    end
+
+    defp headers(body, opts \\ []) do
+      id = Keyword.get(opts, :id, "msg_1")
+      ts = Keyword.get(opts, :ts, to_string(Keyword.get(opts, :now, 1_700_000_000)))
+
+      %{
+        "svix-id" => id,
+        "svix-timestamp" => ts,
+        "svix-signature" => Keyword.get(opts, :sig, sign(body, id, ts))
+      }
+    end
+
+    test "valid signature passes" do
+      body = ~s({"type":"email.opened"})
+      assert :ok = Resend.verify(body, headers(body), @secret, now: 1_700_000_000)
+    end
+
+    test "rotated secrets: any matching signature in the list passes" do
+      body = "x"
+      good = sign(body, "msg_1", "1700000000")
+      hdrs = %{headers(body) | "svix-signature" => "v1,AAAA #{good}"}
+      assert :ok = Resend.verify(body, hdrs, @secret, now: 1_700_000_000)
+    end
+
+    test "tampered body is rejected" do
+      hdrs = headers("original")
+
+      assert {:error, :signature_mismatch} =
+               Resend.verify("tampered", hdrs, @secret, now: 1_700_000_000)
+    end
+
+    test "stale timestamp is rejected" do
+      body = "x"
+
+      assert {:error, :stale_timestamp} =
+               Resend.verify(body, headers(body), @secret, now: 1_700_000_000 + 3600)
+    end
+
+    test "missing headers and bad secret are rejected" do
+      assert {:error, :missing_headers} = Resend.verify("x", %{}, @secret)
+      body = "x"
+
+      assert {:error, :invalid_secret} =
+               Resend.verify(body, headers(body), "whsec_!!!", now: 1_700_000_000)
+    end
+  end
 end

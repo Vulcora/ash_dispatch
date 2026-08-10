@@ -166,10 +166,13 @@ config :my_app, Oban,
     # Rescue orphaned jobs
     {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(30)},
 
-    # Automatic retry of failed deliveries (optional)
+    # Automatic retry of failed deliveries — REQUIRED for retries to work
+    # at all. After the first failure a receipt is :failed, and SendEmail's
+    # own Oban attempts no-op from that state; this cron is the only path
+    # that re-enqueues failed deliveries. Without it a receipt that failed
+    # during a provider outage stays :failed forever.
     {Oban.Plugins.Cron,
      crontab: [
-       # Retry failed email deliveries every 15 minutes
        {"*/15 * * * *", AshDispatch.Workers.RetryFailedDeliveries}
      ]}
   ]

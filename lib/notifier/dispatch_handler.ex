@@ -240,7 +240,8 @@ defmodule AshDispatch.Notifier.DispatchHandler do
     # exists on the struct at all (covers resources that don't define
     # `:visitor_locale` or `:locale`).
     cond do
-      locale_from && Map.has_key?(record, locale_from) && RecordReader.safe_get(record, locale_from) ->
+      locale_from && Map.has_key?(record, locale_from) &&
+          RecordReader.safe_get(record, locale_from) ->
         RecordReader.safe_get(record, locale_from)
 
       Map.has_key?(record, :visitor_locale) && RecordReader.safe_get(record, :visitor_locale) ->

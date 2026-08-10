@@ -37,9 +37,7 @@ defmodule AshDispatch.Transports.SMS do
   def deliver(receipt, context, channel, event_config) do
     case Config.sms_backend() do
       nil ->
-        Logger.info(
-          "SMS transport not yet implemented (no :sms_backend configured), skipping"
-        )
+        Logger.info("SMS transport not yet implemented (no :sms_backend configured), skipping")
 
         receipt
         |> Ash.Changeset.for_update(:skip, %{error_message: "transport_not_implemented"})
