@@ -1,5 +1,14 @@
 defmodule AshDispatch.Resources.ManualTrigger do
   @moduledoc """
+  > #### Deprecated — use `AshDispatch.Resources.ManualTrigger.Base` {: .warning}
+  >
+  > This legacy variant's `:trigger` action builds its dispatch opts as a
+  > keyword list, which fails `Dispatcher.dispatch/3`'s `is_map/1` guard with
+  > a `FunctionClauseError`. The `.Base` variant is the maintained one:
+  > `use AshDispatch.Resources.ManualTrigger.Base, domain: MyApp.Deliveries`.
+  > Kept only so existing registrations of `:list_events`/`:preview` keep
+  > compiling; will be removed in 0.6.
+
   Non-persisted resource for manually triggering events from admin interfaces.
 
   This resource provides actions for:

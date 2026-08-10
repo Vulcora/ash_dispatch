@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.3] - 2026-08-11
+
+0.5.2 was never published — its changes ship here together with the
+attachment work.
+
+### Added
+- End-to-end email attachment support: events can implement
+  `attachments/2`; attachments flow through the Oban job (base64) into the
+  Swoosh backend (#5).
+- `BACKLOG.md`: design-level findings from the 2026-08-10 cross-app
+  integration audit (retry semantics, ManualTrigger trigger no-op arguments,
+  sensitive-content retention, webhook signature verification, dead surface).
+
+### Changed
+- Widened optional `hackney` constraint to `~> 1.9 or ~> 4.0` so the library
+  coexists with dependencies that require hackney 4.x (e.g. stripity_stripe
+  3.x). hackney is only used when Swoosh is configured with a hackney-based
+  API client; projects using other adapters are unaffected.
+- Downgraded the per-dispatch "No :user_module configured" log line from
+  warning to debug. An app without a user resource is a valid configuration
+  (custom recipient resolvers handle non-user recipients); the two
+  recipient-resolution failure diagnostics keep their warning level.
+- `SendEmail` with no `:email_backend` configured now marks the receipt
+  `:skipped` ("no email_backend configured") with a warning, instead of
+  logging `[MOCK]` and marking it `:sent` — a receipt claiming a delivery
+  that never happened.
+- `ValidateCanRetry` (the receipt `:retry` action) now reads
+  `config :ash_dispatch, :max_retries` (default 5) instead of a hardcoded 5
+  that silently overrode the same knob `RetryFailedDeliveries` honors.
+
+### Deprecated
+- `AshDispatch.Resources.ManualTrigger` (the legacy non-Base variant): its
+  `:trigger` action fails `Dispatcher.dispatch/3`'s map guard with a
+  `FunctionClauseError`. Use `AshDispatch.Resources.ManualTrigger.Base`.
+  Removal planned for 0.6.
+
 ## [Unreleased]
 
 ## [0.5.1] - 2026-06-29

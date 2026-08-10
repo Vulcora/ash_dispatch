@@ -47,7 +47,7 @@ defmodule AshDispatch.MixProject do
 
       # Optional transport dependencies
       {:swoosh, "~> 1.16", optional: true},
-      {:hackney, "~> 1.9", optional: true},
+      {:hackney, "~> 1.9 or ~> 4.0", optional: true},
       {:req, "~> 0.5", optional: true},
       {:ash_typescript, "~> 0.2", optional: true},
 

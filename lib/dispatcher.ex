@@ -1241,7 +1241,10 @@ defmodule AshDispatch.Dispatcher do
     user_module = Config.user_module()
 
     if is_nil(user_module) do
-      Logger.warning("No :user_module configured in :ash_dispatch config")
+      # An app without a user resource is a valid configuration (custom
+      # recipient resolvers handle non-user recipients) — this runs on every
+      # dispatch, so warning-level would be permanent log spam there.
+      Logger.debug("No :user_module configured in :ash_dispatch config")
       nil
     else
       # Strategy 1: Check if any value in data IS the user module struct
