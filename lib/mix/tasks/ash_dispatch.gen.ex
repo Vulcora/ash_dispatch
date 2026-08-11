@@ -3259,10 +3259,16 @@ defmodule Mix.Tasks.AshDispatch.Gen do
         catalog_module =
           Module.concat([Macro.camelize(to_string(otp_app)), "Events", "I18nCatalog"])
 
+        # Must match the runtime lookup domain (Config.gettext_domain/0) —
+        # a hardcoded "notifications" registered msgids in one domain while
+        # the Dispatcher looked them up in another for any app configuring
+        # :gettext_domain, and every translation silently missed.
+        domain = AshDispatch.Config.gettext_domain()
+
         dgettext_calls =
           Enum.map_join(content_strings, "\n", fn str ->
             escaped = String.replace(str, "\"", "\\\"")
-            "    dgettext(\"notifications\", \"#{escaped}\")"
+            "    dgettext(\"#{domain}\", \"#{escaped}\")"
           end)
 
         raw = """
