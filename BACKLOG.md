@@ -90,3 +90,23 @@ modules, like the legacy ManualTrigger resource (deprecated 0.5.2).
 
 `ManualTrigger.Base` `:list_events` accepts `user_id` "to filter events
 based on user state" and then passes `nil` to the helper.
+
+## 8. Gettext-mode findings (2026-08-11 i18n audit)
+
+The gettext path (catalog generator + `translate_content/2`) has no test
+coverage at all and is undocumented in the CHANGELOG. Beyond the domain
+bug fixed in `fix/gettext-domain-catalog`:
+
+- mosis's PO→TS pipeline (`mix mosis.i18n.codegen` + `useT()`), the only
+  consumer-side bridge, is generic (561 lines, zero ash_dispatch refs) and
+  a candidate for extraction into a standalone `gettext → TypeScript`
+  package. Known defects to fix at extraction: msgids flattened across
+  domains (later domain silently wins), two interpolation dialects
+  (`%{var}` vs `{{var}}`) in one catalog, and the full 31-locale 3 MB
+  bundle loaded to select one locale.
+- Dispatch msgids are emitted into mosis's frontend bundle but backend
+  notification strings arrive already translated over the socket — the
+  frontend copies are dead weight.
+- The integration point for any such tool is Ash's generic
+  `Spark.Dsl.Extension.codegen/1` callback — ash_typescript has no codegen
+  hooks, so "an ash_typescript extension" is not actually possible today.

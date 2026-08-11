@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- The i18n catalog generator (`mix ash_dispatch.gen`) registered msgids
+  under a hardcoded `"notifications"` domain while the Dispatcher looks
+  them up via the configurable `:gettext_domain` — for any app setting
+  that config, every dispatch translation silently missed. The generator
+  now uses `Config.gettext_domain/0`.
+
 ## [0.5.4] - 2026-08-11
 
 0.5.2 was never published — its changes ship here. (An earlier changelog
