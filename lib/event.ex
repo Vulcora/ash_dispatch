@@ -154,8 +154,23 @@ defmodule AshDispatch.Event do
   An email attachment: raw binary `data` plus metadata. The transport
   base64-encodes `data` for JSONB Oban args; the email backend decodes and
   attaches it (e.g. via `Swoosh.Email.attachment/2`).
+
+  Optional keys:
+
+  - `:type` - `:attachment` (the default when absent) sends a regular
+    downloadable attachment; `:inline` embeds the file in the message body so
+    it renders without the recipient approving a download.
+  - `:cid` - Content-ID an `:inline` attachment is referenced by from the HTML
+    template (`<img src="cid:...">`). Defaults to `:filename` when absent.
+    Ignored for `:attachment`.
   """
-  @type attachment :: %{filename: String.t(), content_type: String.t(), data: binary()}
+  @type attachment :: %{
+          required(:filename) => String.t(),
+          required(:content_type) => String.t(),
+          required(:data) => binary(),
+          optional(:type) => :inline | :attachment,
+          optional(:cid) => String.t()
+        }
 
   @doc """
   Email attachments for a channel (optional).
@@ -166,6 +181,29 @@ defmodule AshDispatch.Event do
       def attachments(context, %Channel{transport: :email}) do
         [%{filename: "invoice.pdf", content_type: "application/pdf", data: pdf_binary}]
       end
+
+  ## Inline images (CID)
+
+  Add `type: :inline` to embed an image in the message body instead of
+  appending it as a download, then reference it from the HTML template by its
+  Content-ID:
+
+      def attachments(_context, %Channel{transport: :email}) do
+        [
+          %{
+            filename: "logo.png",
+            content_type: "image/png",
+            data: File.read!("priv/static/images/logo.png"),
+            type: :inline
+          }
+        ]
+      end
+
+      # templates/email.html.heex
+      # <img src="cid:logo.png" alt="Logo" />
+
+  The Content-ID defaults to `:filename`; pass `cid: "logo"` to reference the
+  same image as `<img src="cid:logo" />` instead.
   """
   @callback attachments(context(), channel()) :: [attachment()]
 

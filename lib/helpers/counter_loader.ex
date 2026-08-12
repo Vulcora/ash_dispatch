@@ -208,10 +208,19 @@ defmodule AshDispatch.Helpers.CounterLoader do
         Keyword.get(audiences_config, audience, [])
       end
 
+    match_audience_config(user, audience, audience_config)
+  rescue
+    error ->
+      Logger.error("[CounterLoader] Failed to check user audience #{audience}: #{inspect(error)}")
+
+      false
+  end
+
+  defp match_audience_config(user, _audience, config) when is_list(config) do
     # Extract the actual filter from the config using consolidated helper
     # New format: [:user, admin: true] -> extract [admin: true]
     # Old format: [admin: true] -> use as-is
-    audience_filter = ResourceIntrospection.extract_audience_filter(audience_config)
+    audience_filter = ResourceIntrospection.extract_audience_filter(config)
 
     # Empty filter means "all users" (e.g., :user audience)
     if audience_filter == [] do
@@ -227,11 +236,20 @@ defmodule AshDispatch.Helpers.CounterLoader do
       |> Ash.Query.filter(^audience_filter)
       |> Ash.exists?(authorize?: false)
     end
-  rescue
-    error ->
-      Logger.error("[CounterLoader] Failed to check user audience #{audience}: #{inspect(error)}")
+  end
 
-      false
+  defp match_audience_config(_user, audience, other) do
+    # MFA/function resolvers cannot be evaluated against a single user, so
+    # fail CLOSED. The old fallthrough parsed these to an empty filter —
+    # i.e. "matches everyone" — which broadcast admin counters to every
+    # signed-in customer. Counter audiences need the declarative list form
+    # (e.g. `admin: [:user, admin: true]`).
+    Logger.warning(
+      "[CounterLoader] Audience #{inspect(audience)} is configured as #{inspect(other)}, " <>
+        "which cannot be matched per-user for counters — failing closed (no counter for this user)"
+    )
+
+    false
   end
 
   # Generic counter query execution

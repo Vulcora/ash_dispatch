@@ -39,9 +39,29 @@ defmodule AshDispatch.Resources.ManualTrigger.Base do
     extra_extensions = Keyword.get(opts, :extensions, [])
 
     quote do
+      # The authorizer MUST be present: without one Ash never runs any check,
+      # and this resource's helpers load arbitrary records with
+      # `authorize?: false` (`Helpers.load_resource/3`) and render them as an
+      # email body. Without it, any signed-in user could preview another
+      # user's records and trigger real outbound email.
+      #
+      # The resource is FAIL-CLOSED: the base deliberately declares NO
+      # policies, and with `Ash.Policy.Authorizer` present a request that no
+      # policy authorizes is forbidden. The consuming app opens access with
+      # its own `policies do ... end` block (typically a `bypass` on its
+      # admin check) — the library cannot know what "admin" means in the
+      # consumer's permission model.
+      #
+      # Do NOT be tempted to add a `policy always() do forbid_if always()`
+      # here instead: base policies compile BEFORE the consumer's, a
+      # non-bypass policy is AND-ed with everything after it, and a later
+      # consumer `bypass` cannot re-open an earlier forbid. That variant
+      # bricks the resource for everyone — silently, as an empty list, when
+      # reads compile policies to filters.
       use Ash.Resource,
         domain: unquote(domain),
         data_layer: Ash.DataLayer.Simple,
+        authorizers: [Ash.Policy.Authorizer],
         extensions: unquote(extra_extensions),
         validate_domain_inclusion?: false
 

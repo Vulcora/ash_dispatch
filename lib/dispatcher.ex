@@ -233,6 +233,18 @@ defmodule AshDispatch.Dispatcher do
   - `{:error, reason}` - If dispatch fails
   """
   def dispatch_channel(context, channel, event_config) do
+    if channel_should_send?(context, channel, event_config) do
+      do_dispatch_channel(context, channel, event_config)
+    else
+      Logger.debug(
+        "Dispatch skipped by should_send?/2: #{context.event_id} (#{channel.transport}/#{channel.audience})"
+      )
+
+      {:ok, :skipped_should_send}
+    end
+  end
+
+  defp do_dispatch_channel(context, channel, event_config) do
     # Apply channel-level load (additional to event-level load)
     context = apply_channel_load(context, channel)
 
@@ -278,8 +290,38 @@ defmodule AshDispatch.Dispatcher do
     end
   end
 
+  # `should_send?/2` is the event's last-moment guard (e.g. "skip the welcome
+  # mail if the user confirmed in the meantime"). It was declared on the
+  # behaviour — and implemented by consumer events — but never invoked by the
+  # send path, so those guards silently never ran. A guard must never abort
+  # dispatch by raising: default to send.
+  defp channel_should_send?(context, channel, event_config) do
+    case event_config[:module] do
+      nil ->
+        true
+
+      module ->
+        if function_exported?(module, :should_send?, 2) do
+          module.should_send?(context, channel) != false
+        else
+          true
+        end
+    end
+  rescue
+    error ->
+      Logger.warning(
+        "should_send?/2 raised for #{context.event_id}; sending anyway: #{inspect(error)}"
+      )
+
+      true
+  end
+
   # Dispatch channels with deduplication based on deduplicate_group
   defp dispatch_with_deduplication(channels, context, event_config) do
+    # Skip channels the event's should_send?/2 guard rejects (same gate as
+    # dispatch_channel/3 — this path collects recipients itself).
+    channels = Enum.filter(channels, &channel_should_send?(context, &1, event_config))
+
     # Collect all recipients from all channels with their channel info
     recipients_with_channels =
       Enum.flat_map(channels, fn channel ->
@@ -1263,7 +1305,7 @@ defmodule AshDispatch.Dispatcher do
         |> Ash.Changeset.for_update(:skip, %{
           error_message: "Unknown transport: #{channel.transport}"
         })
-        |> Ash.update()
+        |> Ash.update(authorize?: false)
     end
   end
 

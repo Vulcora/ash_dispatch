@@ -74,6 +74,11 @@ defmodule AshDispatch.EmailBackend.Swoosh do
     - `:subject` - Email subject (string)
     - `:html_body` - HTML email body (string)
     - `:text_body` - Plain text email body (string)
+    - `:attachments` - Optional list of maps with `:filename`, `:content_type`
+      and raw binary `:data`. Add `type: :inline` (optionally with an explicit
+      `:cid`) to embed the file in the body instead of attaching it — the HTML
+      body then references it as `<img src="cid:logo.png">`. Defaults to a
+      regular `:attachment` with the cid unset.
 
   ## Returns
 
@@ -120,13 +125,7 @@ defmodule AshDispatch.EmailBackend.Swoosh do
         params
         |> Map.get(:attachments, [])
         |> Enum.reduce(built, fn a, acc ->
-          Swoosh.Email.attachment(
-            acc,
-            Swoosh.Attachment.new({:data, a.data},
-              filename: a.filename,
-              content_type: a.content_type
-            )
-          )
+          Swoosh.Email.attachment(acc, build_attachment(a))
         end)
       end)
 
@@ -167,6 +166,39 @@ defmodule AshDispatch.EmailBackend.Swoosh do
   end
 
   # Private functions
+
+  # Build the `%Swoosh.Attachment{}` for one decoded attachment map.
+  #
+  # `:type`/`:cid` are optional: absent (or `:attachment`) yields exactly what
+  # this backend built before inline support — a regular attachment with no
+  # Content-ID, whatever `:cid` says.
+  #
+  # For `:inline` we default the cid to the filename ourselves. Swoosh only
+  # derives that default in `Attachment.new/2`'s *path* clause; the `{:data,
+  # binary}` clause we use here does a bare `struct!/2`, so an inline
+  # attachment would otherwise reach the adapter with `cid: nil` and adapters
+  # that emit the cid verbatim (Postmark, MailPace) would render a broken
+  # `src="cid:"` reference.
+  defp build_attachment(attachment) do
+    type = Map.get(attachment, :type) || :attachment
+
+    opts = [
+      filename: attachment.filename,
+      content_type: attachment.content_type,
+      type: type
+    ]
+
+    opts =
+      case {type, Map.get(attachment, :cid)} do
+        {:inline, cid} when is_binary(cid) -> Keyword.put(opts, :cid, cid)
+        {:inline, nil} -> Keyword.put(opts, :cid, attachment.filename)
+        # A cid on a regular attachment is meaningless — Swoosh's own path
+        # clause nils it for anything but `:inline`; mirror that here.
+        {_type, _cid} -> opts
+      end
+
+    Swoosh.Attachment.new({:data, attachment.data}, opts)
+  end
 
   defp get_mailer do
     case Config.swoosh_mailer() do

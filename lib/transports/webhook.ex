@@ -29,7 +29,7 @@ defmodule AshDispatch.Transports.Webhook do
     updated_receipt =
       receipt
       |> Ash.Changeset.for_update(:skip, %{error_message: "transport_not_implemented"})
-      |> Ash.update!()
+      |> Ash.update!(authorize?: false)
 
     {:ok, updated_receipt}
   end

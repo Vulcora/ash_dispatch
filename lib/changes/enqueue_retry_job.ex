@@ -40,8 +40,11 @@ defmodule AshDispatch.Changes.EnqueueRetryJob do
   end
 
   defp enqueue_job(%{transport: :email} = receipt) do
-    %{receipt_id: receipt.id}
-    |> SendEmail.new()
+    # new_for_receipt/1 carries the original job's attachments forward —
+    # they only exist in job args, so a bare %{receipt_id: _} job would
+    # resend the mail without them.
+    receipt
+    |> SendEmail.new_for_receipt()
     |> Oban.insert()
   end
 

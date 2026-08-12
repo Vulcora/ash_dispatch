@@ -49,9 +49,21 @@ defmodule AshDispatch.Resources.Notification.Base do
     all_extensions = [AshDispatch.Resource] ++ extra_extensions
 
     quote do
+      # The authorizer MUST be present: without one, `authorize?: true` is a
+      # no-op and every read returns the whole table. Notifications are
+      # per-user data, so the practical result is that any signed-in user can
+      # read every other user's notification feed.
+      #
+      # Compare `DeliveryReceipt.Base`, which has always had an authorizer —
+      # the inconsistency lived here in the library, not in consumer apps.
+      #
+      # The policies live below in the same module rather than in the
+      # consumer — an authorizer without policies would make the resource
+      # default-deny for every app that doesn't happen to define its own.
       use Ash.Resource,
         domain: unquote(domain),
         data_layer: AshPostgres.DataLayer,
+        authorizers: [Ash.Policy.Authorizer],
         extensions: unquote(all_extensions)
 
       require Ash.Query
@@ -62,6 +74,40 @@ defmodule AshDispatch.Resources.Notification.Base do
         repo(unquote(repo))
 
         identity_wheres_to_sql(unique_idempotency_key: "idempotency_key IS NOT NULL")
+      end
+
+      policies do
+        # Notifications are per-user. NOTE on ordering: these policies
+        # compile BEFORE any the consumer app declares (the `use` line
+        # precedes the consumer's own blocks), non-bypass policies are AND-ed
+        # in order, and a later consumer `bypass` cannot re-open an earlier
+        # forbid. Consumers can therefore RESTRICT further, but never loosen
+        # — which is exactly the guarantee per-user data wants.
+        policy action_type(:read) do
+          authorize_if expr(^ref(:user_id) == ^actor(:id))
+        end
+
+        # Updates (`:mark_as_read` and the primary `:update`, which only
+        # accepts read/read_at): your own notifications only. This must NOT
+        # be a blanket `forbid_if always()` on update — `:mark_as_read` is an
+        # update action, and two ANDed policies where one always forbids
+        # would make marking your own notification as read impossible.
+        policy action_type(:update) do
+          authorize_if expr(^ref(:user_id) == ^actor(:id))
+        end
+
+        # `mark_all_as_read` takes user_id as an ARGUMENT and runs bulk_update
+        # with authorize?: false internally — without this check anyone could
+        # mark another user's entire feed as read.
+        policy action(:mark_all_as_read) do
+          authorize_if expr(^arg(:user_id) == ^actor(:id))
+        end
+
+        # Notifications are created by the dispatcher, which runs with
+        # authorize?: false. No path in from the outside.
+        policy action_type([:create, :destroy]) do
+          forbid_if always()
+        end
       end
 
       actions do

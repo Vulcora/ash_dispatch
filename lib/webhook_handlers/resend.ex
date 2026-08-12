@@ -231,28 +231,28 @@ defmodule AshDispatch.WebhookHandlers.Resend do
   defp build_update_attrs("email.sent", timestamp, data) do
     %{
       sent_at: timestamp,
-      provider_response: merge_provider_response(data)
+      provider_response: webhook_event_entry("email.sent", data)
     }
   end
 
   defp build_update_attrs("email.delivered", timestamp, data) do
     %{
       delivered_at: timestamp,
-      provider_response: merge_provider_response(data)
+      provider_response: webhook_event_entry("email.delivered", data)
     }
   end
 
   defp build_update_attrs("email.delivery_delayed", timestamp, data) do
     %{
       delivery_delayed_at: timestamp,
-      provider_response: merge_provider_response(data)
+      provider_response: webhook_event_entry("email.delivery_delayed", data)
     }
   end
 
   defp build_update_attrs("email.failed", timestamp, data) do
     %{
       failed_at: timestamp,
-      provider_response: merge_provider_response(data)
+      provider_response: webhook_event_entry("email.failed", data)
     }
   end
 
@@ -260,14 +260,14 @@ defmodule AshDispatch.WebhookHandlers.Resend do
   defp build_update_attrs("email.opened", timestamp, data) do
     %{
       opened_at: timestamp,
-      provider_response: merge_provider_response(data)
+      provider_response: webhook_event_entry("email.opened", data)
     }
   end
 
   defp build_update_attrs("email.clicked", timestamp, data) do
     %{
       clicked_at: timestamp,
-      provider_response: merge_provider_response(data)
+      provider_response: webhook_event_entry("email.clicked", data)
     }
   end
 
@@ -275,28 +275,34 @@ defmodule AshDispatch.WebhookHandlers.Resend do
   defp build_update_attrs("email.bounced", timestamp, data) do
     %{
       bounced_at: timestamp,
-      provider_response: merge_provider_response(data)
+      provider_response: webhook_event_entry("email.bounced", data)
     }
   end
 
   defp build_update_attrs("email.complained", timestamp, data) do
     %{
       complained_at: timestamp,
-      provider_response: merge_provider_response(data)
+      provider_response: webhook_event_entry("email.complained", data)
     }
   end
 
   # Catch-all for any other events (e.g., email.received, email.scheduled)
-  defp build_update_attrs(_event_type, _timestamp, data) do
+  defp build_update_attrs(event_type, _timestamp, data) do
     %{
-      provider_response: merge_provider_response(data)
+      provider_response: webhook_event_entry(event_type, data)
     }
   end
 
-  defp merge_provider_response(new_data) do
-    # Merge new webhook data with existing provider_response
-    # This allows us to accumulate multiple webhook events
-    Map.put(new_data, "webhook_received_at", DateTime.utc_now() |> DateTime.to_iso8601())
+  # Namespace each webhook payload under its event type so successive events
+  # accumulate on the receipt instead of overwriting each other — the actual
+  # merge with the existing provider_response happens in the receipt's
+  # :record_webhook_event action. The original send response keeps its
+  # top-level keys; event entries cannot collide with it.
+  defp webhook_event_entry(event_type, data) do
+    %{
+      event_type =>
+        Map.put(data, "webhook_received_at", DateTime.utc_now() |> DateTime.to_iso8601())
+    }
   end
 
   defp parse_timestamp(nil), do: nil

@@ -53,8 +53,12 @@ defmodule AshDispatch.Resources.EmailEvent do
   end
 
   policies do
-    # Admin users can read all events
-    policy actor_attribute_equals(:super_admin, true) do
+    # Super admins can read all events. This MUST be a bypass: two non-bypass
+    # policies are AND-ed, so the previous `policy … authorize_if always()`
+    # followed by `policy always() … forbid_if always()` forbade EVERYONE —
+    # super admins included — and reads surfaced as an empty list rather
+    # than an error.
+    bypass actor_attribute_equals(:super_admin, true) do
       authorize_if always()
     end
 

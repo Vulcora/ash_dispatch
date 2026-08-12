@@ -121,7 +121,7 @@ defmodule AshDispatch.Transports.Slack do
           updated_receipt =
             receipt
             |> Ash.Changeset.for_update(:schedule, %{})
-            |> Ash.update!()
+            |> Ash.update!(authorize?: false)
 
           Logger.info("Slack webhook job enqueued for receipt #{receipt.id}")
           {:ok, updated_receipt}
@@ -135,7 +135,7 @@ defmodule AshDispatch.Transports.Slack do
             |> Ash.Changeset.for_update(:mark_failed, %{
               error_message: "Failed to enqueue: #{inspect(reason)}"
             })
-            |> Ash.update!()
+            |> Ash.update!(authorize?: false)
 
           {:ok, updated_receipt}
       end
@@ -148,7 +148,7 @@ defmodule AshDispatch.Transports.Slack do
         |> Ash.Changeset.for_update(:skip, %{
           error_message: "No webhook_url configured"
         })
-        |> Ash.update!()
+        |> Ash.update!(authorize?: false)
 
       {:ok, updated_receipt}
     end

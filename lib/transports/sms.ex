@@ -41,7 +41,7 @@ defmodule AshDispatch.Transports.SMS do
 
         receipt
         |> Ash.Changeset.for_update(:skip, %{error_message: "transport_not_implemented"})
-        |> Ash.update!()
+        |> Ash.update!(authorize?: false)
         |> then(&{:ok, &1})
 
       backend when is_atom(backend) ->

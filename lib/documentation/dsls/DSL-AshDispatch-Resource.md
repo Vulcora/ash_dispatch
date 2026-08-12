@@ -614,7 +614,13 @@ For complex events, implement the `AshDispatch.Event` behaviour:
 @callback prepare_template_assigns(context :: Context.t(), channel :: Channel.t()) :: map()
 @callback action_url(context :: Context.t(), channel :: Channel.t()) :: String.t() | nil
 @callback metadata(context :: Context.t()) :: map()
+@callback attachments(context :: Context.t(), channel :: Channel.t()) :: [map()]
 ```
+
+`attachments/2` returns maps of `%{filename:, content_type:, data:}`, optionally
+with `type: :inline` (plus an explicit `cid:`) for images embedded in the body
+and referenced from the HTML template as `<img src="cid:logo.png">`. See
+[Email Attachments](../tutorials/manual-dispatch-and-events.md#email-attachments).
 
 ### Example Callback Module
 
