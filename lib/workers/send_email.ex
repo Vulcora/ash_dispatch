@@ -90,6 +90,9 @@ defmodule AshDispatch.Workers.SendEmail do
   - `from` - Sender email address
   - `html_body` - HTML email body
   - `text_body` - Plain text email body
+  - `attachments` - Optional list of attachments, each `%{"filename" => ...,
+    "content_type" => ..., "data" => base64}` plus an optional `"type" =>
+    "inline"` / `"cid" => ...` pair for inline images
 
   ## Returns
 
@@ -112,6 +115,37 @@ defmodule AshDispatch.Workers.SendEmail do
         {:error, :receipt_not_found}
     end
   end
+
+  @doc false
+  # Build a retry/send-now job for a receipt, carrying forward the original
+  # job's attachments. Attachments are resolved once, at first enqueue, and
+  # exist only in that job's args — without this, every retried email
+  # silently loses its attachments (broken inline images included).
+  def new_for_receipt(receipt) do
+    %{receipt_id: receipt.id}
+    |> maybe_put_original_attachments(receipt)
+    |> new()
+  end
+
+  defp maybe_put_original_attachments(args, %{oban_job_id: job_id}) when is_integer(job_id) do
+    case Config.repo().get(Oban.Job, job_id) do
+      %Oban.Job{args: %{"attachments" => attachments}}
+      when is_list(attachments) and attachments != [] ->
+        Map.put(args, :attachments, attachments)
+
+      _ ->
+        args
+    end
+  rescue
+    error ->
+      Logger.warning(
+        "SendEmail: could not carry attachments from original job #{inspect(job_id)}: #{inspect(error)}"
+      )
+
+      args
+  end
+
+  defp maybe_put_original_attachments(args, _receipt), do: args
 
   # Private functions
 
@@ -211,17 +245,34 @@ defmodule AshDispatch.Workers.SendEmail do
     end
   end
 
+  @doc false
   # Decode attachments from Oban job args (base64 `data` → raw binary) into the
-  # shape the email backend expects: `%{filename:, content_type:, data:}`.
-  # Robust against nil/missing (events without an `attachments/2` callback).
-  defp decode_attachments(nil), do: []
+  # shape the email backend expects:
+  # `%{filename:, content_type:, data:, type:, cid:}`.
+  # Robust against nil/missing (events without an `attachments/2` callback) and
+  # against args enqueued before inline support — jobs already in flight carry
+  # no `"type"`/`"cid"` and decode to `type: :attachment, cid: nil`, exactly
+  # the previous behaviour.
+  # Public-but-undocumented so the encode → decode round-trip is testable.
+  def decode_attachments(nil), do: []
 
-  defp decode_attachments(list) when is_list(list) do
+  def decode_attachments(list) when is_list(list) do
     Enum.flat_map(list, fn
-      %{"filename" => filename, "content_type" => content_type, "data" => data_b64} ->
+      %{"filename" => filename, "content_type" => content_type, "data" => data_b64} = attachment ->
         case Base.decode64(data_b64) do
-          {:ok, data} -> [%{filename: filename, content_type: content_type, data: data}]
-          :error -> []
+          {:ok, data} ->
+            [
+              %{
+                filename: filename,
+                content_type: content_type,
+                data: data,
+                type: decode_attachment_type(attachment["type"]),
+                cid: attachment["cid"]
+              }
+            ]
+
+          :error ->
+            []
         end
 
       _ ->
@@ -229,7 +280,13 @@ defmodule AshDispatch.Workers.SendEmail do
     end)
   end
 
-  defp decode_attachments(_), do: []
+  def decode_attachments(_), do: []
+
+  # Never `String.to_atom/1` on job args (arbitrary input → atom-table growth):
+  # only the known `"inline"` marker maps to an atom, everything else is a
+  # regular attachment.
+  defp decode_attachment_type("inline"), do: :inline
+  defp decode_attachment_type(_), do: :attachment
 
   defp parse_from_field(%{"name" => name, "email" => email}), do: {name, email}
   defp parse_from_field(%{"email" => email}), do: email
@@ -313,7 +370,7 @@ defmodule AshDispatch.Workers.SendEmail do
 
       # Check preferences
       true ->
-        category = event_id_to_category(receipt.event_id)
+        category = event_category(receipt)
 
         case preference_provider.get_preferences(receipt.user_id) do
           {:ok, preferences} ->
@@ -331,7 +388,27 @@ defmodule AshDispatch.Workers.SendEmail do
     end
   end
 
-  # Convert event_id to category atom (e.g., "orders.created" -> :orders_created)
+  # Prefer the category the event module actually declares (`category` in
+  # the dispatch DSL / `category/1` callback). Deriving it from the event id
+  # by string munging only matches a preference field by coincidence —
+  # "reseller_request.new_reseller_request" never mapped to any consumer's
+  # preference schema, silently disabling those opt-out toggles.
+  defp event_category(receipt) do
+    with {:ok, module} <- AshDispatch.EventRegistry.find_module(receipt.event_id),
+         category when not is_nil(category) <- declared_category(module) do
+      category
+    else
+      _ -> event_id_to_category(receipt.event_id)
+    end
+  end
+
+  defp declared_category(module) do
+    module.category(nil)
+  rescue
+    _ -> nil
+  end
+
+  # Fallback: convert event_id to category atom (e.g., "orders.created" -> :orders_created)
   defp event_id_to_category(event_id) do
     event_id
     |> String.replace(".", "_")

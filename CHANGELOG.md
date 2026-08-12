@@ -7,6 +7,133 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.6] - 2026-08-12
+
+Security-focused release absorbing a consumer-proven patch set (policies and
+retry semantics that one production app had carried as local vendor patches),
+plus inline-image email support.
+
+### Security
+- **`Notification.Base` now ships `Ash.Policy.Authorizer` with per-user
+  policies**: read and update only your own notifications,
+  `mark_all_as_read`'s `user_id` argument must match the actor, and
+  create/destroy are system-only. Without an authorizer, `authorize?: true`
+  was a no-op — any signed-in user could read every other user's
+  notification feed (proven in one production deployment) and mark other
+  users' feeds as read. The in-app transport now creates notifications with
+  `authorize?: false` at both call sites (initial delivery and retry).
+- **`ManualTrigger.Base` is now fail-closed**: it declares the authorizer
+  with no base policies, so everything is forbidden until the consuming app
+  opens access with its own `policies` block (typically a `bypass` on its
+  admin check). Previously any signed-in user could preview arbitrary
+  records as email bodies and trigger real outbound email. Note for
+  integrators: the base deliberately does NOT declare a
+  `forbid_if always()` policy — base policies compile before the
+  consumer's, and a later consumer `bypass` cannot re-open an earlier
+  forbid.
+- **`DeliveryReceipt.Base` write policies**: the blanket
+  `bypass … authorize_if always()` on create/update/destroy let any
+  authenticated actor mutate receipts — including `:retry`, which re-sends
+  real email. External writes are now gated on the same configured
+  permission as reads (`:manage_delivery_receipts` via the configured
+  `permission_checker`). All library-internal writes already run with
+  `authorize?: false` and are unaffected.
+- **`EmailEvent` reads forbade everyone, super admins included** — its two
+  non-bypass policies were AND-ed. The super-admin policy is now a `bypass`.
+
+### Added
+- **Inline (CID) email images**: `attachments/2` attachment maps accept
+  optional `type: :inline | :attachment` and `cid: String.t()`. Inline
+  attachments flow through the Oban job args and reach the Swoosh backend as
+  `type: :inline` with `cid` defaulting to the filename — referenced from
+  HTML as `<img src="cid:logo.png">`, they render without the recipient
+  approving remote images. Plain attachments are byte-for-byte unaffected,
+  and in-flight jobs enqueued by older versions decode unchanged.
+- **App-wide default email attachments**: `config :ash_dispatch,
+  default_email_attachments: {MyApp.EmailAssets, :defaults, []}` (MFA or
+  zero-arity fun returning attachment maps) is merged ahead of each event's
+  own `attachments/2` on every outgoing email. Built for the inline-logo
+  case: one config line embeds a `type: :inline` logo referenced from a
+  shared layout as `<img src="cid:logo.png">`. Resolution failures log and
+  degrade to no attachments — branding must never block delivery.
+- **`should_send?/2` is now actually invoked by the send path** (per
+  channel, on both the direct-dispatch and notifier paths, including the
+  deduplication path). The callback was declared on the behaviour — and
+  implemented by consumer events as a last-moment guard — but never called,
+  so those guards silently never ran. A guard that raises logs a warning and
+  sends (dispatch is never aborted by a guard).
+
+### Fixed
+- **Retry race that silently dropped mail**: `RetryFailedDeliveries` now
+  moves the receipt to `:scheduled` BEFORE enqueueing the worker, and puts
+  it back to `:failed` (or `:failed_permanent` once retries are spent) if
+  the enqueue fails; `mark_sending` additionally accepts `:failed` as a
+  source state, which also makes Oban's own backoff retries effective.
+  Previously the worker regularly ran while the receipt was still `:failed`,
+  treated it as a duplicate job, returned `:ok`, and the receipt stranded on
+  `:scheduled` where no retry path ever saw it again — in one production
+  deployment this silently dropped 17 emails over eight months.
+- `mark_failed` no longer increments `retry_count` (a failure is not a
+  retry). With both `mark_failed` and `:retry` incrementing, every
+  failed-and-retried cycle burned the retry budget twice as fast as
+  `:max_retries` promised.
+- Provider webhook events no longer overwrite each other:
+  `record_webhook_event` merges into the existing `provider_response`, and
+  the Resend handler namespaces each payload under its event type
+  (`"email.delivered" => %{…}`), so the full delivery timeline — and the
+  original send response with the provider id — survives.
+- The email preference check now uses the category the event module actually
+  declares (`category` in the dispatch DSL), falling back to the old
+  event-id string munging. Munged ids only matched preference fields by
+  coincidence, silently disabling opt-out toggles for events whose id
+  didn't mirror a preference column.
+- Retried emails no longer lose their attachments: retry/send-now jobs are
+  built with `SendEmail.new_for_receipt/1`, which carries the original job's
+  attachment args forward (attachments are resolved once, at first enqueue,
+  and exist only in job args — a bare `%{receipt_id: _}` retry job resent
+  the mail without them, breaking inline images).
+
+### Fixed (0.2.x parity regressions)
+- Restored the `authorize?: false` counter-scoping guard in
+  `ResourceIntrospection.resolve_user_id_path_for_scoping/2` (present in
+  0.2.x, lost in the notifier-era refactor): a counter with
+  `authorize?: false` and no explicit `scope`/`user_id_path` is system-wide
+  again, instead of silently auto-deriving a user scope and reading 0 for
+  admin badges. Both callers already passed the option; it was ignored.
+- `CounterLoader` audience matching now fails CLOSED for audiences
+  configured as MFA/function resolvers: they cannot be evaluated against a
+  single user, and the old fallthrough parsed them as an empty filter —
+  "matches everyone" — broadcasting admin counters to every signed-in user.
+  Counter audiences should use the declarative list form.
+- All library-internal receipt/notification state writes now pass
+  `authorize?: false` explicitly (receipt_status, every transport, the
+  dispatcher's unknown-transport skip). They previously relied on
+  `DeliveryReceipt.Base`'s blanket write bypass, which this release removed
+  — without this, the tightened policies broke email/in-app delivery
+  end-to-end for any consumer.
+
+### Upgrade notes
+- **`#{@var}` template interpolation is no longer converted.** The 0.2.x
+  preprocessor rewrote `#{@var}` in mail templates to EEx; the current
+  resolver deliberately skips `#{` (it can be legitimate Elixir
+  interpolation inside a HEEx attribute expression). Body-position
+  `#{@var}` now renders as literal text — migrate templates to `{@var}`
+  (also auto-escaped since 0.4.6).
+- Apps using `ManualTrigger.Base` MUST add a `policies` block to their
+  trigger resource or the admin UI built on it will see empty lists:
+
+      policies do
+        bypass always() do
+          authorize_if MyApp.PolicyHelpers.AdminCheck
+        end
+      end
+
+- Apps exposing `DeliveryReceipt` actions (`:retry`, `:send_now`, reads)
+  to their frontend need a `permission_checker` configured whose
+  `:manage_delivery_receipts` permission matches their admin model.
+- In-app retries now consume retry budget (`retry_count` increments on the
+  synchronous in-app retry path as well).
+
 ## [0.5.5] - 2026-08-12
 
 ### Fixed

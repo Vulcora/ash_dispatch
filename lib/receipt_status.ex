@@ -57,7 +57,7 @@ defmodule AshDispatch.ReceiptStatus do
   def mark_sending(receipt) do
     receipt
     |> Ash.Changeset.for_update(:mark_sending, %{})
-    |> Ash.update()
+    |> Ash.update(authorize?: false)
   end
 
   @doc """
@@ -81,13 +81,13 @@ defmodule AshDispatch.ReceiptStatus do
       provider_id: provider_response[:id] || provider_response["id"],
       provider_response: provider_response
     })
-    |> Ash.update!()
+    |> Ash.update!(authorize?: false)
   end
 
   def mark_sent(receipt, _provider_response) do
     receipt
     |> Ash.Changeset.for_update(:mark_sent, %{})
-    |> Ash.update!()
+    |> Ash.update!(authorize?: false)
   end
 
   @doc """
@@ -112,7 +112,7 @@ defmodule AshDispatch.ReceiptStatus do
 
     receipt
     |> Ash.Changeset.for_update(:mark_failed, %{error_message: error_message})
-    |> Ash.update!()
+    |> Ash.update!(authorize?: false)
   end
 
   @doc """
@@ -136,7 +136,7 @@ defmodule AshDispatch.ReceiptStatus do
   def mark_skipped(receipt, reason) when is_binary(reason) do
     receipt
     |> Ash.Changeset.for_update(:skip, %{error_message: reason})
-    |> Ash.update!()
+    |> Ash.update!(authorize?: false)
   end
 
   @doc """
@@ -164,7 +164,7 @@ defmodule AshDispatch.ReceiptStatus do
 
     receipt
     |> Ash.Changeset.for_update(:schedule, attrs)
-    |> Ash.update!()
+    |> Ash.update!(authorize?: false)
   end
 
   @doc """
@@ -185,6 +185,6 @@ defmodule AshDispatch.ReceiptStatus do
   def mark_failed_permanent(receipt, error_message) when is_binary(error_message) do
     receipt
     |> Ash.Changeset.for_update(:mark_failed_permanent, %{error_message: error_message})
-    |> Ash.update!()
+    |> Ash.update!(authorize?: false)
   end
 end

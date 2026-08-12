@@ -5,6 +5,8 @@ This guide covers **standalone event modules**, **manual triggers**, and the **t
 ## Table of Contents
 
 1. [Understanding Event Modules](#understanding-event-modules)
+   - [Email Attachments](#email-attachments)
+   - [Inline images (CID)](#inline-images-cid)
 2. [When to Use Event Modules vs. Inline Events](#when-to-use-event-modules-vs-inline-events)
 3. [The Two-Path Pattern](#the-two-path-pattern)
    - [Single Source of Truth Principle](#single-source-of-truth-principle)
@@ -175,6 +177,102 @@ This link expires in <%= @expiry_hours %> hours.
 
 If you didn't request this, you can safely ignore this email.
 ```
+
+### Email Attachments
+
+Event modules can attach files to their emails via the optional `attachments/2`
+callback. It is consulted by the email transport only, and returns a list of
+maps with `:filename`, `:content_type` and the raw binary `:data`:
+
+```elixir
+@impl true
+def attachments(context, %Channel{transport: :email}) do
+  [
+    %{
+      filename: "faktura.pdf",
+      content_type: "application/pdf",
+      data: MyApp.Invoices.render_pdf(context.data.order)
+    }
+  ]
+end
+
+def attachments(_context, _channel), do: []
+```
+
+The binary is base64-encoded into the Oban job args, so it is stored with the
+job and re-sent verbatim on retries — no re-rendering at delivery time. Keep
+attachments small; they travel through your job table.
+
+#### Inline images (CID)
+
+Add `type: :inline` to embed a file in the message body instead of appending it
+as a download. The recipient's client renders it in place — no "show images" or
+attachment approval — and the HTML template references it by its Content-ID:
+
+```elixir
+defmodule MyApp.Orders.Events.Confirmed.Event do
+  use AshDispatch.Event
+
+  alias AshDispatch.Channel
+
+  @impl true
+  def channels(_context), do: [%Channel{transport: :email, audience: :user}]
+
+  @impl true
+  def attachments(context, %Channel{transport: :email}) do
+    [
+      # Inline: rendered inside the body via <img src="cid:logo.png">
+      %{
+        filename: "logo.png",
+        content_type: "image/png",
+        data: File.read!(Application.app_dir(:my_app, "priv/static/images/logo.png")),
+        type: :inline
+      },
+      # Regular attachment: offered as a download (the default)
+      %{
+        filename: "faktura.pdf",
+        content_type: "application/pdf",
+        data: MyApp.Invoices.render_pdf(context.data.order)
+      }
+    ]
+  end
+
+  def attachments(_context, _channel), do: []
+end
+```
+
+```heex
+<!-- templates/email.html.heex -->
+<img src="cid:logo.png" alt="MyApp" width="160" />
+
+<h1>Thanks for your order!</h1>
+```
+
+The Content-ID defaults to the `:filename`. Pass an explicit `:cid` when you
+want a shorter (or filename-independent) reference:
+
+```elixir
+%{
+  filename: "logo-2026-dark.png",
+  content_type: "image/png",
+  data: logo_binary,
+  type: :inline,
+  cid: "logo"
+}
+```
+
+```heex
+<img src="cid:logo" alt="MyApp" />
+```
+
+Notes:
+
+- `type: :attachment` is the default; omitting `:type` keeps the previous
+  behaviour exactly.
+- Inline images count toward the message size like any attachment — prefer a
+  small optimized PNG/SVG over a hero image.
+- Plain-text templates cannot reference a `cid:`; keep a text fallback that
+  reads well without the image.
 
 ---
 

@@ -217,20 +217,30 @@ defmodule AshDispatch.Helpers.ResourceIntrospection do
   """
   @spec resolve_user_id_path_for_scoping(module(), keyword()) :: [atom()] | nil
   def resolve_user_id_path_for_scoping(resource, opts) do
+    authorize? = Keyword.get(opts, :authorize?, true)
     scope = Keyword.get(opts, :scope)
     explicit_path = Keyword.get(opts, :user_id_path)
     audience = Keyword.get(opts, :audience)
 
     cond do
-      # Layer 1: Explicit scope expression takes precedence
+      # Layer 1: authorize?: false with no explicit scoping means a
+      # system-wide counter (e.g. admin badges) — do NOT auto-derive a
+      # user_id_path, or the "global" count silently becomes "records
+      # belonging to the viewing admin" and reads 0. This guard existed in
+      # 0.2.x (added 2025-11-30 for exactly that bug) and was lost in the
+      # notifier-era refactor; explicit user_id_path/scope still win below.
+      not authorize? and is_nil(explicit_path) and is_nil(scope) ->
+        nil
+
+      # Layer 2: Explicit scope expression takes precedence
       scope ->
         nil
 
-      # Layer 2: Use explicit user_id_path if provided (regardless of authorize?)
+      # Layer 3: Use explicit user_id_path if provided (regardless of authorize?)
       explicit_path ->
         explicit_path
 
-      # Layer 3: Auto-derive from resource relationships
+      # Layer 4: Auto-derive from resource relationships
       true ->
         derive_user_id_path(resource, audience)
     end

@@ -153,26 +153,41 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
   - `:ok` on success
   - `{:error, reason}` on failure
   """
+  # ORDERING MATTERS: the receipt must be moved to `:scheduled` BEFORE the
+  # Oban job is enqueued.
+  #
+  # This used to enqueue first. Oban picks a job up within milliseconds, so
+  # the worker regularly ran while the receipt was still `:failed`.
+  # `mark_sending` had no transition from `:failed`, so the worker hit its
+  # no-matching-transition branch, logged "likely duplicate job" and returned
+  # `:ok`. The job completed green, no mail was sent, and the receipt was then
+  # set to `:scheduled` — a state nothing monitors and that this worker
+  # (which queries `status == :failed`) never picks up again.
+  #
+  # Every retry was a coin flip. In one production deployment this had
+  # silently dropped 17 emails over eight months — every enqueued job showed
+  # `completed` and zero receipts showed `failed`, so nothing surfaced
+  # anywhere.
   def retry_receipt(%{__struct__: _} = receipt, max_retries) do
     # Check if this will be the final retry
     next_retry_count = (receipt.retry_count || 0) + 1
     is_final_retry = next_retry_count >= max_retries
 
-    case enqueue_worker(receipt, is_final_retry) do
-      {:ok, :already_handled} ->
-        # Transport handled the full lifecycle (e.g. in_app retry) — no receipt update needed
-        Logger.info(
-          "RetryFailedDeliveries: Retried delivery (direct): receipt_id=#{receipt.id}, event=#{receipt.event_id}, transport=#{receipt.transport}"
-        )
+    case receipt
+         |> Ash.Changeset.for_update(:retry, %{})
+         |> Ash.update(authorize?: false) do
+      {:ok, updated_receipt} ->
+        case enqueue_worker(updated_receipt, is_final_retry) do
+          {:ok, :already_handled} ->
+            # Transport handled the full lifecycle synchronously (e.g. in_app
+            # retry) — the receipt has already been marked :sent.
+            Logger.info(
+              "RetryFailedDeliveries: Retried delivery (direct): receipt_id=#{receipt.id}, event=#{receipt.event_id}, transport=#{receipt.transport}"
+            )
 
-        :ok
+            :ok
 
-      {:ok, _job} ->
-        # Update receipt: status → :scheduled, increment retry_count, set last_retry_at
-        case receipt
-             |> Ash.Changeset.for_update(:retry, %{})
-             |> Ash.update(authorize?: false) do
-          {:ok, updated_receipt} ->
+          {:ok, _job} ->
             log_level = if is_final_retry, do: :warning, else: :info
 
             Logger.log(
@@ -184,24 +199,29 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
 
           {:error, reason} ->
             Logger.error(
-              "RetryFailedDeliveries: Failed to update receipt after retry: receipt_id=#{receipt.id}, reason=#{inspect(reason)}"
+              "RetryFailedDeliveries: Failed to enqueue retry job: receipt_id=#{receipt.id}, transport=#{receipt.transport}, reason=#{inspect(reason)}"
             )
+
+            # The receipt is now `:scheduled` with no job behind it — exactly
+            # the invisible state this function exists to avoid. Put it back
+            # to `:failed` so the next cron run sees it, or retire it for good
+            # once the retries are spent.
+            if (receipt.retry_count || 0) >= max_retries - 1 do
+              mark_failed_permanent(
+                updated_receipt,
+                "Failed to enqueue retry after #{max_retries} attempts: #{inspect(reason)}"
+              )
+            else
+              mark_failed(updated_receipt, "Failed to enqueue retry job: #{inspect(reason)}")
+            end
 
             {:error, reason}
         end
 
       {:error, reason} ->
         Logger.error(
-          "RetryFailedDeliveries: Failed to enqueue retry job: receipt_id=#{receipt.id}, transport=#{receipt.transport}, reason=#{inspect(reason)}"
+          "RetryFailedDeliveries: Failed to update receipt before retry: receipt_id=#{receipt.id}, reason=#{inspect(reason)}"
         )
-
-        # If we can't enqueue, mark as failed_permanent after max retries
-        if (receipt.retry_count || 0) >= max_retries - 1 do
-          mark_failed_permanent(
-            receipt,
-            "Failed to enqueue retry after #{max_retries} attempts: #{inspect(reason)}"
-          )
-        end
 
         {:error, reason}
     end
@@ -215,10 +235,12 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
   end
 
   defp enqueue_worker(%{transport: :email} = receipt, _is_final_retry) do
-    # For email transport, use SendEmail worker with receipt_id
-    # The worker will fetch the receipt and use its stored content
-    %{receipt_id: receipt.id}
-    |> SendEmail.new()
+    # For email transport, use SendEmail worker with receipt_id.
+    # The worker fetches the receipt and uses its stored content;
+    # new_for_receipt/1 carries the original job's attachments forward
+    # (they exist only in job args, not on the receipt).
+    receipt
+    |> SendEmail.new_for_receipt()
     |> Oban.insert()
   end
 
@@ -240,6 +262,23 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
     )
 
     {:error, :transport_not_supported}
+  end
+
+  defp mark_failed(receipt, error_message) do
+    receipt
+    |> Ash.Changeset.for_update(:mark_failed, %{error_message: error_message})
+    |> Ash.update(authorize?: false)
+    |> case do
+      {:ok, _updated} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error(
+          "RetryFailedDeliveries: Failed to mark receipt back as failed: receipt_id=#{receipt.id}, reason=#{inspect(reason)}"
+        )
+
+        {:error, reason}
+    end
   end
 
   defp mark_failed_permanent(receipt, error_message) do

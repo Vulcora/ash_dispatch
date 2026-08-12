@@ -66,7 +66,7 @@ defmodule AshDispatch.Transports.InApp do
       updated_receipt =
         receipt
         |> Ash.Changeset.for_update(:skip, %{error_message: "user_opted_out"})
-        |> Ash.update!()
+        |> Ash.update!(authorize?: false)
 
       {:ok, updated_receipt}
     else
@@ -134,9 +134,14 @@ defmodule AshDispatch.Transports.InApp do
 
       notification_resource = Config.notification_resource()
 
+      # `authorize?: false`: the transport is system-internal. It runs in the
+      # dispatch chain without an end user as actor, and the notification is
+      # created FOR the recipient — not BY them. `Notification.Base` forbids
+      # create/update/destroy from the outside, so without this no
+      # notifications could be created at all.
       case notification_resource
            |> Ash.Changeset.for_create(:create, notification_attrs)
-           |> Ash.create() do
+           |> Ash.create(authorize?: false) do
         {:ok, notification} ->
           # Broadcast and mark receipt as sent
           invalidates = Map.get(content, :invalidates, [])
@@ -219,12 +224,15 @@ defmodule AshDispatch.Transports.InApp do
           idempotency_key: idempotency_key
         }
 
-        # Create Notification record via Ash
+        # Create Notification record via Ash. `authorize?: false`: the
+        # transport is system-internal and creates the notification FOR the
+        # recipient without an actor — `Notification.Base` forbids external
+        # create/update/destroy, so this must bypass policies.
         notification_resource = Config.notification_resource()
 
         case notification_resource
              |> Ash.Changeset.for_create(:create, notification_attrs)
-             |> Ash.create() do
+             |> Ash.create(authorize?: false) do
           {:ok, notification} ->
             Logger.debug("""
             Created in-app notification:
@@ -270,14 +278,14 @@ defmodule AshDispatch.Transports.InApp do
       {:ok, %{id: notification_id}} ->
         receipt
         |> Ash.Changeset.for_update(:mark_sent, %{notification_id: notification_id})
-        |> Ash.update!()
+        |> Ash.update!(authorize?: false)
 
       {:ok, :already_exists} ->
         # Idempotency conflict — notification exists but we couldn't look it up.
         # Mark as sent without linking notification_id.
         receipt
         |> Ash.Changeset.for_update(:mark_sent, %{})
-        |> Ash.update!()
+        |> Ash.update!(authorize?: false)
 
       {:error, :no_user_id} ->
         # Skip receipts for external recipients without user_ids
@@ -285,12 +293,12 @@ defmodule AshDispatch.Transports.InApp do
         |> Ash.Changeset.for_update(:skip, %{
           error_message: "In-app notifications require user_id (external recipient)"
         })
-        |> Ash.update!()
+        |> Ash.update!(authorize?: false)
 
       {:error, reason} ->
         receipt
         |> Ash.Changeset.for_update(:mark_failed, %{error_message: inspect(reason)})
-        |> Ash.update!()
+        |> Ash.update!(authorize?: false)
     end
   end
 

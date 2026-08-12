@@ -8,23 +8,24 @@ fixed directly in 0.5.2 (see CHANGELOG).
 
 ## 1. Retry semantics: Oban's own retries are inert for email
 
-`SendEmail` has `max_attempts: 5`, but after the first failure the receipt is
-`:failed` and `mark_sending` has no `:failed -> :sending` transition — the
-`NoMatchingTransition` branch treats attempts 2–5 as duplicate jobs and
-returns `:ok` without sending. The ONLY working retry path is the
-`RetryFailedDeliveries` cron, which consumers must remember to schedule (all
-four apps now do, but nothing enforces it).
+**Largely resolved in 0.5.6**, which absorbed a consumer-proven patch set:
+`mark_sending` now accepts `:failed` as a source state (Oban backoff retries
+work), and `RetryFailedDeliveries` moves the receipt to `:scheduled` BEFORE
+enqueueing — the enqueue-first ordering silently dropped mails whenever the
+worker won the race (17 dropped in one production deployment). On enqueue
+failure the receipt is put back to `:failed` instead of stranding on
+`:scheduled`.
 
-Options, not mutually exclusive:
-- Add `transition(:mark_sending, from: [:failed], to: :sending)` so Oban's
-  backoff retries work — but design the interaction with the cron first:
-  the cron's `unique` check on SendEmail does not cover the `:retryable`
-  state, so cron + in-flight-backoff can double-enqueue.
-- Or drop `max_attempts` to 1 and make the cron the documented single retry
-  path, so the config stops promising retries that never happen.
-- Either way: `mix ash_dispatch.install` should add the cron entry, and the
-  retry worker should run in `:emails` (a queue integrators already must
-  define) instead of `:default`.
+Still open:
+- The cron's `unique` check on SendEmail does not cover the `:retryable`
+  state, so cron + in-flight-backoff can double-enqueue; the `mark_sending`
+  gate serializes them except under a narrow concurrent-read window.
+- `mix ash_dispatch.install` should add the cron entry, and the retry worker
+  should run in `:emails` (a queue integrators already must define) instead
+  of `:default`.
+- Side-finding: both `mark_failed` and `retry` increment `retry_count`, so
+  the budget is consumed twice as fast as configured. Makes retries fewer,
+  not silent.
 
 ## 2. ManualTrigger `:trigger` accepts arguments it ignores
 
@@ -42,7 +43,14 @@ Swedishspytours works around it by dispatching directly with an overridden
 recipient in its own controller — that pattern could become a library
 helper (`Dispatcher.dispatch_to/4`?).
 
-## 3. Sensitive content retention
+## 3. Sensitive content retention — RESOLVED in 0.5.4
+
+Shipped as `AshDispatch.Workers.ScrubSensitiveContent` + per-event
+`metadata: [sensitive_content: true]` + `config :ash_dispatch,
+:scrub_after_hours`. Consumers still need to schedule the cron entry and tag
+their events. Original finding kept below for context.
+
+### Original finding
 
 Receipt-first stores full rendered bodies forever. For OTP codes and
 password-reset links that means live secrets in the database, and there is
@@ -54,7 +62,14 @@ the other consumers store reset-link bodies indefinitely today.
 Fix: per-event `metadata: [sensitive_content: true]` + a library-provided
 scrub/retention worker, so app-level workarounds can be retired.
 
-## 4. Ship a Resend webhook signature verifier
+## 4. Ship a Resend webhook signature verifier — RESOLVED in 0.5.4
+
+Shipped as `AshDispatch.WebhookHandlers.Resend.verify/3` (Svix HMAC,
+constant-time compare, multi-signature, replay window). Consumers still need
+to wire it into their controllers with a raw-body reader; a ready-made plug
+remains open. Original finding kept below for context.
+
+### Original finding
 
 The webhook handler does no signature verification and the moduledoc's
 example controller doesn't either. Of the four consumers, only

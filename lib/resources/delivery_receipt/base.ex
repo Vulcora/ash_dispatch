@@ -81,7 +81,14 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
 
         transitions do
           transition(:schedule, from: :pending, to: :scheduled)
-          transition(:mark_sending, from: [:scheduled, :pending], to: :sending)
+          # `:failed` is allowed as a source on purpose. A retry job can reach
+          # the worker before the receipt has been moved out of `:failed`;
+          # without this transition the worker treats it as a duplicate job,
+          # returns `:ok`, and the mail is dropped without a trace. It also
+          # makes Oban's own backoff retries effective (they arrive while the
+          # receipt sits on `:failed`). See the ordering note in
+          # `AshDispatch.Workers.RetryFailedDeliveries`.
+          transition(:mark_sending, from: [:scheduled, :pending, :failed], to: :sending)
           transition(:mark_sent, from: [:sending, :scheduled, :pending, :failed], to: :sent)
           transition(:mark_failed, from: [:sending, :scheduled, :pending], to: :failed)
 
@@ -395,13 +402,10 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
           accept [:error_message, :provider_response]
           change transition_state(:failed)
 
-          change fn changeset, _ ->
-            retry_count = Ash.Changeset.get_attribute(changeset, :retry_count) || 0
-
-            changeset
-            |> Ash.Changeset.change_attribute(:retry_count, retry_count + 1)
-            |> Ash.Changeset.change_attribute(:last_retry_at, DateTime.utc_now())
-          end
+          # Deliberately does NOT touch retry_count/last_retry_at: a failure
+          # is not a retry. Only the :retry action increments the counter —
+          # when both incremented, every failed+retried cycle burned the
+          # retry budget twice as fast as `:max_retries` promised.
         end
 
         update :mark_failed_permanent do
@@ -479,6 +483,7 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
 
         update :record_webhook_event do
           description "Record email event from provider webhook (delivery lifecycle and engagement)"
+          require_atomic? false
 
           accept [
             :sent_at,
@@ -491,13 +496,44 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
             :complained_at,
             :provider_response
           ]
+
+          # Webhook events arrive as a series (sent → delivered → opened →
+          # clicked → …). Merge each payload into the existing
+          # provider_response instead of overwriting it, so earlier events —
+          # and the original send response with the provider id — survive.
+          change fn changeset, _context ->
+            case Ash.Changeset.fetch_change(changeset, :provider_response) do
+              {:ok, new_response} when is_map(new_response) ->
+                existing = changeset.data.provider_response || %{}
+
+                Ash.Changeset.force_change_attribute(
+                  changeset,
+                  :provider_response,
+                  Map.merge(existing, new_response)
+                )
+
+              _ ->
+                changeset
+            end
+          end
         end
       end
 
       policies do
-        # Bypass all policies for create/update/destroy (for workers, tests)
-        bypass action_type([:create, :update, :destroy]) do
-          authorize_if always()
+        # All library-internal writes (dispatcher, transports, workers,
+        # webhook handler) run with `authorize?: false` and never reach these
+        # policies. External writes — an admin UI exposing :retry or
+        # :send_now — are gated on the same configured permission as reads.
+        #
+        # This used to be `bypass ... authorize_if always()` "for workers,
+        # tests" — which the workers never needed, and which let ANY
+        # authenticated actor mutate receipts, including :retry, which
+        # re-sends real email.
+        policy action_type([:create, :update, :destroy]) do
+          authorize_if {AshDispatch.PolicyChecks.HasPermission,
+                        permission: :manage_delivery_receipts}
+
+          forbid_if always()
         end
 
         # Read policies - only admins with configured permission can read

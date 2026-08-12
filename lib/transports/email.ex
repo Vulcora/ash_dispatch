@@ -79,7 +79,7 @@ defmodule AshDispatch.Transports.Email do
       updated_receipt =
         receipt
         |> Ash.Changeset.for_update(:skip, %{error_message: "user_opted_out"})
-        |> Ash.update!()
+        |> Ash.update!(authorize?: false)
 
       {:ok, updated_receipt}
     else
@@ -140,27 +140,69 @@ defmodule AshDispatch.Transports.Email do
     end
   end
 
+  @doc false
   # Resolve the event's attachments (optional `attachments/2` callback) and
   # base64-encode the raw binary `data` so it survives JSONB Oban-arg
   # serialization. Events without the callback → `[]` (EventResolver default).
   # `SendEmail` decodes these back to binary before handing them to the backend.
-  defp resolve_attachments(context, channel) do
-    case EventResolver.find_module(context.event_id) do
-      {:ok, module} ->
-        module
-        |> EventResolver.attachments(context, channel)
-        |> Enum.map(fn a ->
-          %{
-            "filename" => a.filename,
-            "content_type" => a.content_type,
-            "data" => Base.encode64(a.data)
-          }
-        end)
+  # Public-but-undocumented so the encode → decode round-trip is testable
+  # without an Oban instance.
+  def resolve_attachments(context, channel) do
+    event_attachments =
+      case EventResolver.find_module(context.event_id) do
+        {:ok, module} -> EventResolver.attachments(module, context, channel)
+        _ -> []
+      end
 
-      _ ->
-        []
-    end
+    Enum.map(default_attachments() ++ event_attachments, &encode_attachment/1)
   end
+
+  # App-wide attachments included in EVERY outgoing email, configured as
+  #
+  #     config :ash_dispatch,
+  #       default_email_attachments: {MyApp.EmailAssets, :defaults, []}
+  #
+  # The MFA (or zero-arity fun) returns a list of attachment maps in the same
+  # shape as `attachments/2`. Typical use: an inline (`type: :inline`) logo
+  # referenced from a shared layout as `<img src="cid:logo.png">`, so every
+  # mail renders it without per-event `attachments/2` implementations and
+  # without the recipient approving remote images. Resolution failures are
+  # logged and degrade to [] — a branding asset must never block delivery.
+  defp default_attachments do
+    case Application.get_env(:ash_dispatch, :default_email_attachments) do
+      nil -> []
+      {mod, fun, args} -> List.wrap(apply(mod, fun, args))
+      fun when is_function(fun, 0) -> List.wrap(fun.())
+    end
+  rescue
+    error ->
+      Logger.warning(
+        "default_email_attachments resolution failed, sending without: #{inspect(error)}"
+      )
+
+      []
+  end
+
+  # `"type"` is only written for `:inline` attachments and `"cid"` only when
+  # the event supplied one, so a plain attachment serializes byte-for-byte as
+  # before inline support (nothing new in the JSONB args, nothing for older
+  # workers to choke on).
+  defp encode_attachment(attachment) do
+    %{
+      "filename" => attachment.filename,
+      "content_type" => attachment.content_type,
+      "data" => Base.encode64(attachment.data)
+    }
+    |> put_unless_nil("type", encode_attachment_type(Map.get(attachment, :type)))
+    |> put_unless_nil("cid", Map.get(attachment, :cid))
+  end
+
+  defp encode_attachment_type(:inline), do: "inline"
+  # `:attachment` (and a missing `:type`) is the default — left out of the args.
+  defp encode_attachment_type(_), do: nil
+
+  defp put_unless_nil(args, _key, nil), do: args
+  defp put_unless_nil(args, key, value), do: Map.put(args, key, value)
 
   # Update receipt with oban_job_id and mark as scheduled
   # NOTE: In Oban inline testing mode, the job executes immediately within insert(),
@@ -175,7 +217,7 @@ defmodule AshDispatch.Transports.Email do
               # Only schedule if still pending
               current_receipt
               |> Ash.Changeset.for_update(:schedule, %{oban_job_id: job.id})
-              |> Ash.update!()
+              |> Ash.update!(authorize?: false)
             else
               # Already processed (inline mode) - just return current state
               Logger.debug(
@@ -193,7 +235,7 @@ defmodule AshDispatch.Transports.Email do
       {:error, reason} ->
         receipt
         |> Ash.Changeset.for_update(:mark_failed, %{error_message: inspect(reason)})
-        |> Ash.update!()
+        |> Ash.update!(authorize?: false)
     end
   end
 

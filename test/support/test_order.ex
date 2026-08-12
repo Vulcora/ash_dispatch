@@ -53,4 +53,27 @@ defmodule AshDispatch.Test.Events.OrderCreated do
       %AshDispatch.Channel{transport: :email, audience: :user}
     ]
   end
+
+  # One regular attachment + one inline image, exercising the
+  # transport → Oban args → worker round-trip in
+  # `AshDispatch.Workers.SendEmailTest`.
+  @impl true
+  def attachments(_context, %AshDispatch.Channel{transport: :email}) do
+    [
+      %{
+        filename: "faktura.pdf",
+        content_type: "application/pdf",
+        data: "%PDF-1.4"
+      },
+      %{
+        filename: "logo.png",
+        content_type: "image/png",
+        data: <<137, 80, 78, 71>>,
+        type: :inline,
+        cid: "logo"
+      }
+    ]
+  end
+
+  def attachments(_context, _channel), do: []
 end

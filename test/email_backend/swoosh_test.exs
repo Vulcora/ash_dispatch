@@ -119,6 +119,158 @@ defmodule AshDispatch.EmailBackend.SwooshTest do
       end)
     end
 
+    test "attachment map without :type/:cid stays a plain attachment (legacy shape)" do
+      # Args enqueued before inline support decode to exactly this map — it
+      # must keep producing the pre-inline `%Swoosh.Attachment{}`.
+      capture_log(fn ->
+        assert {:ok, %{provider: :swoosh}} =
+                 SwooshBackend.send_email(%{
+                   to: "user@example.com",
+                   from: "noreply@example.com",
+                   subject: "With invoice",
+                   html_body: "<p>Invoice</p>",
+                   text_body: "Invoice",
+                   attachments: [
+                     %{
+                       filename: "faktura.pdf",
+                       content_type: "application/pdf",
+                       data: "%PDF-1.4"
+                     }
+                   ]
+                 })
+      end)
+
+      assert_email_sent(fn email ->
+        assert [attachment] = email.attachments
+        assert attachment.filename == "faktura.pdf"
+        assert attachment.type == :attachment
+        assert attachment.cid == nil
+      end)
+    end
+
+    test "embeds inline images with a cid derived from the filename" do
+      capture_log(fn ->
+        assert {:ok, %{provider: :swoosh}} =
+                 SwooshBackend.send_email(%{
+                   to: "user@example.com",
+                   from: "noreply@example.com",
+                   subject: "With logo",
+                   html_body: ~s(<img src="cid:logo.png" alt="Logo" />),
+                   text_body: "Logo",
+                   attachments: [
+                     %{
+                       filename: "logo.png",
+                       content_type: "image/png",
+                       data: <<137, 80, 78, 71>>,
+                       type: :inline,
+                       cid: nil
+                     }
+                   ]
+                 })
+      end)
+
+      assert_email_sent(fn email ->
+        assert [attachment] = email.attachments
+
+        assert %Swoosh.Attachment{
+                 filename: "logo.png",
+                 content_type: "image/png",
+                 type: :inline,
+                 cid: "logo.png",
+                 data: <<137, 80, 78, 71>>
+               } = attachment
+      end)
+    end
+
+    test "honours an explicit :cid for inline attachments" do
+      capture_log(fn ->
+        assert {:ok, %{provider: :swoosh}} =
+                 SwooshBackend.send_email(%{
+                   to: "user@example.com",
+                   from: "noreply@example.com",
+                   subject: "With logo",
+                   html_body: ~s(<img src="cid:logo" alt="Logo" />),
+                   text_body: "Logo",
+                   attachments: [
+                     %{
+                       filename: "logo.png",
+                       content_type: "image/png",
+                       data: <<137, 80, 78, 71>>,
+                       type: :inline,
+                       cid: "logo"
+                     }
+                   ]
+                 })
+      end)
+
+      assert_email_sent(fn email ->
+        assert [%Swoosh.Attachment{type: :inline, cid: "logo"}] = email.attachments
+      end)
+    end
+
+    test "ignores a :cid on a regular attachment" do
+      capture_log(fn ->
+        assert {:ok, %{provider: :swoosh}} =
+                 SwooshBackend.send_email(%{
+                   to: "user@example.com",
+                   from: "noreply@example.com",
+                   subject: "With invoice",
+                   html_body: "<p>Invoice</p>",
+                   text_body: "Invoice",
+                   attachments: [
+                     %{
+                       filename: "faktura.pdf",
+                       content_type: "application/pdf",
+                       data: "%PDF-1.4",
+                       type: :attachment,
+                       cid: "invoice"
+                     }
+                   ]
+                 })
+      end)
+
+      assert_email_sent(fn email ->
+        assert [%Swoosh.Attachment{type: :attachment, cid: nil}] = email.attachments
+      end)
+    end
+
+    test "mixes inline and regular attachments in one email" do
+      capture_log(fn ->
+        assert {:ok, %{provider: :swoosh}} =
+                 SwooshBackend.send_email(%{
+                   to: "user@example.com",
+                   from: "noreply@example.com",
+                   subject: "Order confirmation",
+                   html_body: ~s(<img src="cid:logo.png" /><p>Thanks!</p>),
+                   text_body: "Thanks!",
+                   attachments: [
+                     %{
+                       filename: "logo.png",
+                       content_type: "image/png",
+                       data: <<137, 80, 78, 71>>,
+                       type: :inline,
+                       cid: nil
+                     },
+                     %{
+                       filename: "faktura.pdf",
+                       content_type: "application/pdf",
+                       data: "%PDF-1.4",
+                       type: :attachment,
+                       cid: nil
+                     }
+                   ]
+                 })
+      end)
+
+      assert_email_sent(fn email ->
+        # Swoosh prepends, so the list comes back in reverse order.
+        assert [%Swoosh.Attachment{filename: "faktura.pdf", type: :attachment, cid: nil}, inline] =
+                 email.attachments
+
+        assert %Swoosh.Attachment{filename: "logo.png", type: :inline, cid: "logo.png"} = inline
+      end)
+    end
+
     test "sends without attachments when :attachments omitted (backward compatible)" do
       capture_log(fn ->
         assert {:ok, %{provider: :swoosh}} =
