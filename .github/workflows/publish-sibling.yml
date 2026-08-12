@@ -1,0 +1,32 @@
+# Manual dispatcher: publishes a sibling Vulcora package to Hex.pm with this
+# repo's publish key. Exists because org-level Hex keys cannot publish
+# packages — only a user key can, and it lives here as a repo secret.
+name: Publish sibling package
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: "Vulcora repository to publish (e.g. gettext_ts)"
+        required: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Vulcora/${{ inputs.repository }}
+          ref: main
+
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.15'
+          otp-version: '26'
+
+      - name: Publish to Hex.pm
+        env:
+          HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
+        run: |
+          mix deps.get
+          mix hex.publish --yes
