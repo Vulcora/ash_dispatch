@@ -150,7 +150,7 @@ defmodule AshDispatch.Workers.SendWebhook do
            # We handle retries via Oban
            retry: false
          ) do
-      {:ok, %Req.Response{status: status} = response} when status in 200..299 ->
+      {:ok, %{status: status} = response} when status in 200..299 ->
         # Success - extract any useful info from response
         response_data = %{
           id: extract_id_from_response(response),
@@ -161,7 +161,7 @@ defmodule AshDispatch.Workers.SendWebhook do
         Logger.info("Webhook delivered successfully: status=#{status}, url=#{webhook_url}")
         {:ok, response_data}
 
-      {:ok, %Req.Response{status: status, body: body}} ->
+      {:ok, %{status: status, body: body}} ->
         # HTTP error (4xx, 5xx)
         error = %{
           status: status,
@@ -184,7 +184,12 @@ defmodule AshDispatch.Workers.SendWebhook do
 
   # Extract ID from response (if available)
   # Discord and Slack typically return message IDs
-  defp extract_id_from_response(%Req.Response{body: body}) when is_map(body) do
+  # Plain map matching, deliberately: req is an OPTIONAL dep, and a
+  # %Req.Response{} pattern makes this module fail to COMPILE in any app
+  # that does not include req (surfaced in a prod release build where the
+  # dev-only transitive req was absent). Req.post/2 above is a runtime
+  # call and safe to reference without the dep loaded at compile time.
+  defp extract_id_from_response(%{body: body}) when is_map(body) do
     # Try common ID fields
     body["id"] || body["message_id"] || body["ts"] || generate_id()
   end

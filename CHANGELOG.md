@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.5] - 2026-08-12
+
+### Fixed
+- `SendWebhook` pattern-matched on the `%Req.Response{}` struct although
+  `req` is an optional dependency — any app without req failed to COMPILE
+  the library in prod builds (dev builds often hid it via a transitive
+  dev-only req). Now matches plain maps; the runtime `Req.post/2` call is
+  unaffected and still requires req only when the webhook transport is
+  actually used.
+
 ### Fixed
 - The i18n catalog generator (`mix ash_dispatch.gen`) registered msgids
   under a hardcoded `"notifications"` domain while the Dispatcher looks
