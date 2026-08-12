@@ -1,9 +1,9 @@
 # Backlog
 
-Design-level findings that change behavior across consumers (mosis, siteflow,
-magasin, swedishspytours) and therefore need deliberate work — not quick
+Design-level findings that change behavior across consumers (the internal apps and a client
+integration) and therefore need deliberate work — not quick
 fixes. Source: the cross-app integration audit 2026-08-10 run during the
-swedishspytours migration. Small, safe bugs found in the same audit were
+a client migration. Small, safe bugs found in the same audit were
 fixed directly in 0.5.2 (see CHANGELOG).
 
 ## 1. Retry semantics: Oban's own retries are inert for email
@@ -47,9 +47,9 @@ helper (`Dispatcher.dispatch_to/4`?).
 Receipt-first stores full rendered bodies forever. For OTP codes and
 password-reset links that means live secrets in the database, and there is
 no redaction/opt-out (`store_content: false`, `redact_after: hours`) and no
-retention/pruning at all for receipts or notifications. Swedishspytours runs
+retention/pruning at all for receipts or notifications. One consumer runs
 an app-level scrub worker (blank bodies of its 2FA/reset events after 24h);
-mosis/siteflow/magasin store reset-link bodies indefinitely today.
+the other consumers store reset-link bodies indefinitely today.
 
 Fix: per-event `metadata: [sensitive_content: true]` + a library-provided
 scrub/retention worker, so app-level workarounds can be retired.
@@ -58,7 +58,7 @@ scrub/retention worker, so app-level workarounds can be retired.
 
 The webhook handler does no signature verification and the moduledoc's
 example controller doesn't either. Of the four consumers, only
-swedishspytours verifies (hand-rolled Svix HMAC in its controller);
+one consumer verifies (hand-rolled Svix HMAC in its controller);
 siteflow's router even claims "verified by provider-specific signatures"
 while verifying nothing, and both siteflow and magasin expose unauthenticated
 endpoints that mutate receipt state. A `AshDispatch.WebhookHandlers.

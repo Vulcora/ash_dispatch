@@ -35,7 +35,7 @@ revision folded them into 0.5.3; in fact 0.5.3 had already been published
   `AshDispatch.WebhookHandlers.Resend.verify/3` — Svix HMAC over
   `svix-id.svix-timestamp.raw_body` with constant-time comparison,
   multi-signature support (secret rotation) and a replay window. Ported
-  from swedishspytours, where it was the only verified endpoint in the
+  from a client app, where it was the only verified endpoint in the
   fleet; siteflow/magasin expose unauthenticated receipt mutation today.
 - **Sensitive-content scrubbing**:
   `AshDispatch.Workers.ScrubSensitiveContent` (cron) blanks `body_text`/
@@ -43,7 +43,7 @@ revision folded them into 0.5.3; in fact 0.5.3 had already been published
   `metadata: [sensitive_content: true]` once they are older than
   `config :ash_dispatch, :scrub_after_hours` (default 24). Receipts in
   `:failed` are left for the retry path first. Replaces app-level scrub
-  workers (swedishspytours' KvittoSkrubb).
+  workers .
 - **`Dispatcher.dispatch_safely/3`** — rescue-and-log wrapper for
   fire-and-forget dispatch from code paths that must never be felled by a
   notification failure. mosis carries two hand-rolled copies of this
