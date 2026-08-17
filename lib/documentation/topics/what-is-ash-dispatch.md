@@ -106,7 +106,13 @@ Transports are delivery mechanisms:
 - `:discord` - Post to Discord webhooks
 - `:slack` - Post to Slack webhooks
 - `:sms` - Send SMS messages
+- `:push` - Web Push to the browser (declare as `optional: true` — a user
+  who never granted notification permission is a soft-skip, not a failure)
 - `:webhook` - Custom HTTP webhooks
+
+`:sms` and `:push` delegate to a backend module you configure
+(`AshDispatch.SMSBackend` / `AshDispatch.PushBackend`); the protocol and
+its key material stay in your app.
 
 ### 3. Channels
 

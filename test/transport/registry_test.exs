@@ -8,14 +8,15 @@ defmodule AshDispatch.Transport.RegistryTest do
 
   alias AshDispatch.Transport.Registry
 
-  test "all/0 returns all 8 known transport modules" do
+  test "all/0 returns all 9 known transport modules" do
     all = Registry.all()
-    assert length(all) == 8
+    assert length(all) == 9
     assert AshDispatch.Transports.InApp in all
     assert AshDispatch.Transports.Email in all
     assert AshDispatch.Transports.Discord in all
     assert AshDispatch.Transports.Slack in all
     assert AshDispatch.Transports.SMS in all
+    assert AshDispatch.Transports.Push in all
     assert AshDispatch.Transports.Webhook in all
     assert AshDispatch.Transports.Broadcast in all
     assert AshDispatch.Transports.Oban in all
@@ -23,7 +24,18 @@ defmodule AshDispatch.Transport.RegistryTest do
 
   test "atoms/0 returns all transport atoms" do
     atoms = Registry.atoms() |> Enum.sort()
-    assert atoms == [:broadcast, :discord, :email, :in_app, :oban, :slack, :sms, :webhook]
+
+    assert atoms == [
+             :broadcast,
+             :discord,
+             :email,
+             :in_app,
+             :oban,
+             :push,
+             :slack,
+             :sms,
+             :webhook
+           ]
   end
 
   describe "module_for/1" do
@@ -31,6 +43,7 @@ defmodule AshDispatch.Transport.RegistryTest do
       assert {:ok, AshDispatch.Transports.Oban} = Registry.module_for(:oban)
       assert {:ok, AshDispatch.Transports.Broadcast} = Registry.module_for(:broadcast)
       assert {:ok, AshDispatch.Transports.InApp} = Registry.module_for(:in_app)
+      assert {:ok, AshDispatch.Transports.Push} = Registry.module_for(:push)
     end
 
     test "returns :error for unknown atom" do
@@ -51,11 +64,44 @@ defmodule AshDispatch.Transport.RegistryTest do
       assert Registry.skip_receipt?(:discord) == false
       assert Registry.skip_receipt?(:slack) == false
       assert Registry.skip_receipt?(:sms) == false
+      assert Registry.skip_receipt?(:push) == false
       assert Registry.skip_receipt?(:webhook) == false
     end
 
     test "unknown atom returns false (safe default — produce a receipt)" do
       assert Registry.skip_receipt?(:nonexistent) == false
+    end
+  end
+
+  describe "receipted_atoms/0" do
+    # Kvitto-resursens `one_of`-constraint läser den här listan. Den var
+    # tidigare hårdkodad på två ställen som glidit isär (setup.ex saknade
+    # `:slack`), så en ny transport kunde producera kvitton som resursen
+    # vägrade ta emot.
+    test "innehåller varje transport som faktiskt skapar ett kvitto" do
+      assert Registry.receipted_atoms() == [
+               :discord,
+               :email,
+               :in_app,
+               :push,
+               :slack,
+               :sms,
+               :webhook
+             ]
+    end
+
+    test "utesluter de lättviktiga transporterna" do
+      refute :broadcast in Registry.receipted_atoms()
+      refute :oban in Registry.receipted_atoms()
+    end
+
+    test "är exakt registret minus skip_receipt", %{} do
+      förväntat =
+        Registry.atoms()
+        |> Enum.reject(&Registry.skip_receipt?/1)
+        |> Enum.sort()
+
+      assert Registry.receipted_atoms() == förväntat
     end
   end
 

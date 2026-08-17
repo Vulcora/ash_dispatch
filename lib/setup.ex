@@ -113,10 +113,14 @@ defmodule AshDispatch.Setup do
 
         attribute :event_id, :string, allow_nil?: false, public?: true
 
+        # Härledd ur transport-registret, inte hårdkodad: listan här och i
+        # DeliveryReceipt.Base hade redan glidit isär (den här saknade
+        # `:slack`), så en ny transport kunde producera kvitton som
+        # resursen vägrade ta emot.
         attribute :transport, :atom,
           allow_nil?: false,
           public?: true,
-          constraints: [one_of: [:email, :in_app, :discord, :sms, :webhook]]
+          constraints: [one_of: AshDispatch.Transport.Registry.receipted_atoms()]
 
         attribute :user_id, :uuid, allow_nil?: true, public?: true
         attribute :notification_id, :uuid, allow_nil?: true, public?: true

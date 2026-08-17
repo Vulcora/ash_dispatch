@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-17
+
+Adds a Web Push transport and removes the hardcoded transport lists that
+made adding one a multi-file hunt.
+
+### Added
+- **`:push` transport** (`AshDispatch.Transports.Push`) — Web Push to the
+  browser. Same shape as `:sms`: ash_dispatch owns routing and the
+  delivery receipt, the consumer supplies a backend module implementing
+  the new `AshDispatch.PushBackend` behaviour. Configure with
+  `config :ash_dispatch, :push_backend, MyApp.Push`. With no backend
+  configured the receipt is marked `:skipped` with
+  `error_message: "transport_not_implemented"`, so an app can declare
+  `:push` channels before the backend exists.
+
+  VAPID keys, RFC 8291 encryption and the per-endpoint POST stay in the
+  consuming app — they are deployment concerns (key material, egress,
+  retry budget), not library concerns. `AshDispatch.PushBackend`'s docs
+  spell out the contract, including pruning subscriptions on `404`/`410`
+  and treating `429`/`5xx` as retryable.
+
+  Declare push channels as `optional: true`: a user who never granted
+  notification permission is a soft-skip, not a delivery failure.
+
+- **`AshDispatch.Transport.Registry.receipted_atoms/0`** — the transport
+  atoms that can appear on a `DeliveryReceipt` (registry minus the
+  lightweight `:broadcast`/`:oban`).
+
+### Fixed
+- **The receipt `transport` constraint no longer drifts.** It was
+  hardcoded in two places that had already gone out of sync:
+  `AshDispatch.Setup` allowed `[:email, :in_app, :discord, :sms,
+  :webhook]` while `DeliveryReceipt.Base` allowed those plus `:slack`.
+  A `:slack` channel therefore produced a receipt the `Setup`-generated
+  resource rejected. Both now derive from `receipted_atoms/0`, so
+  registering a transport is once again "one new file + one registry
+  entry" as `AshDispatch.Transport`'s docs promise.
+
+### Compatibility
+No migration required. The receipt constraint only widens, and consumers
+that never declared a `:push` channel are unaffected.
+
 ## [0.5.6] - 2026-08-12
 
 Security-focused release absorbing a consumer-proven patch set (policies and

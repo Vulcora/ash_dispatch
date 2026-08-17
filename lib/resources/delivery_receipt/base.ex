@@ -130,10 +130,11 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
 
         attribute :event_id, :string, allow_nil?: false, public?: true
 
+        # Härledd ur transport-registret — se `Registry.receipted_atoms/0`.
         attribute :transport, :atom,
           allow_nil?: false,
           public?: true,
-          constraints: [one_of: [:email, :in_app, :discord, :sms, :webhook, :slack]]
+          constraints: [one_of: AshDispatch.Transport.Registry.receipted_atoms()]
 
         attribute :user_id, :uuid, allow_nil?: true, public?: true
         attribute :notification_id, :uuid, allow_nil?: true, public?: true

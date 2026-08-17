@@ -35,6 +35,7 @@ defmodule AshDispatch.Transport.Registry do
     AshDispatch.Transports.Discord,
     AshDispatch.Transports.Slack,
     AshDispatch.Transports.SMS,
+    AshDispatch.Transports.Push,
     AshDispatch.Transports.Webhook,
     AshDispatch.Transports.Broadcast,
     AshDispatch.Transports.Oban
@@ -52,6 +53,25 @@ defmodule AshDispatch.Transport.Registry do
   @doc "All registered transport atoms."
   @spec atoms() :: [atom()]
   def atoms, do: Map.keys(@atom_to_module)
+
+  # Transports that actually produce a DeliveryReceipt row. The
+  # lightweight ones (`:broadcast`, `:oban`) never do — their audit
+  # trail lives elsewhere — so a receipt can never carry their atom.
+  @receipted_atoms @transports
+                   |> Enum.reject(& &1.skip_receipt?())
+                   |> Enum.map(& &1.transport_atom())
+                   |> Enum.sort()
+
+  @doc """
+  Transport atoms that can appear on a `DeliveryReceipt`.
+
+  This is the source of truth for the receipt resource's `one_of`
+  constraint. It used to be hardcoded in two places that had already
+  drifted apart — `setup.ex` was missing `:slack` — which meant adding
+  a transport silently produced receipts the resource would reject.
+  """
+  @spec receipted_atoms() :: [atom()]
+  def receipted_atoms, do: @receipted_atoms
 
   @doc """
   Find the module that handles a transport atom.

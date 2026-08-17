@@ -294,6 +294,22 @@ defmodule AshDispatch.Config do
     Application.get_env(:ash_dispatch, :sms_backend)
   end
 
+  @doc """
+  The Web Push backend module — should implement
+  `AshDispatch.PushBackend`. Returns `nil` when no backend is
+  configured, in which case the push transport marks receipts
+  `:skipped` rather than failing the event.
+
+  ## Example
+
+      config :ash_dispatch,
+        push_backend: MyApp.Push
+  """
+  @spec push_backend() :: module() | nil
+  def push_backend do
+    Application.get_env(:ash_dispatch, :push_backend)
+  end
+
   # ============================================================================
   # URL Building
   # ============================================================================

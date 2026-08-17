@@ -242,6 +242,7 @@ From this DSL, the generator:
 | `:email` | `email.html.heex`, `email.text.eex` |
 | `:email` with variant | + `email.{variant}.html.heex`, `email.{variant}.text.eex` |
 | `:sms` | `sms.text.eex` |
+| `:push` | None (title/body in DSL — payloads are capped at ~4 KB) |
 | `:in_app` | None (content in DSL) |
 | `:webhook` | None (computed) |
 | `:discord` | None (computed) |
