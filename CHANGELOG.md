@@ -7,13 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.6.2] - 2026-08-17
+## [0.6.3] - 2026-08-17
 
 ### Added
 - **`DeliveryReceipt.Base` `:list_all` takes an `audiences` list argument**
   alongside the existing single `audience` — apps with scoped audience
   families (e.g. permission-scoped admin audiences) can catch the whole
   family in one filter: `audiences: [:admin, :order_admins, …]`.
+
+  (Written for 0.6.2, but the publish workflow triggers on every main push
+  and the version bump sat in the first commit of a two-commit stack — so
+  hex 0.6.2 was built mid-stack and never got this argument. Lesson: bump
+  the version in the LAST commit of a stack, or push the stack atomically.)
+
+## [0.6.2] - 2026-08-17
 
 ### Fixed
 - **`ManualTrigger.Base` no longer hardcodes the audience/transport
