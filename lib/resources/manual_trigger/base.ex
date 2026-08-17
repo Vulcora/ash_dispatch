@@ -152,8 +152,11 @@ defmodule AshDispatch.Resources.ManualTrigger.Base do
           end
 
           argument :recipient_email, :ci_string
-          argument :audience, :atom, constraints: [one_of: [:user, :admin]]
-          argument :transport, :atom, constraints: [one_of: [:email, :in_app]]
+          # No one_of: the audience universe belongs to the app's config and
+          # the transports to the registry — validated at runtime by
+          # validate_channel_selection/2.
+          argument :audience, :atom
+          argument :transport, :atom
 
           prepare fn query, context ->
             event_id = Ash.Query.get_argument(query, :event_id)
@@ -162,26 +165,24 @@ defmodule AshDispatch.Resources.ManualTrigger.Base do
             audience = Ash.Query.get_argument(query, :audience)
             transport = Ash.Query.get_argument(query, :transport)
 
-            channel_filter = Helpers.build_channel_filter(audience, transport)
+            with :ok <- Helpers.validate_channel_selection(audience, transport),
+                 {:ok, previews} <-
+                   Helpers.preview_trigger(
+                     event_id,
+                     context_data,
+                     Helpers.build_channel_filter(audience, transport),
+                     recipient_email,
+                     context.actor
+                   ) do
+              records =
+                Enum.map(previews, fn preview_data ->
+                  merged = Map.merge(preview_data, %{event_id: event_id})
+                  struct(__MODULE__, merged)
+                end)
 
-            case Helpers.preview_trigger(
-                   event_id,
-                   context_data,
-                   channel_filter,
-                   recipient_email,
-                   context.actor
-                 ) do
-              {:ok, previews} ->
-                records =
-                  Enum.map(previews, fn preview_data ->
-                    merged = Map.merge(preview_data, %{event_id: event_id})
-                    struct(__MODULE__, merged)
-                  end)
-
-                Ash.DataLayer.Simple.set_data(query, records)
-
-              {:error, reason} ->
-                Ash.Query.add_error(query, reason)
+              Ash.DataLayer.Simple.set_data(query, records)
+            else
+              {:error, reason} -> Ash.Query.add_error(query, reason)
             end
           end
         end
@@ -197,6 +198,19 @@ defmodule AshDispatch.Resources.ManualTrigger.Base do
             :context_data,
             :skip_preferences
           ]
+
+          # Same runtime validation as :preview — the attributes carry no
+          # one_of constraints (the audience universe belongs to the app's config).
+          validate fn changeset, _context ->
+            Helpers.validate_channel_selection(
+              Ash.Changeset.get_attribute(changeset, :audience),
+              Ash.Changeset.get_attribute(changeset, :transport)
+            )
+            |> case do
+              :ok -> :ok
+              {:error, message} -> {:error, field: :audience, message: message}
+            end
+          end
 
           change fn changeset, context ->
             event_id = Ash.Changeset.get_attribute(changeset, :event_id)
@@ -253,14 +267,15 @@ defmodule AshDispatch.Resources.ManualTrigger.Base do
           public? true
         end
 
+        # No one_of constraints: the audience universe belongs to the consuming
+        # app (config :ash_dispatch, :audiences) and the transports to the
+        # registry. Validated at runtime — see Helpers.validate_channel_selection/2.
         attribute :audience, :atom do
           public? true
-          constraints one_of: [:user, :admin]
         end
 
         attribute :transport, :atom do
           public? true
-          constraints one_of: [:email, :in_app]
         end
 
         attribute :context_data, :map do

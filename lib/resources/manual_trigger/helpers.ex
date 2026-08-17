@@ -220,6 +220,66 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
     end
   end
 
+  @doc """
+  Validate a manual-trigger channel selection at runtime.
+
+  The audience universe belongs to the CONSUMING APP (`config :ash_dispatch,
+  :audiences`) and the transport universe to the transport registry, so
+  neither can be a compile-time `one_of` here in the library — the old
+  hardcoded `[:user, :admin]` / `[:email, :in_app]` constraints silently
+  rejected every app-defined audience (`:customers`, `:watchers`,
+  permission-scoped admin audiences, …) and every newer transport.
+
+  `nil` is always valid — it means "no filter on this axis".
+  """
+  @spec validate_channel_selection(atom() | nil, atom() | nil) :: :ok | {:error, String.t()}
+  def validate_channel_selection(audience, transport) do
+    with :ok <- validate_audience(audience) do
+      validate_transport(transport)
+    end
+  end
+
+  defp validate_audience(nil), do: :ok
+
+  defp validate_audience(audience) do
+    known = known_audiences()
+
+    if audience in known do
+      :ok
+    else
+      {:error,
+       "unknown audience #{inspect(audience)} — configured audiences: " <>
+         Enum.map_join(known, ", ", &inspect/1)}
+    end
+  end
+
+  defp validate_transport(nil), do: :ok
+
+  defp validate_transport(transport) do
+    known = AshDispatch.Transport.Registry.receipted_atoms()
+
+    if transport in known do
+      :ok
+    else
+      {:error,
+       "unknown transport #{inspect(transport)} — available transports: " <>
+         Enum.map_join(known, ", ", &inspect/1)}
+    end
+  end
+
+  # The audience keys from the app's config: bare atoms (`:user`) and
+  # keyword pairs (`admin: [...]`) — the same two forms the rest of the
+  # audience resolution understands.
+  defp known_audiences do
+    Config.audiences()
+    |> Enum.map(fn
+      audience when is_atom(audience) -> audience
+      {audience, _config} when is_atom(audience) -> audience
+      _other -> nil
+    end)
+    |> Enum.reject(&is_nil/1)
+  end
+
   def build_trigger_opts(recipient_email, audience, transport, skip_preferences, actor) do
     opts = %{skip_preferences: skip_preferences, actor: actor}
 

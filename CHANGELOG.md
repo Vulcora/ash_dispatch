@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-08-17
+
+### Added
+- **`DeliveryReceipt.Base` `:list_all` takes an `audiences` list argument**
+  alongside the existing single `audience` — apps with scoped audience
+  families (e.g. permission-scoped admin audiences) can catch the whole
+  family in one filter: `audiences: [:admin, :order_admins, …]`.
+
+### Fixed
+- **`ManualTrigger.Base` no longer hardcodes the audience/transport
+  universe.** The `:preview` arguments and the `:trigger`-path attributes
+  constrained `audience` to `one_of: [:user, :admin]` and `transport` to
+  `one_of: [:email, :in_app]` — silently rejecting every app-defined
+  audience (`:customers`, `:watchers`, permission-scoped admin audiences)
+  and every transport added since. Both are now validated at runtime
+  against the consuming app's `config :ash_dispatch, :audiences` and
+  `Transport.Registry.receipted_atoms/0`, with the allowed universe listed
+  in the error message. Same disease as the receipt-constraint drift fixed
+  in 0.6.0; a structural test now pins that no hardcoded list returns.
+
 ## [0.6.1] - 2026-08-17
 
 ### Fixed
