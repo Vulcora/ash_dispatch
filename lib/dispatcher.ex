@@ -1002,6 +1002,33 @@ defmodule AshDispatch.Dispatcher do
             payload: content_config[:webhook_payload] || %{},
             webhook_url: channel.webhook_url
           }
+
+        :push ->
+          # Titel, text och destination. Håll det litet: push-tjänsterna
+          # kapar krypterade nyttolaster runt 4 KB, och allt annat kan
+          # hämtas när användaren väl tryckt.
+          %{}
+          |> maybe_put(
+            :title,
+            interpolate(content_config[:title] || content_config[:notification_title], context)
+          )
+          |> maybe_put(
+            :message,
+            interpolate(
+              content_config[:message] || content_config[:notification_message],
+              context
+            )
+          )
+          |> maybe_put(:action_url, interpolate(content_config[:action_url], context))
+
+        # Catch-all. Utan den kraschar HELA dispatchen med CaseClauseError
+        # så snart en transport registreras utan en gren här — vilket är
+        # precis vad `AshDispatch.Transport`-beteendet lovar att man ska
+        # slippa ("en ny fil + en rad i registret"). En transport utan
+        # inline-content får ett tomt innehåll och levererar ändå; dess
+        # backend läser typiskt receipt.content eller kontexten själv.
+        _ ->
+          %{}
       end
 
     Map.merge(base_content, transport_content)

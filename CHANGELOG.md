@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-08-17
+
+### Fixed
+- **A registered transport no longer crashes the whole dispatch.**
+  `Dispatcher.build_inline_content/4` had a `case channel.transport`
+  with no catch-all, so the `:push` transport added in 0.6.0 raised
+  `CaseClauseError` for every event carrying a `:push` channel — taking
+  down the sibling channels on the same event with it. The case now has
+  a catch-all (a transport without inline content gets `%{}` and still
+  delivers), and `:push` has its own branch producing `title`,
+  `message` and `action_url`.
+
+  Same drift as the receipt constraint fixed in 0.6.0: the
+  `AshDispatch.Transport` behaviour promises "one new file + one
+  registry entry", and two places had not got the memo. A structural
+  test now pins the catch-all.
+
 ## [0.6.0] - 2026-08-17
 
 Adds a Web Push transport and removes the hardcoded transport lists that

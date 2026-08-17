@@ -92,4 +92,39 @@ defmodule AshDispatch.Transports.PushTest do
       assert AshDispatch.Config.push_backend() == nil
     end
   end
+
+  describe "dispatcherns innehållsbyggare" do
+    # Regressionen 0.6.0 introducerade: `build_inline_content/4` hade ett
+    # `case channel.transport` UTAN catch-all, så en nyregistrerad
+    # transport kraschade HELA dispatchen med CaseClauseError — inte bara
+    # sin egen kanal. Det motsäger vad `AshDispatch.Transport` lovar:
+    # "en ny fil + en rad i registret".
+    #
+    # Dispatchen har ingen lättviktig test-harness här (den testas från
+    # konsument-apparna), och att exponera en privat funktion enbart för
+    # test vore värre än problemet. Garantin blir därför strukturell:
+    # källan måste ha en catch-all.
+    @dispatcher File.read!("lib/dispatcher.ex")
+
+    test "build_inline_content har en catch-all för okända transporter" do
+      [_, body] = String.split(@dispatcher, "defp build_inline_content(", parts: 2)
+      [body, _] = String.split(body, "\n  defp ", parts: 2)
+
+      assert body =~ ~r/^\s+_ ->/m,
+             """
+             `build_inline_content/4` saknar catch-all i sitt
+             transport-case. Utan den kraschar hela dispatchen så snart
+             någon registrerar en transport utan att lägga till en gren —
+             tvärtemot vad AshDispatch.Transport lovar.
+             """
+    end
+
+    test "push har en egen innehållsgren" do
+      [_, body] = String.split(@dispatcher, "defp build_inline_content(", parts: 2)
+      [body, _] = String.split(body, "\n  defp ", parts: 2)
+
+      assert body =~ ~r/^\s+:push ->/m
+      assert body =~ ~r/:action_url/
+    end
+  end
 end
