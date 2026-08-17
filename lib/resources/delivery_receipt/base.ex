@@ -322,11 +322,16 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
           argument :transport, :atom, allow_nil?: true
           argument :event_id, :string, allow_nil?: true
           argument :audience, :atom, allow_nil?: true
+          # Multi-audience filter: apps with scoped audiences (e.g. permission-
+          # scoped admin audiences) want to catch a whole audience FAMILY in one
+          # selection.
+          argument :audiences, {:array, :atom}, allow_nil?: true
 
           filter expr(if(is_nil(^arg(:status)), true, ^ref(:status) == ^arg(:status)))
           filter expr(if(is_nil(^arg(:transport)), true, ^ref(:transport) == ^arg(:transport)))
           filter expr(if(is_nil(^arg(:event_id)), true, ^ref(:event_id) == ^arg(:event_id)))
           filter expr(if(is_nil(^arg(:audience)), true, ^ref(:audience) == ^arg(:audience)))
+          filter expr(if(is_nil(^arg(:audiences)), true, ^ref(:audience) in ^arg(:audiences)))
 
           pagination offset?: true, keyset?: true, default_limit: 50
           prepare build(sort: [inserted_at: :desc])
