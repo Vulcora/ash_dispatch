@@ -949,8 +949,10 @@ end
 
 ### How Preference Checking Works
 
-1. **Receipt Created** - Delivery receipt created with status `:pending`
-2. **Preference Check** - Transport calls `UserPreference.allows?/3`
+1. **Receipt Created** - One delivery receipt per recipient, status `:pending`
+2. **Preference Check** - Transport calls `UserPreference.allows_receipt?/4`,
+   which asks about **that receipt's own recipient** (so a fan-out to N
+   recipients produces N independent verdicts)
 3. **If Opted Out** - Receipt marked `:skipped` with error `"user_opted_out"`
 4. **If Allowed** - Delivery proceeds normally
 

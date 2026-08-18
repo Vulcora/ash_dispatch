@@ -163,6 +163,31 @@ end
 
 See [User Preferences](user-preferences.md) for implementation guide.
 
+### Preference-Gated Audiences
+
+Which audiences have their recipients' preferences consulted before delivery:
+
+```elixir
+config :ash_dispatch,
+  preference_gated_audiences: [:user, :customers]
+```
+
+**Default:** `[:user]` — the only audience any release before 0.6.4 gated.
+
+For a channel whose audience is in this list, the `:email` and `:in_app`
+transports ask `AshDispatch.UserPreference.allows_user?/4` about **the recipient
+of each receipt** and mark the receipt `:skipped` ("user_opted_out") on a `false`.
+Channels with any other audience deliver without consulting preferences at all.
+
+**Why needed:**
+- Apps that fan marketing-style events out to an audience of their own
+  (`:customers`, `:subscribers`, …) had no way to gate them: those audiences
+  bypassed preferences entirely
+- Adding an audience here is the whole opt-in — no event or channel changes
+
+**Keep out of this list:** admin, team and system audiences. An operator must
+not be able to silence an operational alert by unticking a marketing box.
+
 ### Recipient Fields (Recipient Field Extraction)
 
 Configure how recipient information is extracted for each transport:
@@ -621,6 +646,9 @@ config :ash_dispatch,
 
   # User preferences
   preference_provider: MyApp.NotificationPreferences,
+  user_preference: MyApp.NotificationPreferences,
+  # Audiences whose recipients' preferences are consulted (default: [:user])
+  preference_gated_audiences: [:user, :customers],
 
   # Email configuration
   email_backend: AshDispatch.EmailBackend.Swoosh,
