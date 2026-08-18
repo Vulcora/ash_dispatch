@@ -3,9 +3,16 @@ defmodule AshDispatch.Test.Order do
   Test resource with explicit module override.
   Used to test that explicit modules are respected and not overwritten.
   """
+  # ETS so records can be created and read back: `AshDispatch.PreviewTest`
+  # previews a real order through the `<data_key>_id` load path.
   use Ash.Resource,
     domain: AshDispatch.Test.Domain,
+    data_layer: Ash.DataLayer.Ets,
     extensions: [AshDispatch.Resource]
+
+  ets do
+    private? true
+  end
 
   attributes do
     uuid_primary_key :id
