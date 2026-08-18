@@ -7,6 +7,94 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-08-18
+
+Bug fixes in the delivery path, plus additive facades over machinery that
+already existed. No behaviour changes for any existing consumer: every new
+option defaults to exactly what the previous releases did.
+
+### Fixed
+- **User preferences are evaluated per receipt, not per context user.**
+  The `:email` and `:in_app` transports asked
+  `UserPreference.allows?(context, channel, event_config)` — a question
+  about the user on the *context*, i.e. the event's subject. But a receipt
+  is one recipient, so on any fan-out (one event, N receipts) that single
+  verdict was applied to all N: one customer's opt-out silenced the whole
+  send, and one customer's opt-in delivered to people who had opted out.
+  Consumers implementing `user_allows?/4` never saw more than one user id
+  per event and had no way to notice.
+
+  Both transports now call the new `allows_receipt?/4`, which reads
+  `receipt.user_id`. Receipts without a user id (external addresses,
+  webhook targets) keep delivering unasked.
+
+- **`{:at, %DateTime{}}` channel times are honored.** `normalize_time/1`
+  accepted them, the `time` type documented them and
+  `Channel.calculate_delay/1` knew how to compute them — but the email
+  transport matched only `{:in, seconds}` and let everything else fall
+  into a catch-all `0`, so an absolute-time channel sent IMMEDIATELY,
+  silently (and `calculate_delay/1` had zero call sites). The delay is now
+  computed from the datetime, clamped at 0 so a past time means "now".
+  `{:in, seconds}` is unchanged.
+
+### Added
+- **`AshDispatch.preview/3`** — the preview engine behind ManualTrigger,
+  exposed as a plain function. Renders subject/HTML/text for each channel
+  of an event without delivering:
+
+      AshDispatch.preview("orders.created", %{order_id: order.id},
+        transport: :email, audience: :user)
+      #=> {:ok, [%{subject: …, html_body: …, text_body: …, recipient: …}]}
+
+  Options: `:audience`, `:transport`, `:actor`, `:recipient_email` (which
+  only changes the displayed recipient — preview never sends).
+
+- **`AshDispatch.UserPreference.allows_user?/4`** — the preference
+  predicate, extracted from `allows?/3` and callable anywhere a user id is
+  known: `allows_user?(user_id, event_id, transport, opts)`. This is how an
+  admin screen's "342 recipients · 38 have opted out" stays in agreement
+  with what the send path will do. A `nil` user id returns `true`.
+  `allows?/3` keeps its behaviour and delegates to it.
+
+- **`AshDispatch.UserPreference.allows_receipt?/4`** — the same question
+  asked about a receipt's own recipient. This is the gate the transports run.
+
+- **`config :ash_dispatch, preference_gated_audiences`** — which audiences
+  have their recipients' preferences consulted. Defaults to `[:user]`,
+  exactly the audience set every earlier release gated; every app-defined
+  audience (`:customers`, `:watchers`, permission-scoped admin audiences)
+  bypassed preferences entirely and still does until opted in:
+
+      config :ash_dispatch, preference_gated_audiences: [:user, :customers]
+
+  Keep admin/team/system audiences out of it — an operator must not be able
+  to silence an operational alert by unticking a marketing box.
+
+### Deprecated
+- **Channel time `{:window, map}`.** Business-hours windows were never
+  implemented; the spec has always delivered immediately. It still does —
+  removing it would break consumers that declared one — but the first
+  `{:window, …}` channel after boot now logs a deprecation warning. Use
+  `{:in, seconds}` or `{:at, %DateTime{}}`. Removal is deliberately
+  postponed.
+
+### Docs
+- **"Pattern 3: Frequency-Based Preferences" rewritten.** It instructed a
+  side effect (`queue_for_digest/3`) inside `user_allows?/4` followed by
+  `false` — i.e. a notification silently moved into a table nobody
+  delivers from, behind a receipt claiming the user opted out. The
+  predicate stays a predicate; digest mode is modelled as "no individual
+  delivery" with the digest job owned by the app.
+
+### Planned (names reserved, nothing shipped)
+- **Per-recipient digests.** Reserved: channel time `{:digest, window}`,
+  `AshDispatch.Resources.DigestEntry.Base`,
+  `AshDispatch.Workers.FlushDigests`, and a `user_digest_mode/2` callback
+  on the preference behaviour. Two properties are already fixed: the
+  digest unit is per recipient (one body per user, not one body for
+  everyone), and a digest still produces a `DeliveryReceipt` — a digest is
+  a delivery, not a silence. See the User Preferences topic.
+
 ## [0.6.3] - 2026-08-17
 
 ### Added
