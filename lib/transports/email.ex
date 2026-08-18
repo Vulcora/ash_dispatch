@@ -34,6 +34,14 @@ defmodule AshDispatch.Transports.Email do
         time: {:in, 300}  # Deliver in 5 minutes
       }
 
+      channel = %Channel{
+        transport: :email,
+        time: {:at, ~U[2026-09-01 07:00:00Z]}  # Deliver at an absolute time
+      }
+
+  A `{:at, …}` in the past delivers now. `{:window, map}` is deprecated
+  and delivers immediately.
+
   ## Example
 
       receipt = %{
@@ -264,6 +272,28 @@ defmodule AshDispatch.Transports.Email do
     end
   end
 
-  defp schedule_seconds(%Channel{time: {:in, seconds}}), do: seconds
-  defp schedule_seconds(_), do: 0
+  @doc false
+  # The channel's delivery time as an Oban `schedule_in` value.
+  #
+  # `{:at, %DateTime{}}` used to fall into the catch-all and send
+  # IMMEDIATELY — the documented absolute-time API silently did nothing.
+  # It now goes through `Channel.calculate_delay/1`, clamped at 0 so a
+  # past datetime means "now" rather than a negative schedule_in.
+  #
+  # Public-but-undocumented so the mapping is testable without an Oban
+  # instance (same reason as `resolve_attachments/2`).
+  def schedule_seconds(%Channel{time: {:in, seconds}}), do: seconds
+
+  def schedule_seconds(%Channel{time: {:at, %DateTime{}}} = channel) do
+    channel
+    |> Channel.calculate_delay()
+    |> max(0)
+  end
+
+  def schedule_seconds(%Channel{time: {:window, _window}}) do
+    Channel.warn_window_deprecated()
+    0
+  end
+
+  def schedule_seconds(_), do: 0
 end

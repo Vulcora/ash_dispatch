@@ -9,6 +9,17 @@ defmodule AshDispatch.Channel do
   - **Policy** - Delivery policy (:always, :skip_if_read)
   - **Variant** - Template variant (e.g., :admin for admin-specific templates)
 
+  ## Time
+
+  - `:immediate` (or `{:in, 0}`) — deliver now
+  - `{:in, seconds}` — deliver after a relative delay
+  - `{:at, %DateTime{}}` — deliver at an absolute time (a time in the past
+    means now)
+  - `{:window, map}` — **deprecated**, delivers immediately
+
+  Only asynchronous transports honour the delay; `:in_app` writes its
+  notification synchronously.
+
   ## Examples
 
       %Channel{
@@ -19,6 +30,12 @@ defmodule AshDispatch.Channel do
       }
 
       %Channel{
+        transport: :email,
+        audience: :user,
+        time: {:at, ~U[2026-09-01 07:00:00Z]}  # Deliver at an absolute time
+      }
+
+      %Channel{
         transport: :discord,
         audience: :admin,
         time: :immediate,
@@ -26,8 +43,15 @@ defmodule AshDispatch.Channel do
       }
   """
 
+  require Logger
+
+  @window_deprecation_key {__MODULE__, :window_deprecation_warned}
+
   @type transport :: :email | :in_app | :discord | :sms | :slack | :webhook | atom()
   @type audience :: :user | :admin | atom()
+  # `{:window, map()}` is DEPRECATED — business-hours windows were never
+  # implemented and the spec has always delivered immediately. It still
+  # does, and now logs a deprecation warning once per boot.
   @type time ::
           :immediate
           | {:in, non_neg_integer()}
@@ -147,12 +171,19 @@ defmodule AshDispatch.Channel do
   @doc """
   Calculates delay in seconds from time specification.
 
+  For `{:at, datetime}` the result is relative to now and may be negative
+  when the datetime is in the past; callers that schedule work clamp it at
+  zero (see `AshDispatch.Transports.Email`).
+
+  `{:window, map}` is deprecated and always returns `0` (immediate) — see
+  `warn_window_deprecated/0`.
+
   ## Examples
 
-      iex> Channel.calculate_delay(%Channel{time: {:in, 300}})
+      iex> Channel.calculate_delay(%Channel{transport: :email, audience: :user, time: {:in, 300}})
       300
 
-      iex> Channel.calculate_delay(%Channel{time: :immediate})
+      iex> Channel.calculate_delay(%Channel{transport: :email, audience: :user, time: :immediate})
       0
   """
   def calculate_delay(%__MODULE__{time: {:in, seconds}}), do: seconds
@@ -162,13 +193,44 @@ defmodule AshDispatch.Channel do
     DateTime.diff(datetime, DateTime.utc_now(), :second)
   end
 
-  def calculate_delay(%__MODULE__{time: {:window, _window}}) do
-    # TODO: Implement business hours calculation
-    # For now, send immediately if in window, or delay to window start
-    0
-  end
+  def calculate_delay(%__MODULE__{time: {:window, _window}}), do: 0
 
   def calculate_delay(_), do: 0
+
+  @doc """
+  Logs the `{:window, map}` deprecation once per boot.
+
+  Business-hours windows were never implemented — a `{:window, …}` channel
+  has always delivered immediately, silently. Rather than keep lying, the
+  time spec is deprecated: it still delivers immediately (removing it would
+  be a breaking change), but the first channel that uses it after boot says
+  so in the log.
+
+  Returns `:ok`.
+  """
+  @spec warn_window_deprecated() :: :ok
+  def warn_window_deprecated do
+    if :persistent_term.get(@window_deprecation_key, false) do
+      :ok
+    else
+      :persistent_term.put(@window_deprecation_key, true)
+
+      Logger.warning(
+        "channel time {:window, ...} is deprecated and treated as immediate; " <>
+          "use {:in, seconds} or {:at, %DateTime{}} instead"
+      )
+
+      :ok
+    end
+  end
+
+  @doc false
+  # Test hook: makes `warn_window_deprecated/0` warn again.
+  @spec reset_window_deprecation_warning() :: :ok
+  def reset_window_deprecation_warning do
+    :persistent_term.erase(@window_deprecation_key)
+    :ok
+  end
 
   @doc """
   Checks if a channel matches given transport and/or audience filters.
