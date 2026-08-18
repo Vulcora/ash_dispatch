@@ -8,10 +8,10 @@ defmodule AshDispatch.Transports.InApp do
 
   ## Behavior
 
-  1. Checks user preferences (if event is user_configurable)
-  2. Resolves recipients from context
-  3. Creates Notification records
-  4. Updates receipt status to `:sent`
+  1. Checks the preferences of the receipt's own recipient
+     (`AshDispatch.UserPreference.allows_receipt?/4`)
+  2. Creates the Notification record for this receipt
+  3. Updates receipt status to `:sent`
 
   ## Status Flow
 
@@ -59,9 +59,13 @@ defmodule AshDispatch.Transports.InApp do
   - `{:error, reason}` on failure
   """
   def deliver(receipt, context, channel, event_config) do
-    # Check user preferences first
-    if not AshDispatch.UserPreference.allows?(context, channel, event_config) do
-      Logger.info("User opted out of #{context.event_id} via #{channel.transport}, skipping")
+    # Check the preferences of THIS receipt's recipient. A receipt is one
+    # recipient, so a fan-out evaluates one verdict per recipient — reading
+    # `context.user` here applied the event subject's verdict to all N.
+    if not AshDispatch.UserPreference.allows_receipt?(receipt, context, channel, event_config) do
+      Logger.info(
+        "User #{inspect(Map.get(receipt, :user_id))} opted out of #{context.event_id} via #{channel.transport}, skipping"
+      )
 
       updated_receipt =
         receipt
