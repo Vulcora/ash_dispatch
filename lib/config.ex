@@ -427,6 +427,34 @@ defmodule AshDispatch.Config do
     Application.get_env(:ash_dispatch, :preference_provider)
   end
 
+  @doc """
+  Audiences whose deliveries are gated by the user preference checker.
+
+  A channel is preference-gated when its audience is in this list: the
+  transport asks `AshDispatch.UserPreference.allows_user?/4` for the
+  RECIPIENT of the receipt before delivering, and marks the receipt
+  `:skipped` ("user_opted_out") when the answer is `false`.
+
+  Defaults to `[:user]`, which is exactly the behaviour of every release
+  before 0.6.4 — only the `:user` audience was ever gated, and every
+  app-defined audience (`:customers`, `:watchers`, permission-scoped
+  admin audiences) bypassed preferences entirely.
+
+  Apps that fan a marketing-style event out to an audience of their own
+  can now gate it too:
+
+      config :ash_dispatch,
+        preference_gated_audiences: [:user, :customers]
+
+  Only add audiences whose recipients are end users with preferences.
+  Admin/team/system audiences should stay ungated — an operator must not
+  be able to silence an operational alert by unticking a marketing box.
+  """
+  @spec preference_gated_audiences() :: [atom()]
+  def preference_gated_audiences do
+    Application.get_env(:ash_dispatch, :preference_gated_audiences, [:user])
+  end
+
   # ============================================================================
   # Integrations
   # ============================================================================
