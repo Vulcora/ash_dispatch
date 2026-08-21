@@ -679,6 +679,17 @@ defmodule AshDispatch.Dispatcher do
       nil
   end
 
+  # Adds the recipient to the context's variables so both
+  # `prepare_template_assigns/2` and the template can see who this copy is
+  # for. Never overwrites an existing `:recipient` — an event that resolves a
+  # richer shape of its own keeps it.
+  defp put_recipient(%{variables: variables} = context, recipient)
+       when is_map(variables) do
+    %{context | variables: Map.put_new(variables, :recipient, recipient)}
+  end
+
+  defp put_recipient(context, _recipient), do: context
+
   # Get user_id from recipient struct
   defp get_user_id(recipient) when is_map(recipient) do
     Map.get(recipient, :id)
@@ -783,6 +794,27 @@ defmodule AshDispatch.Dispatcher do
   end
 
   defp do_build_receipt_content(context, channel, event_config, recipient) do
+    # THE RECIPIENT BELONGS IN THE CONTEXT.
+    #
+    # This function runs once PER RECIPIENT and has always had it in scope,
+    # but nothing downstream could see it: `prepare_template_assigns/2`
+    # receives `(context, channel)`, and the template assigns were built from
+    # that return value plus `Context.template_assigns/1`. A greeting by name
+    # was therefore impossible without reaching outside the render path.
+    #
+    # It goes into `context.variables`, which is the one place that reaches
+    # BOTH consumers — `Context.template_assigns/1` merges variables into the
+    # assigns a template sees, and the callback can read
+    # `context.variables[:recipient]` to PRECOMPUTE anything per-recipient.
+    #
+    # That second half is the point. Putting it only in the final assigns
+    # would have forced consumers to branch inside templates, which is exactly
+    # what a precomputed-assigns convention exists to prevent.
+    #
+    # Purely additive: a context key nothing reads changes no output, so an
+    # event that never mentions the recipient renders byte-for-byte as before.
+    context = put_recipient(context, recipient)
+
     # Resolve module with runtime fallback (handles compilation order issues)
     module = resolve_event_module(event_config, context)
 

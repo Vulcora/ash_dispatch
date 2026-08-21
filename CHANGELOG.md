@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.5] - 2026-08-21
+
+### Added
+
+- **The recipient is in the context.** `do_build_receipt_content/4` runs once
+  per recipient and has always had it in scope, but nothing downstream could
+  see it: `prepare_template_assigns/2` receives `(context, channel)`, and
+  template assigns were built from that return value plus
+  `Context.template_assigns/1`. Greeting someone by name was impossible
+  without reaching outside the render path.
+
+  It now goes into `context.variables`, which is the one place that reaches
+  **both** consumers — `Context.template_assigns/1` merges variables into the
+  assigns a template sees, and the callback can read
+  `context.variables[:recipient]` to PRECOMPUTE per-recipient values.
+
+  That second half is the point. Exposing it only in the final assigns would
+  have forced consumers to branch inside templates, which is exactly what a
+  precomputed-assigns convention exists to prevent.
+
+  `Map.put_new/3`, so an event that already resolves a richer recipient shape
+  keeps its own. Purely additive: a context key nothing reads changes no
+  output, and an event that never mentions the recipient renders
+  byte-for-byte as before. `subject/2` still receives no recipient — a
+  personalised subject line needs a callback signature change and is not part
+  of this release.
+
+  **Not covered by a test in this repo.** The suite has no harness for a full
+  dispatch-to-receipt flow: no application-level `recipient_fields`, no
+  configured `delivery_receipt_resource`, and further gaps behind those. An
+  attempt to build one was abandoned as larger than the change it would
+  guard. The behaviour is exercised end-to-end by magasin's mailing
+  byte-identity test, which compares a preview rendered for a chosen
+  recipient against what that recipient actually receives.
+
 ## [0.6.4] - 2026-08-18
 
 Bug fixes in the delivery path, plus additive facades over machinery that
