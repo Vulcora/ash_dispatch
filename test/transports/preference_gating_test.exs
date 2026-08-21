@@ -153,7 +153,8 @@ defmodule AshDispatch.Transports.PreferenceGatingTest do
       test "#{transport} transport calls allows_receipt?/4, not allows?/3" do
         source = File.read!(unquote(path))
 
-        assert source =~ "UserPreference.allows_receipt?(receipt, context, channel, event_config)",
+        assert source =~
+                 "UserPreference.allows_receipt?(receipt, context, channel, event_config)",
                "#{unquote(path)} no longer gates on the receipt's own recipient"
 
         refute source =~ "UserPreference.allows?(",
