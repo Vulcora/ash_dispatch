@@ -1222,9 +1222,22 @@ defmodule AshDispatch.Dispatcher do
           # Prepare template assigns using EventResolver
           base_assigns = safe_prepare_template_assigns(module, context, channel)
 
-          # Merge context data and variables into assigns (variables take precedence)
+          # THE RECIPIENT IS AN ASSIGN.
+          #
+          # `prepare_template_assigns/2` receives `(context, channel)` and has
+          # never seen who the mail is for, even though this function is called
+          # once PER RECIPIENT and has it in scope. A greeting by name was
+          # therefore impossible without reaching outside the render path.
+          #
+          # It goes in FIRST so an event can override it: some events resolve
+          # their recipients themselves and want a richer shape than the
+          # `%{id, email, display_name}` map the extractor builds.
+          #
+          # Consumers that never mention `@recipient` render byte-for-byte as
+          # before — an unused assign changes nothing.
           assigns =
-            base_assigns
+            %{recipient: recipient}
+            |> Map.merge(base_assigns)
             |> Map.merge(Context.template_assigns(context))
 
           # Get subject early and add to assigns so layout template can access it

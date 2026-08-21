@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.5] - 2026-08-21
+
+### Added
+
+- **`@recipient` is available in email templates.** `build_module_content/5`
+  is called once per recipient and has always had it in scope, but assigns
+  were built from `prepare_template_assigns(context, channel)` alone — so the
+  render path could not see who the mail was for, and a greeting by name was
+  impossible without reaching around it.
+
+  The recipient map (`%{id, email, display_name}`, or whatever the event's
+  `recipients/2` returns) is merged in **before** the event's own assigns, so
+  an event that resolves richer recipients can override the key.
+
+  Purely additive: a template that never mentions `@recipient` renders
+  byte-for-byte as before. `subject/2` still receives no recipient — a
+  personalised subject line needs a callback signature change and is not part
+  of this release.
+
+  Covered end-to-end in the consumer (magasin's mailing byte-identity test),
+  not in this repo: the library's own test events use `body_html/2`
+  callbacks, which bypass assigns entirely, so a library-side lock would have
+  meant building a template fixture that tests nothing the consumer's real
+  templates don't already exercise.
+
 ## [0.6.4] - 2026-08-18
 
 Bug fixes in the delivery path, plus additive facades over machinery that
