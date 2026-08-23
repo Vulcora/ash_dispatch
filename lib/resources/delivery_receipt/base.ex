@@ -49,6 +49,14 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
     notification_resource = Keyword.fetch!(opts, :notification_resource)
     user_resource = Keyword.get(opts, :user_resource)
     extra_extensions = Keyword.get(opts, :extensions, [])
+
+    # Consumers could always add extensions but never notifiers, which is an
+    # arbitrary asymmetry: a notifier is how you observe what a resource did
+    # without touching how it does it. Without this, an app that wants to
+    # react to receipt transitions has to reach for a change instead — and a
+    # non-atomic change forces `require_atomic? false` onto every update
+    # action in this base, which the consumer cannot edit.
+    extra_notifiers = Keyword.get(opts, :notifiers, [])
     table = Keyword.get(opts, :table, "delivery_receipts")
     all_extensions = [AshStateMachine] ++ extra_extensions
 
@@ -57,7 +65,8 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
         domain: unquote(domain),
         data_layer: AshPostgres.DataLayer,
         authorizers: [Ash.Policy.Authorizer],
-        extensions: unquote(all_extensions)
+        extensions: unquote(all_extensions),
+        notifiers: unquote(extra_notifiers)
 
       postgres do
         table unquote(table)
