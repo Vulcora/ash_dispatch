@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.7] - 2026-08-23
+
+### Added
+
+- **The resource bases accept `notifiers:`.** They already accepted
+  `extensions:`, and the omission was arbitrary — a notifier is how you
+  observe what a resource did without touching how it does it.
+
+  Without it, a consumer wanting to react to receipt transitions has to reach
+  for a change instead, and a non-atomic change forces `require_atomic? false`
+  onto **every update action in the base** — actions the consumer cannot edit.
+  That is a compile error with no way out from the consuming app.
+
+  Two lines in each of `DeliveryReceipt.Base` and `Notification.Base`, both
+  defaulting to `[]`, so nothing changes for anyone who does not pass the
+  option.
+
 ## [0.6.6] - 2026-08-23
 
 ### Fixed
