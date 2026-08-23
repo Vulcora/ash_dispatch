@@ -66,6 +66,7 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
 
   alias AshDispatch.Config
   alias AshDispatch.Workers.SendEmail
+  alias AshDispatch.Workers.Stranded
 
   require Ash.Query
   require Logger
@@ -105,6 +106,11 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
       # Oldest failures first
       |> Ash.Query.sort(inserted_at: :asc)
 
+    # Receipts stranded in :scheduled are swept FIRST, so anything rescued in
+    # this pass is already `:failed` when the query below runs and gets its
+    # retry immediately instead of waiting a further cycle.
+    sweep_stranded()
+
     case Ash.read(query, authorize?: false) do
       {:ok, receipts} ->
         count = length(receipts)
@@ -135,6 +141,83 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
         )
 
         {:error, reason}
+    end
+  end
+
+  @doc """
+  Sweeps receipts stranded in `:scheduled`.
+
+  `:scheduled` promises that a job is coming. Nothing ever checked whether one
+  actually was, and this sweep is that check. See
+  `AshDispatch.Workers.Stranded` for why the three outcomes are what they are
+  — the short version is that the grace period stops us racing a live job,
+  and the staleness ceiling stops us delivering a months-old mail to someone
+  who has long since moved on.
+
+  Errors are logged and swallowed: a sweep that cannot read must not take the
+  ordinary retry pass down with it.
+  """
+  @spec sweep_stranded() :: :ok
+  def sweep_stranded do
+    stuck_after =
+      get_config(:stranded_stuck_after_minutes, Stranded.default_stuck_after_minutes())
+
+    stale_after = get_config(:stranded_stale_after_hours, Stranded.default_stale_after_hours())
+
+    query =
+      Config.delivery_receipt_resource()
+      |> Ash.Query.filter(status == :scheduled)
+      |> Ash.Query.limit(100)
+      |> Ash.Query.sort(inserted_at: :asc)
+
+    case Ash.read(query, authorize?: false) do
+      {:ok, []} ->
+        :ok
+
+      {:ok, receipts} ->
+        opts = [stuck_after_minutes: stuck_after, stale_after_hours: stale_after]
+
+        tally =
+          receipts
+          |> Enum.map(&handle_stranded(&1, opts))
+          |> Enum.frequencies()
+
+        if Map.get(tally, :leave, 0) != length(receipts) do
+          Logger.warning(
+            "RetryFailedDeliveries: stranded sweep — " <>
+              "#{Map.get(tally, :rescue, 0)} rescued, #{Map.get(tally, :close, 0)} closed, " <>
+              "#{Map.get(tally, :leave, 0)} still in flight"
+          )
+        end
+
+        :ok
+
+      {:error, reason} ->
+        Logger.error("RetryFailedDeliveries: stranded sweep query failed: #{inspect(reason)}")
+        :ok
+    end
+  rescue
+    error ->
+      Logger.error("RetryFailedDeliveries: stranded sweep crashed: #{Exception.message(error)}")
+      :ok
+  end
+
+  defp handle_stranded(receipt, opts) do
+    reference = Map.get(receipt, :updated_at) || Map.get(receipt, :inserted_at)
+
+    case Stranded.action(reference, opts) do
+      :leave ->
+        :leave
+
+      :rescue ->
+        # Moved to :failed so the machinery that already exists takes over.
+        # No second send path, no new terminal state.
+        mark_failed(receipt, "Stranded in :scheduled with no live job — returned for retry.")
+        :rescue
+
+      :close ->
+        mark_failed_permanent(receipt, Stranded.close_reason(reference, opts))
+        :close
     end
   end
 

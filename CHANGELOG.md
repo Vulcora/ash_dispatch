@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.6] - 2026-08-23
+
+### Fixed
+
+- **A receipt can no longer strand in `:scheduled` unnoticed.** That status
+  promises a job is coming; nothing ever checked whether one was. A receipt
+  whose job died, was pruned, or never enqueued sat there permanently — the
+  retry sweep queries `status == :failed`, so it never looked, and no surface
+  counted it.
+
+  One production deployment carried **17 such receipts across six months**:
+  four order confirmations (two to a customer, not staff), four reseller
+  applications and nine product announcements. All showed a provider 429, all
+  were moved to `:scheduled` by a retry, none were seen again. The underlying
+  race was fixed in 0.5.6; what remained was that nothing recovers the
+  receipts already stranded, or any stranded by a future crash or deploy.
+
+  `RetryFailedDeliveries` now sweeps `:scheduled` before its ordinary pass,
+  with three outcomes (see `AshDispatch.Workers.Stranded`):
+
+  | age | outcome |
+  |---|---|
+  | under the grace period | left alone — `:scheduled` is a legitimate transient state |
+  | past grace, under the ceiling | moved to `:failed`, so the existing retry machinery takes over |
+  | past the ceiling | `:failed_permanent` with a reason — **never sent** |
+
+  The ceiling exists because delivering a January order confirmation in
+  August is worse than silence: the recipient has to work out whether
+  something went wrong. The invisible debt is the defect, not the unsent
+  mail.
+
+  Configurable via `:stranded_stuck_after_minutes` (default 30) and
+  `:stranded_stale_after_hours` (default 24). A contradictory configuration
+  where the ceiling falls below the grace period resolves to leaving receipts
+  alone — never touching one that may still be in flight is the stronger
+  safety property, since a double-sent mail cannot be recalled.
+
+  **This acts on existing data on first run.** A consumer holding stranded
+  receipts it still wants delivered should raise
+  `:stranded_stale_after_hours` before upgrading.
+
+  The decision function is covered by unit tests; the sweep's database
+  plumbing is not, for the harness reasons recorded under 0.6.5.
+
 ## [0.6.5] - 2026-08-21
 
 ### Added
