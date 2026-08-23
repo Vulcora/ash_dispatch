@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.8] - 2026-08-23
+
+### Added
+
+- **`:reopen` — a way out of `:failed_permanent`.** The state was a dead end:
+  no transition led out of it, `:send_now` refused it explicitly, and
+  `SendEmail` treats it as terminal and completes any job for it as a success.
+  A receipt that ended there could never be sent again — not even by a person
+  who had just fixed the reason it failed. The only remaining move was to look
+  at it.
+
+  That is the wrong shape for the state that a permanent failure lands in. It
+  is reached in ordinary operation (a provider outage, a rate limit, a
+  mailbox that was full for a day), and every one of those reasons goes away
+  on its own.
+
+  `:reopen` moves the receipt back to `:scheduled` and enqueues a job, so the
+  existing send path runs unchanged. Three deliberate choices:
+
+  - It starts **only** from `:failed_permanent`. A receipt that actually
+    reached its recipient can never be re-sent through it.
+  - It is gated by the same `send_now_authorizer` as `:send_now`, because it
+    sends real mail.
+  - It **resets** `retry_count` rather than incrementing it. The counter
+    exists to stop the automatic sweep from looping forever; a human deciding
+    to try again is not that loop, and leaving the counter at its ceiling
+    would let the sweep abandon the attempt the moment it failed once.
+
+  Consumers that want the old behaviour need do nothing: the action has to be
+  called to have an effect, and nothing in the library calls it.
+
 ## [0.6.7] - 2026-08-23
 
 ### Added

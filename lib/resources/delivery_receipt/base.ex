@@ -108,6 +108,17 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
 
           transition(:skip, from: [:pending, :scheduled, :sending], to: :skipped)
           transition(:retry, from: :failed, to: :scheduled)
+
+          # `:failed_permanent` was a dead end. Nothing led out of it, and the
+          # worker treats it as terminal, so a receipt that ended there could
+          # never be sent again — not even deliberately, by a human who had
+          # just fixed the reason it failed. The only remaining move was to
+          # look at it.
+          #
+          # `:reopen` is that missing move, and it is narrow on purpose: it
+          # starts ONLY from `:failed_permanent`, so a receipt that actually
+          # reached its recipient can never be re-sent through it.
+          transition(:reopen, from: :failed_permanent, to: :scheduled)
         end
       end
 
@@ -449,6 +460,44 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
           end
 
           # Enqueue a new Oban job to process this retry
+          change {AshDispatch.Changes.EnqueueRetryJob, []}
+        end
+
+        update :reopen do
+          description "Give a permanently failed delivery one more deliberate attempt"
+
+          require_atomic? false
+
+          # Gated exactly like :send_now, and for the same reason: this sends
+          # real mail. The library-internal callers pass `authorize?: false`
+          # and never arrive here.
+          validate fn _changeset, context ->
+            actor = context.actor
+            authorizer = AshDispatch.Config.send_now_authorizer()
+
+            cond do
+              is_nil(actor) -> :ok
+              is_nil(authorizer) -> :ok
+              true -> authorizer.authorize(actor)
+            end
+            |> case do
+              :ok -> :ok
+              {:error, message} -> {:error, field: :base, message: message}
+            end
+          end
+
+          change transition_state(:scheduled)
+
+          # The retry counter is reset rather than incremented. It exists to
+          # stop the automatic sweep from looping forever; a human deciding to
+          # try again is not that loop, and leaving the counter at its ceiling
+          # would let the sweep abandon the attempt the moment it failed once.
+          change fn changeset, _ ->
+            changeset
+            |> Ash.Changeset.change_attribute(:retry_count, 0)
+            |> Ash.Changeset.change_attribute(:last_retry_at, DateTime.utc_now())
+          end
+
           change {AshDispatch.Changes.EnqueueRetryJob, []}
         end
 
