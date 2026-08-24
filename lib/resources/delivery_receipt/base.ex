@@ -468,6 +468,15 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
 
           require_atomic? false
 
+          # Nothing. Without this the action inherits the resource's default
+          # accept — thirty attributes, `recipient`, `subject` and `body_html`
+          # among them — and "send this letter again" quietly becomes "send a
+          # different letter to a different address", with the receipt
+          # rewritten to match so nothing in the record says otherwise.
+          #
+          # A resend has no inputs. It re-sends what is already there.
+          accept []
+
           # Gated exactly like :send_now, and for the same reason: this sends
           # real mail. The library-internal callers pass `authorize?: false`
           # and never arrive here.
@@ -504,6 +513,12 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
         update :send_now do
           description "Manually trigger sending for a scheduled delivery (creates new Oban job)"
           require_atomic? false
+
+          # See `:reopen` above — same reason. This action existed for a long
+          # time without it, so an app that has been passing attributes through
+          # "send now" will start getting `NoSuchInput`. That is the point: it
+          # was editing the letter on its way out.
+          accept []
 
           # Check configured authorizer (if any)
           validate fn _changeset, context ->
