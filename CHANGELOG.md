@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.9] - 2026-08-24
+
+### Fixed
+
+- **`:send_now` and `:reopen` accept nothing now.** Neither declared an
+  `accept` list, so both inherited the resource default: **thirty attributes**,
+  including `recipient`, `subject`, `body_html` and `content`.
+
+  "Send this letter again" could therefore be called as "send a different
+  letter to a different address" — and because the same call rewrites the
+  receipt, nothing in the record would say otherwise afterwards. The receipt is
+  the audit trail; an action that edits it while sending it destroys the only
+  evidence of what was sent.
+
+  A resend has no inputs. It re-sends what is already there.
+
+  **Breaking if you were passing attributes to `:send_now`** — those calls will
+  now fail with `NoSuchInput` instead of silently editing the outgoing mail.
+  Change the receipt first with an ordinary update if that was deliberate, then
+  send. `:reopen` shipped in 0.6.8 and cannot have dependents yet.
+
 ## [0.6.8] - 2026-08-23
 
 ### Added
