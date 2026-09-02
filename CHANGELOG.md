@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.10] - 2026-09-02
+
+### Fixed
+
+- **En oåtkomlig mottagare tar inte längre ner hela kanalen.** När
+  `extract_identifier/4` inte kunde få fram en adress kastade
+  `extract_recipient_identifier/3` vidare, och undantaget tog sig ur
+  `Enum.map/2` i `do_dispatch_channel/3` — trots att den funktionen redan
+  tolererar delvis misslyckande och returnerar framgång när minst en
+  leverans gick igenom. En mottagare utan adress kostade alltså ALLA
+  mottagare i kanalen. Den ger nu `{:error, :recipient_unreachable}` för just
+  den raden; felet loggas som förut.
+
+  Sett i skarp drift 2026-09-02: en målgrupp löstes till beställaren plus
+  hens företag, företaget var en inloggningslös grupperingsrad utan e-post,
+  och kundens orderbekräftelse skapades aldrig. Beställaren hade en fullt
+  fungerande adress och förlorade sitt brev på någon annans saknade.
+
+  Skilt från `optional: true`-hoppet, som är ett medvetet överhopp och
+  räknas som framgång. Att slå ihop dem hade rapporterat en kanal som
+  levererad fastän ingen kunde nås.
+
+- **Felmeddelandet slutar vara det som går sönder.**
+  `raise_extraction_error/5` läste `recipient.__struct__` rakt av. Målgrupper
+  kan lösas till vanliga mappar, och på en sådan kastade punktåtkomsten
+  `KeyError` *inuti felmeddelandet* — anroparen såg
+  `%KeyError{key: :__struct__}` i stället för vilken mottagare och vilket
+  fält det gällde. Den enda rad som kunde ha förklarat felet var den som
+  brast.
+
 ## [0.6.9] - 2026-08-24
 
 ### Fixed

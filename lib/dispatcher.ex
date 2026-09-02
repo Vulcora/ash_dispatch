@@ -546,6 +546,12 @@ defmodule AshDispatch.Dispatcher do
       :skip ->
         {:ok, :skipped_optional}
 
+      # Den här mottagaren gick inte att nå. Ett FEL på raden, inte på
+      # kanalen — `do_dispatch_channel/3` räknar redan "minst en lyckades",
+      # så resten av mottagarna går igenom.
+      :unreachable ->
+        {:error, :recipient_unreachable}
+
       recipient_identifier ->
         do_create_receipt(
           context,
@@ -647,14 +653,33 @@ defmodule AshDispatch.Dispatcher do
         :skip
       else
         Logger.error("""
-        Failed to extract recipient identifier
+        Failed to extract recipient identifier — SKIPPING THIS RECIPIENT
         Transport: #{channel.transport}
         Audience: #{channel.audience}
         Recipient: #{inspect(recipient)}
         Error: #{inspect(error)}
         """)
 
-        reraise error, __STACKTRACE__
+        # `:unreachable` and NOT `reraise`. The raise escaped `Enum.map/2` in
+        # `do_dispatch_channel/3` and took the WHOLE CHANNEL down — every other
+        # recipient included — even though that function already tolerates
+        # partial failure and returns success when at least one dispatch
+        # worked. One unreachable recipient must cost exactly one recipient.
+        #
+        # Seen in magasin 2026-09-02: an audience resolved to the buyer plus
+        # their company, the company was a login-less grouping row with no
+        # email, and the customer's order confirmation was never created. The
+        # buyer had a perfectly good address; they lost their letter to
+        # somebody else's missing one.
+        #
+        # The error is still logged, and loudly — the change is who pays for
+        # it.
+        #
+        # A distinct atom from the `optional: true` case above: that one is a
+        # deliberate skip and counts as success, this one is a failure that
+        # happens to be survivable. Collapsing them would report a channel as
+        # delivered when nobody could be reached.
+        :unreachable
       end
   end
 
