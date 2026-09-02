@@ -18,9 +18,7 @@ defmodule AshDispatch.RecipientExtractorReadableErrorTest do
   setup do
     tidigare = Application.get_env(:ash_dispatch, :recipient_fields)
 
-    Application.put_env(:ash_dispatch, :recipient_fields,
-      email: [identifier: :email]
-    )
+    Application.put_env(:ash_dispatch, :recipient_fields, email: [identifier: :email])
 
     on_exit(fn ->
       if tidigare,
