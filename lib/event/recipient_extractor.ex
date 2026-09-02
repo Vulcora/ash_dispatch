@@ -297,7 +297,17 @@ defmodule AshDispatch.Event.RecipientExtractor do
     """
   end
 
-  # Error when field extraction fails
+  # Error when field extraction fails.
+  #
+  # `Map.get(recipient, :__struct__, :map)` and NOT `recipient.__struct__`:
+  # audiences may resolve to plain maps, and on one of those the dot access
+  # raised KeyError **inside the error message itself**. The caller then saw a
+  # KeyError about `:__struct__` instead of "this recipient has no email", so
+  # the one line that could have explained the failure was the line that broke.
+  #
+  # Seen in magasin 2026-09-02: an order's confirmation never went out, and the
+  # log said `%KeyError{key: :__struct__}` with no mention of a recipient or a
+  # field.
   defp raise_extraction_error(recipient, field, transport, audience, field_type) do
     # Try to get config sources for debugging
     event_config = nil
@@ -309,7 +319,7 @@ defmodule AshDispatch.Event.RecipientExtractor do
     Could not extract #{field_type} from recipient for #{transport} transport (#{audience} audience).
 
     Expected field: #{inspect(field)}
-    Recipient type: #{inspect(recipient.__struct__)}
+    Recipient type: #{inspect(Map.get(recipient, :__struct__, :map))}
     Available keys: #{inspect(Map.keys(recipient))}
 
     Configuration resolution:
