@@ -311,6 +311,12 @@ defmodule AshDispatch.Resource.Dsl do
           - `content`: Transport-specific content (see below)
           - `metadata`: Transport-specific metadata (see below)
           - `deduplicate_group`: Atom for grouping channels for deduplication (see below)
+          - `idempotency_source`: For `:in_app`, the key in `data` naming the
+            record that identifies the OCCURRENCE. Set it whenever `data`
+            carries more than one record with an `:id` — without it the
+            in-app idempotency key falls back to a heuristic that can key on
+            the recipient, making the event deliverable once per recipient
+            for the lifetime of that recipient.
           - `optional`: Suppress warnings when no recipients found (default: false)
 
           ## Deduplication with deduplicate_group

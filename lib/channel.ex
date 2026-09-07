@@ -75,6 +75,7 @@ defmodule AshDispatch.Channel do
           opts: map(),
           load: [atom() | {atom(), any()}],
           deduplicate_group: atom() | nil,
+          idempotency_source: atom() | nil,
           optional: boolean(),
           exclude_actor: boolean()
         }
@@ -88,6 +89,7 @@ defmodule AshDispatch.Channel do
     :locale_from,
     :webhook_url,
     :deduplicate_group,
+    :idempotency_source,
     time: {:in, 0},
     policy: :always,
     optional: false,
