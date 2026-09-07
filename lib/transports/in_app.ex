@@ -105,6 +105,19 @@ defmodule AshDispatch.Transports.InApp do
 
   Returns `:ok` on success or `{:error, reason}` on failure.
   """
+  def retry_from_receipt(%{notification_id: notification_id} = receipt)
+      when not is_nil(notification_id) do
+    # The notification was created; only the receipt failed to record it. The
+    # key rebuilt below cannot see a channel's `idempotency_source`, so
+    # re-creating here would insert a second notification under a different
+    # key. Settle the receipt instead.
+    receipt
+    |> Ash.Changeset.for_update(:mark_sent, %{})
+    |> Ash.update(authorize?: false)
+
+    :ok
+  end
+
   def retry_from_receipt(receipt) do
     user_id = receipt.user_id
     content = receipt.content || %{}
@@ -204,11 +217,7 @@ defmodule AshDispatch.Transports.InApp do
         # Generate idempotency key to prevent duplicates when user receives
         # notifications from multiple audiences (e.g., user who is also admin)
         # Format: "event_id:resource_id:audience:user_id" or "event_id:audience:user_id" if no resource_id
-        idempotency_key =
-          case extract_resource_id(context) do
-            nil -> "#{context.event_id}:#{channel.audience}:#{user_id}"
-            resource_id -> "#{context.event_id}:#{resource_id}:#{channel.audience}:#{user_id}"
-          end
+        idempotency_key = idempotency_key(channel, context, user_id)
 
         # Build metadata from event config + context priority
         metadata =
@@ -234,9 +243,7 @@ defmodule AshDispatch.Transports.InApp do
         # create/update/destroy, so this must bypass policies.
         notification_resource = Config.notification_resource()
 
-        case notification_resource
-             |> Ash.Changeset.for_create(:create, notification_attrs)
-             |> Ash.create(authorize?: false) do
+        case create_notification(notification_resource, notification_attrs, idempotency_key) do
           {:ok, notification} ->
             Logger.debug("""
             Created in-app notification:
@@ -250,28 +257,21 @@ defmodule AshDispatch.Transports.InApp do
 
             {:ok, notification}
 
+          {:already_exists, existing} ->
+            Logger.debug(
+              "InApp: notification already exists (idempotency key match), treating as success: event=#{context.event_id}, user=#{user_id}"
+            )
+
+            {:ok, existing}
+
           {:error, error} ->
-            # Idempotency conflict means the notification already exists —
-            # treat as success (race condition or duplicate dispatch).
-            if idempotency_conflict?(error) do
-              Logger.debug(
-                "InApp: notification already exists (idempotency key match), treating as success: event=#{context.event_id}, user=#{user_id}"
-              )
+            Logger.error("""
+            Failed to create in-app notification:
+            User: #{notification_attrs.user_id}
+            Error: #{inspect(error)}
+            """)
 
-              # Look up existing notification to link to receipt
-              case find_by_idempotency_key(notification_resource, idempotency_key) do
-                {:ok, existing} -> {:ok, existing}
-                _ -> {:ok, :already_exists}
-              end
-            else
-              Logger.error("""
-              Failed to create in-app notification:
-              User: #{notification_attrs.user_id}
-              Error: #{inspect(error)}
-              """)
-
-              {:error, error}
-            end
+            {:error, error}
         end
     end
   end
@@ -359,6 +359,99 @@ defmodule AshDispatch.Transports.InApp do
         "new_notification",
         serialized
       )
+    end
+  end
+
+  @doc """
+  The idempotency key for one in-app delivery.
+
+  Shape: `event_id:resource_id:audience:user_id`, or `event_id:audience:user_id`
+  when no resource identifies the occurrence. The `audience` segment keeps a
+  user who is reachable through two audiences (their own, plus admin) from
+  being notified twice for one event.
+
+  `resource_id` is the identity of **the occurrence**, not of the recipient.
+  Where it comes from:
+
+    * the channel's `idempotency_source`, naming the key in `data` that says
+      which occurrence this is — use it whenever `data` carries more than one
+      record with an `:id`;
+    * otherwise the first value in `data` carrying a binary `:id`, which is a
+      heuristic: with several such values the winner is map iteration order.
+
+  An event that keys on the recipient can only ever be delivered once per
+  recipient, for the lifetime of that recipient.
+  """
+  @spec idempotency_key(map(), map(), String.t()) :: String.t()
+  def idempotency_key(channel, context, user_id) do
+    case resource_id_for_key(channel, context) do
+      nil -> "#{context.event_id}:#{channel.audience}:#{user_id}"
+      resource_id -> "#{context.event_id}:#{resource_id}:#{channel.audience}:#{user_id}"
+    end
+  end
+
+  # The occurrence's identity, not the subject's.
+  #
+  # `extract_resource_id/1` takes whichever value in `data` happens to carry a
+  # binary `:id`. With more than one such value the winner is map iteration
+  # order — not something a caller can reason about, and not stable across
+  # Elixir versions. An event whose data carries both a recipient and the thing
+  # that happened therefore keys on the recipient, so the notification can be
+  # delivered exactly once per user for the lifetime of that user.
+  #
+  # `idempotency_source` lets the channel name the key in `data` that
+  # identifies THIS occurrence. Unset, the old heuristic stands.
+  defp resource_id_for_key(%{idempotency_source: key}, %{data: data})
+       when not is_nil(key) and is_map(data) do
+    case Map.get(data, key) do
+      %{id: id} when is_binary(id) -> id
+      id when is_binary(id) -> id
+      _ -> nil
+    end
+  end
+
+  defp resource_id_for_key(_channel, context), do: extract_resource_id(context)
+
+  # A duplicate must never reach the caller as an exception.
+  #
+  # `Ash.create` returns `{:error, _}` for a unique violation only when it owns
+  # the transaction. Inside an OUTER transaction — an Ash action that dispatches
+  # from a hook, say — AshPostgres raises instead, and the raise unwinds the
+  # caller's transaction along with any work it had already done. A trigger that
+  # stamps its own idempotency flag before dispatching would lose the stamp and
+  # re-run forever.
+  #
+  # So: look first, and still treat a raised conflict as the conflict it is.
+  defp create_notification(notification_resource, attrs, idempotency_key) do
+    case find_by_idempotency_key(notification_resource, idempotency_key) do
+      {:ok, existing} ->
+        {:already_exists, existing}
+
+      _ ->
+        insert_notification(notification_resource, attrs, idempotency_key)
+    end
+  end
+
+  defp insert_notification(notification_resource, attrs, idempotency_key) do
+    notification_resource
+    |> Ash.Changeset.for_create(:create, attrs)
+    |> Ash.create(authorize?: false)
+    |> case do
+      {:ok, notification} -> {:ok, notification}
+      {:error, error} -> classify_create_error(notification_resource, error, idempotency_key)
+    end
+  rescue
+    error -> classify_create_error(notification_resource, error, idempotency_key)
+  end
+
+  defp classify_create_error(notification_resource, error, idempotency_key) do
+    if idempotency_conflict?(error) do
+      case find_by_idempotency_key(notification_resource, idempotency_key) do
+        {:ok, existing} -> {:already_exists, existing}
+        _ -> {:already_exists, :already_exists}
+      end
+    else
+      {:error, error}
     end
   end
 

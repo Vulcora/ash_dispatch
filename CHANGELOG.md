@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.11] - 2026-09-07
+
+### Fixed
+
+- **In-app-notisen kunde levereras en gång per MOTTAGARE, inte en gång per
+  händelse.** Idempotensnyckeln byggdes av `extract_resource_id/1`, som tar
+  första värdet i `data` som bär ett binärt `:id`. Bär `data` både mottagaren
+  och det som hänt avgörs vinnaren av mappens iterationsordning — i praktiken
+  ofta mottagaren. Då blir nyckeln
+  `event:<user>:<audience>:<user>`, konstant över alla framtida händelser för
+  den användaren, och varje senare händelse kolliderar med den första. Sett i
+  drift på ett "ditt mål är nått"-event: EN rad i hela tabellen, resten
+  kolliderade.
+
+  Kanaler tar nu `idempotency_source:` — nyckeln i `data` som pekar ut vilken
+  händelse detta är. Utan den gäller den gamla heuristiken oförändrat, så
+  befintliga event beter sig likadant.
+
+- **En kollision kunde lämna transporten som ett undantag.** `Ash.create`
+  ger `{:error, _}` för ett unikhetsbrott bara när den äger transaktionen.
+  Inuti en YTTRE transaktion — en Ash-action som dispatchar ur en hook —
+  raisar AshPostgres i stället, `case`-satsens felgren nås aldrig, och raisen
+  river anroparens transaktion med allt den hunnit göra. En trigger som
+  stämplar sin egen idempotensflagga före utskicket förlorade då stämpeln och
+  kördes om i all evighet. Transporten slår nu upp nyckeln före insert och
+  behandlar även ett *kastat* unikhetsbrott som den kollision det är.
+
+- **Ett omförsök på ett kvitto som redan bär `notification_id` skapar inte en
+  andra notis.** Retry-vägen bygger nyckeln ur kvittots `source_id` och kan
+  inte se kanalens `idempotency_source`, så den kunde skriva en dubblett under
+  en annan nyckel. Den kvitterar nu i stället.
+
 ## [0.6.10] - 2026-09-02
 
 ### Fixed
