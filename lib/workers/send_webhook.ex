@@ -83,7 +83,10 @@ defmodule AshDispatch.Workers.SendWebhook do
 
   - `receipt_id` - DeliveryReceipt UUID
   - `webhook_url` - Full webhook URL
-  - `payload` - JSON payload to send
+  - `payload` - JSON payload to send (encoded by the HTTP client)
+  - `raw_body` - optional pre-serialised body, sent verbatim. Takes
+    precedence over `payload`; required when the request is signed, so the
+    signed bytes and the sent bytes are the same bytes.
   - `headers` - Optional HTTP headers (defaults to JSON content type)
 
   ## Returns
@@ -130,10 +133,34 @@ defmodule AshDispatch.Workers.SendWebhook do
     end
   end
 
+  @doc """
+  Which Req option carries the request body.
+
+  `raw_body` is an ALREADY serialised body and wins when present: a signed
+  webhook must transmit exactly the bytes that were signed. Letting the HTTP
+  client re-encode a map can change key order or float formatting, and the
+  signature then fails *sometimes* — which is worse than always, because it
+  looks like a flake instead of a bug.
+
+  Without `raw_body` the behaviour is unchanged (`json: payload`), so the
+  Discord and Slack transports are unaffected.
+  """
+  @spec body_option(map()) :: [{:body, binary()} | {:json, term()}]
+  def body_option(%{"raw_body" => raw}) when is_binary(raw), do: [body: raw]
+  def body_option(args), do: [json: args["payload"]]
+
   defp send_webhook(args) do
     webhook_url = args["webhook_url"]
     payload = args["payload"]
     headers = args["headers"] || %{"Content-Type" => "application/json"}
+
+    # `raw_body` ar en REDAN serialiserad kropp. Den finns for att en signerad
+    # webhook maste skicka exakt de bytes som signerades: later vi HTTP-klienten
+    # koda om en map kan nyckelordning och flyttalsformat andras, och signaturen
+    # blir fel — ibland, vilket ar varre an alltid. Saknas den beter sig workern
+    # precis som forr (`json: payload`), sa Discord- och Slack-transporterna ar
+    # oberorda.
+    body_option = body_option(args)
 
     Logger.debug("""
     Sending webhook:
@@ -143,12 +170,15 @@ defmodule AshDispatch.Workers.SendWebhook do
     """)
 
     # Use Req to send HTTP POST
-    case Req.post(webhook_url,
-           json: payload,
-           headers: headers,
-           receive_timeout: 10_000,
-           # We handle retries via Oban
-           retry: false
+    case Req.post(
+           webhook_url,
+           body_option ++
+             [
+               headers: headers,
+               receive_timeout: 10_000,
+               # We handle retries via Oban
+               retry: false
+             ]
          ) do
       {:ok, %{status: status} = response} when status in 200..299 ->
         # Success - extract any useful info from response

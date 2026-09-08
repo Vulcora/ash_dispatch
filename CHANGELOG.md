@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.12] - 2026-09-08
+
+### Added
+
+- **`:webhook` levererar nu på riktigt.** Transporten har funnits i registret
+  och i `@type transport` sedan länge, men `deliver/4` loggade
+  `"Webhook transport not yet implemented"` och satte kvittot till `:skipped`
+  med `transport_not_implemented`. En kanal kopplad dit skickade alltså
+  ingenting — och gjorde det *tyst*: kvittot var en giltig terminalstatus, inte
+  ett fel, så ingen yta uppströms hade anledning att larma. Det är den värsta
+  sorten, för den syns först när någon undrar varför en notis aldrig kom.
+
+  Transporten POSTar nu en stabil kuvertform (`event_id`, `receipt_id`,
+  `user_id`, `recipient`, `audience`, `content`, `metadata`, `sent_at`) via
+  `SendWebhook`, så en mottagare kan skrivas en gång.
+
+- **Signering.** Sätts `metadata.secret` bär anropet
+  `<signature_header>: sha256=<hex>` (default `x-webhook-signature`), räknat som
+  HMAC-SHA256 över `METHOD \n path \n sorterad_query \n kropp`. Att binda
+  vägen och queryn — inte bara kroppen — gör att en avlyssnad signatur inte kan
+  spelas upp mot en annan endpoint på samma värd. `canonical_string/3` är
+  publik så en mottagare kan prova sin verifierare mot vår i stället för mot
+  sin läsning av dokumentationen.
+
+  Nyckeln stryks ur den vidarebefordrade metadatan: en signeringsnyckel ska
+  aldrig resa inuti kroppen den signerar.
+
+- **`SendWebhook` tar `raw_body`.** En signerad webhook måste sända exakt de
+  bytes som signerades. Låter man HTTP-klienten koda om en map kan
+  nyckelordning och flyttalsformat ändras, och signaturen failar *ibland* —
+  vilket är värre än alltid, för det ser ut som en flake i stället för en bugg.
+  Transporten serialiserar därför själv och skickar strängen vidare. Saknas
+  `raw_body` är beteendet oförändrat (`json: payload`), så Discord- och
+  Slack-transporterna är oberörda.
+
+### Notes
+
+- `:webhook` respekterar mottagarens opt-out via
+  `UserPreference.allows_receipt?/4`, som `:email` och `:in_app` — en webhook är
+  ofta första hoppet till en människa, och att leverera till någon som tackat
+  nej för att sista hoppet råkar vara HTTP vore fel förval. `:slack`,
+  `:discord`, `:sms` och `:push` gör ännu inte den kontrollen. Det ser ut som
+  en lucka snarare än ett beslut, men att ändra dem är en beteendeändring för
+  befintliga konsumenter och hör till en egen ändring.
+
 ## [0.6.11] - 2026-09-07
 
 ### Fixed
