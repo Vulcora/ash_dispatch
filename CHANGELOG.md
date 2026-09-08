@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.13] - 2026-09-08
+
+### Fixed
+
+- **Kvittot schemalades EFTER att jobbet köats, och tävlade med sin egen
+  worker.** Från det ögonblick jobbet finns i kön kan en worker plocka det —
+  och med `Oban, testing: :inline` körs det redan inuti `Oban.insert/1`. Då
+  hann kvittot bli `:sending`, `:sent` eller `:failed` innan transporten satte
+  `:scheduled`, och `schedule` går bara från `:pending`. Följden var ett kastat
+  `NoMatchingTransition` mitt i en **lyckad** leverans: meddelandet gick fram,
+  men anroparen fick ett fel.
+
+  `:webhook` markerar nu `:scheduled` före insert, och läser om kvittot
+  efteråt så att den rapporterade statusen är den verkliga och inte den
+  förväntade.
+
+  Samma ordning finns i `:slack` och `:discord`. De är orörda här — det är en
+  beteendeändring för befintliga konsumenter och hör till en egen ändring — men
+  buggen är densamma och värd att känna till.
+
 ## [0.6.12] - 2026-09-08
 
 ### Added
