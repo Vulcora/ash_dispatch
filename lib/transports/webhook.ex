@@ -124,21 +124,31 @@ defmodule AshDispatch.Transports.Webhook do
       headers: request_headers(url, body, metadata)
     }
 
+    # Schemalägg FÖRE insert. Från det ögonblick jobbet finns i kön kan en
+    # worker plocka det — och med `Oban, testing: :inline` körs det redan
+    # inuti `Oban.insert/1`. Sätter man `:scheduled` efteråt försöker man
+    # flytta ett kvitto som hunnit bli `:sending`, `:sent` eller `:failed`,
+    # och `schedule` går bara från `:pending`. Resultatet är ett kastat
+    # `NoMatchingTransition` mitt i en lyckad leverans.
+    scheduled =
+      receipt
+      |> Ash.Changeset.for_update(:schedule, %{})
+      |> Ash.update!(authorize?: false)
+
     case job_args |> SendWebhook.new() |> Oban.insert() do
       {:ok, _job} ->
-        updated =
-          receipt
-          |> Ash.Changeset.for_update(:schedule, %{})
-          |> Ash.update!(authorize?: false)
-
         Logger.info("Webhook job enqueued for receipt #{receipt.id}")
-        {:ok, updated}
+        # Läs om: har jobbet redan kört (inline, eller en snabb worker) är
+        # `scheduled` en inaktuell bild, och att rapportera `:scheduled` för
+        # något som redan är `:failed` vore precis den tysta grönskan
+        # kvittona finns för att undvika.
+        {:ok, aktuell(scheduled)}
 
       {:error, reason} ->
         Logger.error("Failed to enqueue webhook job: #{inspect(reason)}")
 
         updated =
-          receipt
+          scheduled
           |> Ash.Changeset.for_update(:mark_failed, %{
             error_message: "Failed to enqueue: #{inspect(reason)}"
           })
@@ -148,7 +158,17 @@ defmodule AshDispatch.Transports.Webhook do
     end
   end
 
-  defp envelope(receipt, context, channel, metadata) do
+  @doc """
+  The JSON-serialisable envelope this transport POSTs.
+
+  Public for the same reason as `canonical_string/3` and `request_headers/3`:
+  a receiver should be able to build its parser against the real thing rather
+  than against a description of it. Hand it the receipt, the context, the
+  channel and the (already resolved) metadata and you get exactly the map that
+  gets encoded.
+  """
+  @spec envelope(map(), map(), Channel.t(), map()) :: map()
+  def envelope(receipt, context, channel, metadata) do
     %{
       "event_id" => Map.get(context, :event_id),
       "receipt_id" => receipt.id,
@@ -227,6 +247,17 @@ defmodule AshDispatch.Transports.Webhook do
   defp signature(secret, url, body) do
     :crypto.mac(:hmac, :sha256, secret, canonical_string("POST", url, body))
     |> Base.encode16(case: :lower)
+  end
+
+  # Kvittots aktuella tillstånd. Har jobbet redan kört är den struct vi håller
+  # inaktuell, och att rapportera `:scheduled` för något som redan är `:failed`
+  # vore precis den tysta grönskan kvittona finns för att undvika.
+  defp aktuell(receipt) do
+    case AshDispatch.Config.delivery_receipt_resource()
+         |> Ash.get(receipt.id, authorize?: false) do
+      {:ok, farsk} -> farsk
+      _ -> receipt
+    end
   end
 
   defp webhook_url(%Channel{webhook_url: url}) when is_binary(url) and url != "", do: url
