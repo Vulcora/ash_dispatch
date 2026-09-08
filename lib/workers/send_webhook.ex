@@ -83,7 +83,10 @@ defmodule AshDispatch.Workers.SendWebhook do
 
   - `receipt_id` - DeliveryReceipt UUID
   - `webhook_url` - Full webhook URL
-  - `payload` - JSON payload to send
+  - `payload` - JSON payload to send (encoded by the HTTP client)
+  - `raw_body` - optional pre-serialised body, sent verbatim. Takes
+    precedence over `payload`; required when the request is signed, so the
+    signed bytes and the sent bytes are the same bytes.
   - `headers` - Optional HTTP headers (defaults to JSON content type)
 
   ## Returns
@@ -123,17 +126,78 @@ defmodule AshDispatch.Workers.SendWebhook do
         :ok
 
       {:error, reason} ->
-        # Mark as failed (will be retried by Oban)
         ReceiptStatus.mark_failed(receipt, reason)
-        Logger.error("Webhook failed for receipt #{receipt.id}: #{inspect(reason)}")
-        {:error, reason}
+
+        if permanent?(reason) do
+          # `{:cancel, _}` stoppar Oban-retryn. Ett 4xx betyder att MOTTAGAREN
+          # avvisade just den här requesten — en okänd kanal, en återkallad
+          # webhook-URL, en mottagare som inte finns. Att skicka om exakt samma
+          # request fem gånger ändrar ingenting; det döljer bara felet bakom en
+          # kö som ser upptagen ut. Kvittot är redan `failed`, och det är svaret.
+          Logger.warning(
+            "Webhook permanently rejected for receipt #{receipt.id}: #{inspect(reason)}"
+          )
+
+          {:cancel, reason}
+        else
+          Logger.error("Webhook failed for receipt #{receipt.id}: #{inspect(reason)}")
+          {:error, reason}
+        end
     end
   end
+
+  @doc """
+  Whether a failure is permanent — i.e. retrying sends the identical request
+  and gets the identical answer.
+
+  `4xx` is the receiver saying *this request is wrong*, with two exceptions
+  that are explicitly about time rather than content:
+
+    * `408 Request Timeout` — the receiver wants it again.
+    * `429 Too Many Requests` — the receiver wants it later.
+
+  Everything else (network errors, timeouts, `5xx`) stays retryable: those say
+  *not now*, not *not ever*.
+
+  A consumer can lean on this: answering `422` when a notification cannot be
+  delivered gives an honest `failed` receipt on the first attempt instead of
+  five identical attempts and a receipt that only tells the truth minutes later.
+  """
+  @spec permanent?(term()) :: boolean()
+  def permanent?(%{status: status}) when is_integer(status) do
+    status >= 400 and status < 500 and status not in [408, 429]
+  end
+
+  def permanent?(_), do: false
+
+  @doc """
+  Which Req option carries the request body.
+
+  `raw_body` is an ALREADY serialised body and wins when present: a signed
+  webhook must transmit exactly the bytes that were signed. Letting the HTTP
+  client re-encode a map can change key order or float formatting, and the
+  signature then fails *sometimes* — which is worse than always, because it
+  looks like a flake instead of a bug.
+
+  Without `raw_body` the behaviour is unchanged (`json: payload`), so the
+  Discord and Slack transports are unaffected.
+  """
+  @spec body_option(map()) :: [{:body, binary()} | {:json, term()}]
+  def body_option(%{"raw_body" => raw}) when is_binary(raw), do: [body: raw]
+  def body_option(args), do: [json: args["payload"]]
 
   defp send_webhook(args) do
     webhook_url = args["webhook_url"]
     payload = args["payload"]
     headers = args["headers"] || %{"Content-Type" => "application/json"}
+
+    # `raw_body` ar en REDAN serialiserad kropp. Den finns for att en signerad
+    # webhook maste skicka exakt de bytes som signerades: later vi HTTP-klienten
+    # koda om en map kan nyckelordning och flyttalsformat andras, och signaturen
+    # blir fel — ibland, vilket ar varre an alltid. Saknas den beter sig workern
+    # precis som forr (`json: payload`), sa Discord- och Slack-transporterna ar
+    # oberorda.
+    body_option = body_option(args)
 
     Logger.debug("""
     Sending webhook:
@@ -143,12 +207,15 @@ defmodule AshDispatch.Workers.SendWebhook do
     """)
 
     # Use Req to send HTTP POST
-    case Req.post(webhook_url,
-           json: payload,
-           headers: headers,
-           receive_timeout: 10_000,
-           # We handle retries via Oban
-           retry: false
+    case Req.post(
+           webhook_url,
+           body_option ++
+             [
+               headers: headers,
+               receive_timeout: 10_000,
+               # We handle retries via Oban
+               retry: false
+             ]
          ) do
       {:ok, %{status: status} = response} when status in 200..299 ->
         # Success - extract any useful info from response
