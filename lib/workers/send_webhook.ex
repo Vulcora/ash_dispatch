@@ -126,12 +126,49 @@ defmodule AshDispatch.Workers.SendWebhook do
         :ok
 
       {:error, reason} ->
-        # Mark as failed (will be retried by Oban)
         ReceiptStatus.mark_failed(receipt, reason)
-        Logger.error("Webhook failed for receipt #{receipt.id}: #{inspect(reason)}")
-        {:error, reason}
+
+        if permanent?(reason) do
+          # `{:cancel, _}` stoppar Oban-retryn. Ett 4xx betyder att MOTTAGAREN
+          # avvisade just den här requesten — en okänd kanal, en återkallad
+          # webhook-URL, en mottagare som inte finns. Att skicka om exakt samma
+          # request fem gånger ändrar ingenting; det döljer bara felet bakom en
+          # kö som ser upptagen ut. Kvittot är redan `failed`, och det är svaret.
+          Logger.warning(
+            "Webhook permanently rejected for receipt #{receipt.id}: #{inspect(reason)}"
+          )
+
+          {:cancel, reason}
+        else
+          Logger.error("Webhook failed for receipt #{receipt.id}: #{inspect(reason)}")
+          {:error, reason}
+        end
     end
   end
+
+  @doc """
+  Whether a failure is permanent — i.e. retrying sends the identical request
+  and gets the identical answer.
+
+  `4xx` is the receiver saying *this request is wrong*, with two exceptions
+  that are explicitly about time rather than content:
+
+    * `408 Request Timeout` — the receiver wants it again.
+    * `429 Too Many Requests` — the receiver wants it later.
+
+  Everything else (network errors, timeouts, `5xx`) stays retryable: those say
+  *not now*, not *not ever*.
+
+  A consumer can lean on this: answering `422` when a notification cannot be
+  delivered gives an honest `failed` receipt on the first attempt instead of
+  five identical attempts and a receipt that only tells the truth minutes later.
+  """
+  @spec permanent?(term()) :: boolean()
+  def permanent?(%{status: status}) when is_integer(status) do
+    status >= 400 and status < 500 and status not in [408, 429]
+  end
+
+  def permanent?(_), do: false
 
   @doc """
   Which Req option carries the request body.

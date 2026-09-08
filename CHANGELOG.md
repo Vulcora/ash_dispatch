@@ -42,6 +42,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `raw_body` är beteendet oförändrat (`json: payload`), så Discord- och
   Slack-transporterna är oberörda.
 
+- **Ett `4xx` retry:as inte längre.** `SendWebhook` behandlade varje icke-2xx
+  likadant och lät Oban försöka om fem gånger. Men ett `4xx` är mottagaren som
+  säger *den här requesten är fel* — en okänd kanal, en återkallad webhook-URL,
+  en mottagare som inte finns. Att skicka om exakt samma bytes ändrar ingenting;
+  det döljer bara felet bakom en kö som ser upptagen ut. Nu `{:cancel, reason}`
+  med kvittot redan satt till `failed`. Undantagen är `408` och `429`, som
+  handlar om tid och inte om innehåll, och `5xx`/nätverksfel som förr.
+
+  Det gör det möjligt för en mottagare att svara `422` när en notis inte kan
+  levereras och få ett ärligt `failed`-kvitto på första försöket, i stället för
+  fem identiska försök och en sanning som kommer minuter senare.
+  `permanent?/1` är publik.
+
+- **Signeringsnyckeln kan inte längre tappas tyst.** `metadata` lästes bara med
+  atom-nyckel medan strykningen ur payloaden hanterade både atom och sträng. En
+  `metadata: %{"secret" => …}` blev därför struken ur kroppen men aldrig använd
+  — anropet gick osignerat, utan ett ord. Läsningen speglar nu
+  `ContentMap.get_content/2` och tar båda formerna. `request_headers/3` är
+  publik så signeringskontraktet går att pröva utifrån.
+
 ### Notes
 
 - `:webhook` respekterar mottagarens opt-out via

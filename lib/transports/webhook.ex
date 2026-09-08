@@ -100,7 +100,10 @@ defmodule AshDispatch.Transports.Webhook do
         skip(receipt, "user_opted_out")
 
       is_nil(webhook_url(channel)) ->
-        Logger.warning("Webhook transport missing webhook_url for receipt #{receipt.id}, skipping")
+        Logger.warning(
+          "Webhook transport missing webhook_url for receipt #{receipt.id}, skipping"
+        )
+
         skip(receipt, "No webhook_url configured")
 
       true ->
@@ -118,7 +121,7 @@ defmodule AshDispatch.Transports.Webhook do
       webhook_url: url,
       # `raw_body` is the signed representation; the worker sends it verbatim.
       raw_body: body,
-      headers: headers(url, body, metadata)
+      headers: request_headers(url, body, metadata)
     }
 
     case job_args |> SendWebhook.new() |> Oban.insert() do
@@ -167,20 +170,41 @@ defmodule AshDispatch.Transports.Webhook do
     end
   end
 
-  defp headers(url, body, metadata) do
+  @doc """
+  The headers the request will carry, signature included.
+
+  Public for the same reason as `canonical_string/3`: the signing contract
+  should be provable from the outside. Pass the channel metadata and you get
+  back exactly what goes on the wire.
+  """
+  @spec request_headers(String.t(), String.t(), map()) :: map()
+  def request_headers(url, body, metadata) do
     base =
       metadata
-      |> Map.get(:headers, %{})
+      |> meta_get(:headers, %{})
       |> stringify_keys()
       |> Map.put("Content-Type", "application/json")
 
-    case Map.get(metadata, :secret) do
+    case meta_get(metadata, :secret) do
       secret when is_binary(secret) and secret != "" ->
-        header = Map.get(metadata, :signature_header, @default_signature_header)
+        header = meta_get(metadata, :signature_header, @default_signature_header)
         Map.put(base, to_string(header), "sha256=" <> signature(secret, url, body))
 
       _ ->
         base
+    end
+  end
+
+  # Metadata når oss med atom-nycklar från DSL:en och kan nå oss med
+  # sträng-nycklar från en runtime-byggd map. Att bara läsa atomen vore tyst
+  # farligt just för `secret`: strykningen nedan tar bort BÅDA formerna ur
+  # payloaden, så en sträng-nycklad hemlighet hade försvunnit ur kroppen utan
+  # att någonsin signera den — anropet går osignerat, utan ett ord.
+  # Samma både-och-form som `AshDispatch.ContentMap.get_content/2`.
+  defp meta_get(metadata, key, default \\ nil) when is_map(metadata) and is_atom(key) do
+    case metadata[key] do
+      nil -> metadata[Atom.to_string(key)] || default
+      value -> value
     end
   end
 

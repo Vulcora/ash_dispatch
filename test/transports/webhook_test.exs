@@ -89,4 +89,66 @@ defmodule AshDispatch.Transports.WebhookTest do
       assert String.downcase(förväntad) == förväntad
     end
   end
+
+  describe "request_headers/3 — nyckeln får inte tappas tyst" do
+    @url "https://gateway.test/dispatch"
+    @body ~s({"event_id":"x"})
+
+    test "signerar när metadata bär atom-nycklar" do
+      h = Webhook.request_headers(@url, @body, %{secret: "hemlig"})
+      assert %{"x-webhook-signature" => "sha256=" <> hex} = h
+      assert hex =~ ~r/^[0-9a-f]{64}$/
+    end
+
+    # DEN HÄR ÄR POÄNGEN. Strykningen ur payloaden tar bort BÅDA formerna av
+    # `secret`. Läser vi bara atomen försvinner en sträng-nycklad hemlighet ur
+    # kroppen utan att någonsin ha signerat den — anropet går osignerat, och
+    # ingenting säger ifrån.
+    test "signerar också när metadata bär sträng-nycklar" do
+      h = Webhook.request_headers(@url, @body, %{"secret" => "hemlig"})
+
+      assert %{"x-webhook-signature" => sig} = h,
+             "en sträng-nycklad secret måste signera — annars går anropet osignerat, tyst"
+
+      assert sig ==
+               Map.fetch!(
+                 Webhook.request_headers(@url, @body, %{secret: "hemlig"}),
+                 "x-webhook-signature"
+               )
+    end
+
+    test "signature_header går att byta, i båda nyckelformerna" do
+      for metadata <- [
+            %{secret: "h", signature_header: "x-siteflow-signature"},
+            %{"secret" => "h", "signature_header" => "x-siteflow-signature"}
+          ] do
+        h = Webhook.request_headers(@url, @body, metadata)
+        assert Map.has_key?(h, "x-siteflow-signature")
+        refute Map.has_key?(h, "x-webhook-signature")
+      end
+    end
+
+    test "extra headers följer med, i båda nyckelformerna" do
+      for metadata <- [
+            %{headers: %{"x-siteflow-consumer" => "saleflow"}},
+            %{"headers" => %{"x-siteflow-consumer" => "saleflow"}}
+          ] do
+        assert %{"x-siteflow-consumer" => "saleflow"} =
+                 Webhook.request_headers(@url, @body, metadata)
+      end
+    end
+
+    test "utan secret finns ingen signaturheader alls" do
+      h = Webhook.request_headers(@url, @body, %{})
+      refute Enum.any?(Map.keys(h), &String.contains?(&1, "signature"))
+      assert %{"Content-Type" => "application/json"} = h
+    end
+
+    test "en tom secret räknas inte som en secret" do
+      refute Map.has_key?(
+               Webhook.request_headers(@url, @body, %{secret: ""}),
+               "x-webhook-signature"
+             )
+    end
+  end
 end
