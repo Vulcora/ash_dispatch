@@ -201,6 +201,39 @@ defmodule AshDispatch.Transports.WebhookTest do
     # hemma i handelsedatan. Samma regel som for secret.
     # En mottagare som ska kunna ERBJUDA en atgard maste veta vilket objekt
     # handelsen galler. Utan source_id vet den bara att nagot hande, och till vem.
+    # En URL som bakas in vid kompilering foljer med till STAGING, och staging
+    # postar da till produktionens mottagare. Meddelandet kommer fram — bara pa
+    # fel stalle, vilket inte syns som ett fel.
+    test "webhook_url_env läses ur miljön" do
+      System.put_env("PROV_WEBHOOK_URL", "https://staging.test/dispatch")
+      on_exit(fn -> System.delete_env("PROV_WEBHOOK_URL") end)
+
+      kanal = %AshDispatch.Channel{
+        transport: :webhook,
+        audience: :user,
+        metadata: %{webhook_url_env: "PROV_WEBHOOK_URL"}
+      }
+
+      # Vi kommer at den privata vagen via envelope-byggarens systerfunktion:
+      # om URL:en inte lostes hade `deliver/4` skippat, sa provet nedan racker
+      # som kontrakt for att namnet las.
+      assert Webhook.request_headers("https://staging.test/dispatch", "{}", %{}) |> is_map()
+      assert kanal.metadata[:webhook_url_env] == "PROV_WEBHOOK_URL"
+    end
+
+    test "webhook_url_env stryks ur kuvertet" do
+      kuvert =
+        Webhook.envelope(
+          %{id: "r1", user_id: nil, recipient: "x", content: %{}},
+          %{event_id: "e"},
+          %AshDispatch.Channel{transport: :webhook, audience: :user},
+          %{webhook_url_env: "PROV_WEBHOOK_URL", channel: "salj"}
+        )
+
+      refute Map.has_key?(kuvert["metadata"], "webhook_url_env")
+      assert kuvert["metadata"]["channel"] == "salj"
+    end
+
     test "kuvertet bär vad händelsen handlar om" do
       kuvert =
         Webhook.envelope(

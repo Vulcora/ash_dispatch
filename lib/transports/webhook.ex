@@ -300,20 +300,48 @@ defmodule AshDispatch.Transports.Webhook do
 
   defp webhook_url(%Channel{webhook_url: url}) when is_binary(url) and url != "", do: url
 
-  defp webhook_url(%Channel{opts: opts}) when is_map(opts) do
+  # `metadata.webhook_url_env` av samma skäl som `secret_env`, och med en
+  # skarpare konsekvens: en URL som bakas in vid kompilering följer med till
+  # STAGING, och staging postar då till produktionens mottagare. Ett fel som
+  # inte syns som ett fel — meddelandet kommer fram, bara på fel ställe.
+  defp webhook_url(%Channel{metadata: metadata} = channel) when is_map(metadata) do
+    case meta_get(metadata, :webhook_url_env) do
+      namn when is_binary(namn) and namn != "" ->
+        case System.get_env(namn) do
+          url when is_binary(url) and url != "" -> url
+          _ -> nil
+        end
+
+      _ ->
+        webhook_url_ur_opts(channel)
+    end
+  end
+
+  defp webhook_url(channel), do: webhook_url_ur_opts(channel)
+
+  defp webhook_url_ur_opts(%Channel{opts: opts}) when is_map(opts) do
     case opts["webhook_url"] || opts[:webhook_url] do
       url when is_binary(url) and url != "" -> url
       _ -> nil
     end
   end
 
-  defp webhook_url(_), do: nil
+  defp webhook_url_ur_opts(_), do: nil
 
   defp metadata(%Channel{metadata: metadata}) when is_map(metadata), do: metadata
   defp metadata(_), do: %{}
 
   defp forbidden_metadata_keys,
-    do: [:secret, "secret", :secret_env, "secret_env", :signature_header, "signature_header"]
+    do: [
+      :secret,
+      "secret",
+      :secret_env,
+      "secret_env",
+      :webhook_url_env,
+      "webhook_url_env",
+      :signature_header,
+      "signature_header"
+    ]
 
   defp stringify_keys(map) when is_map(map) do
     Map.new(map, fn {k, v} -> {to_string(k), v} end)

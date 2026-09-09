@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   vid utskick behåller båda: kanalen förblir deklarativ, nyckeln förblir
   operativ.
 
+- **`metadata.webhook_url_env`** av samma skäl, med en skarpare konsekvens: en
+  URL som bakas in vid kompilering följer med till STAGING, och staging postar
+  då till produktionens mottagare. Meddelandet kommer fram — bara på fel
+  ställe, vilket inte syns som ett fel.
+
 - **Kuvertet bär `source_type` och `source_id`.** Utan dem vet en mottagare att
   något hänt och till vem, men inte om VILKET objekt — och kan därför inte
   erbjuda en åtgärd. En Slack-knapp som ska sätta ett val på ett möte behöver
