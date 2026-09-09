@@ -205,7 +205,7 @@ defmodule AshDispatch.Transports.Webhook do
       |> stringify_keys()
       |> Map.put("Content-Type", "application/json")
 
-    case meta_get(metadata, :secret) do
+    case hemlighet(metadata) do
       secret when is_binary(secret) and secret != "" ->
         header = meta_get(metadata, :signature_header, @default_signature_header)
         Map.put(base, to_string(header), "sha256=" <> signature(secret, url, body))
@@ -214,6 +214,39 @@ defmodule AshDispatch.Transports.Webhook do
         base
     end
   end
+
+  @doc """
+  The signing secret for a channel: `metadata.secret`, or the value of the
+  environment variable named by `metadata.secret_env`.
+
+  `secret_env` exists because of a real tension. Channels declared in the
+  `dispatch do` DSL are **compile-time** data, but a signing key is
+  **runtime** data: baked in at compile time, a key rotation would not take
+  effect until someone recompiled — and nothing would say so. The alternative
+  was to move the whole channel into the event module's `channels/1` callback,
+  which works but forfeits the DSL for every other property of that channel.
+
+  Reading the name at compile time and the value at dispatch time keeps both:
+  the channel stays declarative, and the key stays operational.
+
+  `secret` wins when both are given, so an explicit value can override the
+  environment in a test.
+  """
+  @spec hemlighet(map()) :: String.t() | nil
+  def hemlighet(metadata) when is_map(metadata) do
+    case meta_get(metadata, :secret) do
+      s when is_binary(s) and s != "" ->
+        s
+
+      _ ->
+        case meta_get(metadata, :secret_env) do
+          namn when is_binary(namn) and namn != "" -> System.get_env(namn)
+          _ -> nil
+        end
+    end
+  end
+
+  def hemlighet(_), do: nil
 
   # Metadata når oss med atom-nycklar från DSL:en och kan nå oss med
   # sträng-nycklar från en runtime-byggd map. Att bara läsa atomen vore tyst
@@ -274,7 +307,8 @@ defmodule AshDispatch.Transports.Webhook do
   defp metadata(%Channel{metadata: metadata}) when is_map(metadata), do: metadata
   defp metadata(_), do: %{}
 
-  defp forbidden_metadata_keys, do: [:secret, "secret", :signature_header, "signature_header"]
+  defp forbidden_metadata_keys,
+    do: [:secret, "secret", :secret_env, "secret_env", :signature_header, "signature_header"]
 
   defp stringify_keys(map) when is_map(map) do
     Map.new(map, fn {k, v} -> {to_string(k), v} end)
