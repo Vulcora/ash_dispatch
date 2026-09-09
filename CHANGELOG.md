@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.14] - 2026-09-09
+
+### Added
+
+- **`metadata.secret_env` — signeringsnyckelns NAMN i DSL:en, värdet vid
+  utskick.** Kanaler deklarerade i `dispatch do` är kompileringstidsdata, men
+  en signeringsnyckel är driftdata. Bakad in vid kompilering slår en
+  nyckelrotation inte igenom förrän någon kompilerar om — och ingenting säger
+  ifrån.
+
+  Alternativet var att flytta hela kanalen till eventmodulens `channels/1`,
+  vilket fungerar men offrar DSL:en för varje ANNAN egenskap hos kanalen
+  (audience, tid, policy, dedupe). Att läsa namnet vid kompilering och värdet
+  vid utskick behåller båda: kanalen förblir deklarativ, nyckeln förblir
+  operativ.
+
+- **`metadata.webhook_url_env`** av samma skäl, med en skarpare konsekvens: en
+  URL som bakas in vid kompilering följer med till STAGING, och staging postar
+  då till produktionens mottagare. Meddelandet kommer fram — bara på fel
+  ställe, vilket inte syns som ett fel.
+
+- **Kuvertet bär `source_type` och `source_id`.** Utan dem vet en mottagare att
+  något hänt och till vem, men inte om VILKET objekt — och kan därför inte
+  erbjuda en åtgärd. En Slack-knapp som ska sätta ett val på ett möte behöver
+  mötets id. Kvittot bar redan fälten; de saknades bara i kuvertet.
+
+  `secret` vinner när båda anges, så ett prov kan sätta ett explicit värde.
+  `secret_env` stryks ur det vidarebefordrade kuvertet av samma skäl som
+  `secret`: den avslöjar inget värde, men den är konfiguration och inte
+  händelsedata. `hemlighet/1` är publik.
+
 ## [0.6.13] - 2026-09-08
 
 ### Fixed

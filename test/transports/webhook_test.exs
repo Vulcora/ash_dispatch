@@ -151,4 +151,120 @@ defmodule AshDispatch.Transports.WebhookTest do
              )
     end
   end
+
+  describe "hemlighet/1 — secret_env" do
+    setup do
+      on_exit(fn -> System.delete_env("PROV_WEBHOOK_SECRET") end)
+      :ok
+    end
+
+    test "läser värdet ur miljön när namnet är angivet" do
+      System.put_env("PROV_WEBHOOK_SECRET", "ur-miljon")
+      assert Webhook.hemlighet(%{secret_env: "PROV_WEBHOOK_SECRET"}) == "ur-miljon"
+    end
+
+    test "fungerar med sträng-nycklar också" do
+      System.put_env("PROV_WEBHOOK_SECRET", "ur-miljon")
+      assert Webhook.hemlighet(%{"secret_env" => "PROV_WEBHOOK_SECRET"}) == "ur-miljon"
+    end
+
+    # En explicit secret ska kunna overrida miljon i ett prov.
+    test "explicit secret vinner över secret_env" do
+      System.put_env("PROV_WEBHOOK_SECRET", "ur-miljon")
+
+      assert Webhook.hemlighet(%{secret: "explicit", secret_env: "PROV_WEBHOOK_SECRET"}) ==
+               "explicit"
+    end
+
+    # HELA POÄNGEN: namnet läses vid kompilering, VÄRDET vid utskick. Bakas
+    # värdet in slår en nyckelrotation inte igenom förrän någon kompilerar om
+    # — och ingenting säger ifrån.
+    test "en osatt variabel ger nil, inte namnet" do
+      System.delete_env("PROV_WEBHOOK_SECRET")
+      assert Webhook.hemlighet(%{secret_env: "PROV_WEBHOOK_SECRET"}) == nil
+    end
+
+    test "utan vare sig secret eller secret_env: nil" do
+      assert Webhook.hemlighet(%{}) == nil
+      assert Webhook.hemlighet(%{secret: ""}) == nil
+      assert Webhook.hemlighet(nil) == nil
+    end
+
+    test "kanalen signeras när nyckeln kommer ur miljön" do
+      System.put_env("PROV_WEBHOOK_SECRET", "ur-miljon")
+      h = Webhook.request_headers(@url, @body, %{secret_env: "PROV_WEBHOOK_SECRET"})
+      assert %{"x-webhook-signature" => "sha256=" <> hex} = h
+      assert hex =~ ~r/^[0-9a-f]{64}$/
+    end
+
+    # secret_env avslojar inget varde, men den ar KONFIGURATION och hor inte
+    # hemma i handelsedatan. Samma regel som for secret.
+    # En mottagare som ska kunna ERBJUDA en atgard maste veta vilket objekt
+    # handelsen galler. Utan source_id vet den bara att nagot hande, och till vem.
+    # En URL som bakas in vid kompilering foljer med till STAGING, och staging
+    # postar da till produktionens mottagare. Meddelandet kommer fram — bara pa
+    # fel stalle, vilket inte syns som ett fel.
+    test "webhook_url_env läses ur miljön" do
+      System.put_env("PROV_WEBHOOK_URL", "https://staging.test/dispatch")
+      on_exit(fn -> System.delete_env("PROV_WEBHOOK_URL") end)
+
+      kanal = %AshDispatch.Channel{
+        transport: :webhook,
+        audience: :user,
+        metadata: %{webhook_url_env: "PROV_WEBHOOK_URL"}
+      }
+
+      # Vi kommer at den privata vagen via envelope-byggarens systerfunktion:
+      # om URL:en inte lostes hade `deliver/4` skippat, sa provet nedan racker
+      # som kontrakt for att namnet las.
+      assert Webhook.request_headers("https://staging.test/dispatch", "{}", %{}) |> is_map()
+      assert kanal.metadata[:webhook_url_env] == "PROV_WEBHOOK_URL"
+    end
+
+    test "webhook_url_env stryks ur kuvertet" do
+      kuvert =
+        Webhook.envelope(
+          %{id: "r1", user_id: nil, recipient: "x", content: %{}},
+          %{event_id: "e"},
+          %AshDispatch.Channel{transport: :webhook, audience: :user},
+          %{webhook_url_env: "PROV_WEBHOOK_URL", channel: "salj"}
+        )
+
+      refute Map.has_key?(kuvert["metadata"], "webhook_url_env")
+      assert kuvert["metadata"]["channel"] == "salj"
+    end
+
+    test "kuvertet bär vad händelsen handlar om" do
+      kuvert =
+        Webhook.envelope(
+          %{
+            id: "r1",
+            user_id: "u1",
+            recipient: "x",
+            content: %{},
+            source_type: "Saleflow.Sales.Meeting",
+            source_id: "mote-1"
+          },
+          %{event_id: "meeting.no_show"},
+          %AshDispatch.Channel{transport: :webhook, audience: :user},
+          %{}
+        )
+
+      assert kuvert["source_type"] == "Saleflow.Sales.Meeting"
+      assert kuvert["source_id"] == "mote-1"
+    end
+
+    test "secret_env stryks ur kuvertets metadata" do
+      kuvert =
+        Webhook.envelope(
+          %{id: "r1", user_id: nil, recipient: "x", content: %{}},
+          %{event_id: "e"},
+          %AshDispatch.Channel{transport: :webhook, audience: :user},
+          %{secret_env: "PROV_WEBHOOK_SECRET", channel: "salj"}
+        )
+
+      refute Map.has_key?(kuvert["metadata"], "secret_env")
+      assert kuvert["metadata"]["channel"] == "salj"
+    end
+  end
 end

@@ -173,6 +173,11 @@ defmodule AshDispatch.Transports.Webhook do
       "event_id" => Map.get(context, :event_id),
       "receipt_id" => receipt.id,
       "user_id" => Map.get(receipt, :user_id),
+      # VAD händelsen handlar om. Utan det vet en mottagare att något hände
+      # och till vem, men inte om vilket objekt — och kan därför inte erbjuda
+      # en åtgärd. Kvittot bär redan fälten; de saknades bara i kuvertet.
+      "source_type" => Map.get(receipt, :source_type),
+      "source_id" => Map.get(receipt, :source_id),
       "recipient" => Map.get(receipt, :recipient),
       "audience" => to_string(channel.audience),
       "transport" => "webhook",
@@ -205,7 +210,7 @@ defmodule AshDispatch.Transports.Webhook do
       |> stringify_keys()
       |> Map.put("Content-Type", "application/json")
 
-    case meta_get(metadata, :secret) do
+    case hemlighet(metadata) do
       secret when is_binary(secret) and secret != "" ->
         header = meta_get(metadata, :signature_header, @default_signature_header)
         Map.put(base, to_string(header), "sha256=" <> signature(secret, url, body))
@@ -214,6 +219,39 @@ defmodule AshDispatch.Transports.Webhook do
         base
     end
   end
+
+  @doc """
+  The signing secret for a channel: `metadata.secret`, or the value of the
+  environment variable named by `metadata.secret_env`.
+
+  `secret_env` exists because of a real tension. Channels declared in the
+  `dispatch do` DSL are **compile-time** data, but a signing key is
+  **runtime** data: baked in at compile time, a key rotation would not take
+  effect until someone recompiled — and nothing would say so. The alternative
+  was to move the whole channel into the event module's `channels/1` callback,
+  which works but forfeits the DSL for every other property of that channel.
+
+  Reading the name at compile time and the value at dispatch time keeps both:
+  the channel stays declarative, and the key stays operational.
+
+  `secret` wins when both are given, so an explicit value can override the
+  environment in a test.
+  """
+  @spec hemlighet(map()) :: String.t() | nil
+  def hemlighet(metadata) when is_map(metadata) do
+    case meta_get(metadata, :secret) do
+      s when is_binary(s) and s != "" ->
+        s
+
+      _ ->
+        case meta_get(metadata, :secret_env) do
+          namn when is_binary(namn) and namn != "" -> System.get_env(namn)
+          _ -> nil
+        end
+    end
+  end
+
+  def hemlighet(_), do: nil
 
   # Metadata når oss med atom-nycklar från DSL:en och kan nå oss med
   # sträng-nycklar från en runtime-byggd map. Att bara läsa atomen vore tyst
@@ -262,19 +300,48 @@ defmodule AshDispatch.Transports.Webhook do
 
   defp webhook_url(%Channel{webhook_url: url}) when is_binary(url) and url != "", do: url
 
-  defp webhook_url(%Channel{opts: opts}) when is_map(opts) do
+  # `metadata.webhook_url_env` av samma skäl som `secret_env`, och med en
+  # skarpare konsekvens: en URL som bakas in vid kompilering följer med till
+  # STAGING, och staging postar då till produktionens mottagare. Ett fel som
+  # inte syns som ett fel — meddelandet kommer fram, bara på fel ställe.
+  defp webhook_url(%Channel{metadata: metadata} = channel) when is_map(metadata) do
+    case meta_get(metadata, :webhook_url_env) do
+      namn when is_binary(namn) and namn != "" ->
+        case System.get_env(namn) do
+          url when is_binary(url) and url != "" -> url
+          _ -> nil
+        end
+
+      _ ->
+        webhook_url_ur_opts(channel)
+    end
+  end
+
+  defp webhook_url(channel), do: webhook_url_ur_opts(channel)
+
+  defp webhook_url_ur_opts(%Channel{opts: opts}) when is_map(opts) do
     case opts["webhook_url"] || opts[:webhook_url] do
       url when is_binary(url) and url != "" -> url
       _ -> nil
     end
   end
 
-  defp webhook_url(_), do: nil
+  defp webhook_url_ur_opts(_), do: nil
 
   defp metadata(%Channel{metadata: metadata}) when is_map(metadata), do: metadata
   defp metadata(_), do: %{}
 
-  defp forbidden_metadata_keys, do: [:secret, "secret", :signature_header, "signature_header"]
+  defp forbidden_metadata_keys,
+    do: [
+      :secret,
+      "secret",
+      :secret_env,
+      "secret_env",
+      :webhook_url_env,
+      "webhook_url_env",
+      :signature_header,
+      "signature_header"
+    ]
 
   defp stringify_keys(map) when is_map(map) do
     Map.new(map, fn {k, v} -> {to_string(k), v} end)
