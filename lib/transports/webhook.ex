@@ -173,6 +173,11 @@ defmodule AshDispatch.Transports.Webhook do
       "event_id" => Map.get(context, :event_id),
       "receipt_id" => receipt.id,
       "user_id" => Map.get(receipt, :user_id),
+      # VAD händelsen handlar om. Utan det vet en mottagare att något hände
+      # och till vem, men inte om vilket objekt — och kan därför inte erbjuda
+      # en åtgärd. Kvittot bär redan fälten; de saknades bara i kuvertet.
+      "source_type" => Map.get(receipt, :source_type),
+      "source_id" => Map.get(receipt, :source_id),
       "recipient" => Map.get(receipt, :recipient),
       "audience" => to_string(channel.audience),
       "transport" => "webhook",

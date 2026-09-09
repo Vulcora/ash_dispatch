@@ -199,6 +199,28 @@ defmodule AshDispatch.Transports.WebhookTest do
 
     # secret_env avslojar inget varde, men den ar KONFIGURATION och hor inte
     # hemma i handelsedatan. Samma regel som for secret.
+    # En mottagare som ska kunna ERBJUDA en atgard maste veta vilket objekt
+    # handelsen galler. Utan source_id vet den bara att nagot hande, och till vem.
+    test "kuvertet bär vad händelsen handlar om" do
+      kuvert =
+        Webhook.envelope(
+          %{
+            id: "r1",
+            user_id: "u1",
+            recipient: "x",
+            content: %{},
+            source_type: "Saleflow.Sales.Meeting",
+            source_id: "mote-1"
+          },
+          %{event_id: "meeting.no_show"},
+          %AshDispatch.Channel{transport: :webhook, audience: :user},
+          %{}
+        )
+
+      assert kuvert["source_type"] == "Saleflow.Sales.Meeting"
+      assert kuvert["source_id"] == "mote-1"
+    end
+
     test "secret_env stryks ur kuvertets metadata" do
       kuvert =
         Webhook.envelope(

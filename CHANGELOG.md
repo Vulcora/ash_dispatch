@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   vid utskick behåller båda: kanalen förblir deklarativ, nyckeln förblir
   operativ.
 
+- **Kuvertet bär `source_type` och `source_id`.** Utan dem vet en mottagare att
+  något hänt och till vem, men inte om VILKET objekt — och kan därför inte
+  erbjuda en åtgärd. En Slack-knapp som ska sätta ett val på ett möte behöver
+  mötets id. Kvittot bar redan fälten; de saknades bara i kuvertet.
+
   `secret` vinner när båda anges, så ett prov kan sätta ett explicit värde.
   `secret_env` stryks ur det vidarebefordrade kuvertet av samma skäl som
   `secret`: den avslöjar inget värde, men den är konfiguration och inte
