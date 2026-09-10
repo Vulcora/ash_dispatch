@@ -69,11 +69,20 @@ defmodule AshDispatch.Transports.Preferences do
   # loud, once per VM: a partly-honoured preference is worse than an absent
   # one, because the person who set it believes it applies.
   defp varna_om_foraldralos_leverantor do
-    if not :persistent_term.get({__MODULE__, :varnat}, false) do
-      :persistent_term.put({__MODULE__, :varnat}, true)
+    # The condition is evaluated BEFORE the latch is set. Latching first
+    # would mean the warning only ever fires if the misconfiguration exists
+    # at the moment of the very first delivery — an app that sets the
+    # provider later would be latched into silence by a delivery that had
+    # nothing to warn about. A warning that can quietly fail to appear is
+    # the exact bug this warning exists to report.
+    #
+    # The cost of asking every time is two ETS reads, which is less than the
+    # cost of being wrong about it.
+    if Config.preference_provider() &&
+         Config.user_preference() == AshDispatch.UserPreference.Default do
+      if not :persistent_term.get({__MODULE__, :varnat}, false) do
+        :persistent_term.put({__MODULE__, :varnat}, true)
 
-      if Config.preference_provider() &&
-           Config.user_preference() == AshDispatch.UserPreference.Default do
         Logger.warning("""
         ash_dispatch: :preference_provider is configured but :user_preference is not.
 

@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-09-10
+
+### Fixed
+
+- **Varningen om den föräldralösa leverantören kunde tyst utebli.** Latchen
+  som gör att den bara loggas en gång per VM sattes **före** villkoret
+  prövades. Den allra första leveransen i en nod avgjorde därmed för alltid om
+  varningen någonsin kunde synas: en app som satte `:preference_provider` efter
+  den leveransen — en umbrella som bootar i ogynnsam ordning, en `runtime.exs`,
+  en testsvit — latchades in i tystnad av ett anrop som inte hade något att
+  varna om.
+
+  En varning som tyst kan utebli är exakt den buggklass varningen finns för att
+  rapportera. Villkoret prövas nu först och latchen sätts bara när varningen
+  faktiskt loggas. Kostnaden är två ETS-läsningar per leverans, vilket är
+  mindre än kostnaden av att ha fel om det.
+
 ## [0.7.0] - 2026-09-10
 
 ### Changed
