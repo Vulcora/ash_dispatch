@@ -334,13 +334,21 @@ When creating receipts, include source type and ID for traceability:
 
 ### 4. Respect user preferences
 
-Always check preferences before delivery (AshDispatch does this automatically):
+Preferences are checked before delivery, but note WHICH key does it — the
+two are not the same (see [Configuration](configuration.md#user-preferences)):
 
 ```elixir
-# The PreferenceProvider is called before each delivery
 config :ash_dispatch,
-  preference_provider: MyApp.NotificationPreferences
+  # Consulted by every transport before delivery:
+  user_preference: MyApp.NotificationPreferences,
+  # Consulted by the email worker and manual triggers only:
+  preference_provider: MyApp.LegacyPreferences
 ```
+
+A receipt skipped by the transport gate carries
+`error_message: "user_opted_out"`; one skipped by the email worker's provider
+path carries `"User opted out of this email category"`. A count of opt-outs
+has to know about both.
 
 ## Webhook Signature Verification
 

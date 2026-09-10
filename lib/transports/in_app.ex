@@ -41,6 +41,8 @@ defmodule AshDispatch.Transports.InApp do
 
   alias AshDispatch.Config
 
+  alias AshDispatch.Transports.Preferences
+
   require Logger
 
   @doc """
@@ -59,31 +61,15 @@ defmodule AshDispatch.Transports.InApp do
   - `{:error, reason}` on failure
   """
   def deliver(receipt, context, channel, event_config) do
-    # Check the preferences of THIS receipt's recipient. A receipt is one
-    # recipient, so a fan-out evaluates one verdict per recipient — reading
-    # `context.user` here applied the event subject's verdict to all N.
-    if not AshDispatch.UserPreference.allows_receipt?(receipt, context, channel, event_config) do
-      Logger.info(
-        "User #{inspect(Map.get(receipt, :user_id))} opted out of #{context.event_id} via #{channel.transport}, skipping"
-      )
-
-      updated_receipt =
-        receipt
-        |> Ash.Changeset.for_update(:skip, %{error_message: "user_opted_out"})
-        |> Ash.update!(authorize?: false)
-
-      {:ok, updated_receipt}
-    else
-      # Receipt now corresponds to a single recipient (user_id in receipt)
-      # Create one notification for this recipient
+    # The verdict is per RECIPIENT. A receipt is one recipient, so a fan-out
+    # evaluates one verdict per person — reading `context.user` here applied
+    # the event subject's verdict to all N.
+    Preferences.with_consent(receipt, context, channel, event_config, fn ->
       invalidates = event_config[:invalidates] || []
       result = create_notification_for_receipt(receipt, context, channel, invalidates)
 
-      # Update receipt status and link notification_id
-      updated_receipt = update_receipt_with_notification(receipt, result)
-
-      {:ok, updated_receipt}
-    end
+      {:ok, update_receipt_with_notification(receipt, result)}
+    end)
   rescue
     error ->
       Logger.error("""

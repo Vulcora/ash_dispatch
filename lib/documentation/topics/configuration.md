@@ -131,37 +131,81 @@ config :ash_dispatch,
 
 **Default:** `nil` (must be configured for `:user` audience)
 
-### Preference Provider
+### User Preferences
 
-Implement user notification preferences checking:
+There are **two** preference keys, and they are not interchangeable. Reading
+this section carelessly is how apps end up with a rule that applies to email
+and to nothing else.
+
+| Key | Behaviour to implement | Consulted by |
+|---|---|---|
+| `:user_preference` | `AshDispatch.UserPreference` | **every transport**, before delivery |
+| `:preference_provider` | `AshDispatch.Behaviours.PreferenceProvider` | the `SendEmail` worker and manual triggers — **email only** |
+
+#### `:user_preference` — the one you want
+
+```elixir
+config :ash_dispatch,
+  user_preference: MyApp.NotificationPreferences
+```
+
+```elixir
+defmodule MyApp.NotificationPreferences do
+  @behaviour AshDispatch.UserPreference
+
+  @impl true
+  def user_allows?(user_id, event_id, transport, opts) do
+    # opts carries [:category, :audience, :event_id]
+    # Return true to deliver, false to skip the receipt as "user_opted_out"
+    true
+  end
+end
+```
+
+It receives the transport, so a rule can differ per channel — "no SMS after
+21:00, email is fine" is expressible here and nowhere else.
+
+**Default:** `AshDispatch.UserPreference.Default`, which allows everything.
+
+#### `:preference_provider` — the older, narrower one
 
 ```elixir
 config :ash_dispatch,
   preference_provider: MyApp.NotificationPreferences
 ```
 
-Your preference provider must implement `AshDispatch.PreferenceProvider` behaviour:
-
 ```elixir
 defmodule MyApp.NotificationPreferences do
-  @behaviour AshDispatch.PreferenceProvider
+  @behaviour AshDispatch.Behaviours.PreferenceProvider
 
   @impl true
-  def allows_notification?(user_id, event_id, transport, opts) do
-    # Check if user allows this notification
-    # Return true/false
-  end
+  def get_preferences(user_id), do: {:ok, %{}}
+
+  @impl true
+  def preference_enabled?(preferences, category), do: true
 end
 ```
 
-**Why needed:**
-- Respects user opt-out preferences
-- Required if you want user-configurable notifications
-- Called before every delivery to `:user` audience
+It sees only the category, not the transport — and it is read by the email
+worker and the manual triggers, **not** by the transport gate. Configuring
+only this one means `:sms`, `:push`, `:in_app`, `:slack`, `:discord` and
+`:webhook` ignore the rule entirely. Since 0.7.0 the library logs a warning
+when it finds this key set and `:user_preference` unset.
 
-**Default:** `nil` (all notifications allowed)
+To apply an existing provider on every transport, bridge it:
 
-See [User Preferences](user-preferences.md) for implementation guide.
+```elixir
+config :ash_dispatch,
+  preference_provider: MyApp.NotificationPreferences,
+  user_preference: AshDispatch.UserPreference.LegacyProvider
+```
+
+`AshDispatch.UserPreference.LegacyProvider` delegates to the provider with the
+email worker's exact semantics, so email keeps behaving as it did. Note that
+it **is** a behaviour change for the other six transports — recipients the
+provider excludes stop receiving there too.
+
+See [User Preferences](user-preferences.md) for the implementation guide.
 
 ### Preference-Gated Audiences
 

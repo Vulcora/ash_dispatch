@@ -82,6 +82,14 @@ some receipts `:skipped`, the rest delivered.
 > who had opted out. If you implemented `user_allows?/4` and never saw it called
 > with more than one user id per event, this was why.
 
+> #### Widened in 0.7.0 {: .info}
+>
+> Step 3 above describes what every transport does — as of 0.7.0. Before it,
+> only `:email`, `:in_app` and `:webhook` asked; `:slack`, `:discord`, `:sms`
+> and `:push` delivered regardless. A preference honoured on one channel and
+> ignored on another is worse than none, because the person who set it
+> believes it applies everywhere.
+
 ### When Preferences Are Checked
 
 **✅ Checked:**
@@ -705,9 +713,25 @@ end
 
 ### Preferences Not Being Respected
 
-1. **Check configuration:**
+1. **Check you configured the right key.** This is the common one, and it
+   fails quietly. There are two:
+
    ```elixir
-   config :ash_dispatch, user_preference: MyApp.Preferences
+   config :ash_dispatch,
+     # Consulted by every transport:
+     user_preference: MyApp.Preferences,
+     # Consulted by the email worker and manual triggers ONLY:
+     preference_provider: MyApp.LegacyPreferences
+   ```
+
+   An app that set only `:preference_provider` has its rule applied to email
+   and to nothing else — no error, no warning before 0.7.0, and the rule looks
+   configured because it is. If that is your situation, either implement
+   `AshDispatch.UserPreference` directly or bridge the provider you have:
+
+   ```elixir
+   config :ash_dispatch,
+     user_preference: AshDispatch.UserPreference.LegacyProvider
    ```
 
 2. **Verify callback implementation:**

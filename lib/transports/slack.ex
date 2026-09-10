@@ -78,6 +78,7 @@ defmodule AshDispatch.Transports.Slack do
   import AshDispatch.ContentMap
 
   alias AshDispatch.Channel
+  alias AshDispatch.Transports.Preferences
   alias AshDispatch.Workers.SendWebhook
 
   require Logger
@@ -100,7 +101,13 @@ defmodule AshDispatch.Transports.Slack do
   Expected metadata:
   - `webhook_url` - Slack webhook URL (required)
   """
-  def deliver(receipt, context, channel, _event_config) do
+  def deliver(receipt, context, channel, event_config) do
+    Preferences.with_consent(receipt, context, channel, event_config, fn ->
+      leverera(receipt, context, channel)
+    end)
+  end
+
+  defp leverera(receipt, context, channel) do
     webhook_url = get_webhook_url(channel)
 
     if webhook_url do

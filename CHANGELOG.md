@@ -7,6 +7,105 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-10
+
+### Changed
+
+- **Varje transport som når en människa frågar nu om samtycke.** Fram till nu
+  gjorde tre av sju det: `:email`, `:in_app` och `:webhook`. `:slack`,
+  `:discord`, `:sms` och `:push` levererade oavsett vad mottagaren hade valt.
+
+  Det såg ut som en lucka snarare än ett beslut, och den var av det tysta
+  slaget: en person som stängde av en notistyp fick den ändå — på en annan
+  kanal, utan att något sa ifrån. Preferensen var inte bruten, den var
+  **delvis** hedrad, vilket är sämre än att inte finnas, eftersom personen tror
+  att den gäller.
+
+  Detta är en BETEENDEÄNDRING för befintliga konsumenter, och därför en
+  minor-bump snarare än en patch: en `:slack`-kanal med en grindad publik
+  (`:user` som standard) kommer nu att skippa kvitton den tidigare skickade.
+  Sätt publiken till något ogrindat, eller `preference_gated_audiences`, om det
+  inte är vad ni vill.
+
+### Added
+
+- **`AshDispatch.Transports.Preferences.with_consent/5` — grinden på ETT
+  ställe.** Kontrollen är åtta rader, och åtta rader kopierade sex gånger är sex
+  chanser att glida isär. Kopiorna hade redan börjat: `:in_app` loggade
+  användar-id, `:webhook` loggade kvitto-id, och ingen av dem sa vilket som var
+  avsett.
+
+  `:email`, `:in_app` och `:webhook` flyttades till samma funktion — inte som
+  städning, utan för att skälet på ett skippat kvitto ska vara **ett** värde man
+  kan räkna. En instrumentpanel som filtrerar på opt-out ska inte missa en
+  transport som stavade det annorlunda. `Preferences.reason/0` är publik just
+  därför.
+
+  Förbehållet, utskrivet: detta gäller transportgrindens skäl. `SendEmail`-
+  workern skriver fortfarande `"User opted out of this email category"` när den
+  egna leverantörsvägen nekar (se nedan). Två skäl, två system — en räkning
+  måste tills vidare känna till båda.
+
+- `:oban` och `:broadcast` är avsiktligt utanför regeln. De har ingen person att
+  fråga, och en samtyckesgrind där skulle antyda en mottagare som inte finns.
+  Ett prov vaktar att de förblir utanför, så att nästa läsare ser att det är ett
+  beslut och inte något som glömdes.
+
+### Added
+
+- **`AshDispatch.UserPreference.LegacyProvider` — bron mellan bibliotekets TVÅ
+  preferenssystem.** Det här är det egentliga fyndet i den här releasen, och det
+  hittades först när ovanstående skulle mätas mot en riktig konsument.
+
+  Biblioteket har två preferenssystem som aldrig möttes:
+
+  | | läses av | konfigureras som |
+  |---|---|---|
+  | `AshDispatch.UserPreference` | varje transport, via `allows_receipt?/4` | `:user_preference` |
+  | `AshDispatch.Behaviours.PreferenceProvider` | `SendEmail`-workern och manual triggers | `:preference_provider` |
+
+  En app som kopplat in **bara** den andra — och guiderna pekade dit i åratal —
+  får sin regel hedrad **på e-post och ingen annanstans**. Ingenting sa det.
+  Regeln såg konfigurerad ut, var konfigurerad, och täckte tyst en transport av
+  sju.
+
+  Det är samma klass som resten av releasen, men värre: en app som INTE
+  konfigurerat något alls vet åtminstone att den inte har opt-out.
+
+  Bron gör att den befintliga leverantören svarar för alla sju:
+
+      config :ash_dispatch,
+        preference_provider: MyApp.PreferenceProvider,
+        user_preference: AshDispatch.UserPreference.LegacyProvider
+
+  Semantiken är kopierad ur `SendEmail.check_user_preferences/1` — inklusive att
+  ett `{:error, _}` från leverantören **släpper igenom**. En preferensdatabas som
+  ligger nere får inte bli en mute-knapp: en utebliven avisering är osynlig för
+  alla, även för mottagaren.
+
+  Inkopplingen är opt-in med flit. Att göra bron till standard hade tystat
+  mottagare i befintliga appar vid en patch-uppgradering — precis det som gör
+  den här buggklassen svår att upptäcka.
+
+- **Biblioteket säger ifrån om den föräldralösa leverantören.** Är
+  `:preference_provider` satt medan `:user_preference` inte är det, loggas en
+  varning en gång per VM med vad som gäller och hur man kopplar in bron. Ingen
+  ska behöva upptäcka det här på det sätt det upptäcktes.
+
+### Fixed
+
+- Regressionsgrinden för den per-mottagare-baserade domen (0.6.1) **mätte
+  mekanismen, inte egenskapen**: den krävde att den bokstavliga
+  `allows_receipt?/4`-raden stod inne i `email.ex` och `in_app.ex`. När de sex
+  kopierade blocken ersattes av en delad funktion gick grinden röd — medan
+  egenskapen den finns för att skydda var orörd.
+
+  Den mäter nu domen: ingen leveransväg får härleda samtycke ur `context.user`,
+  och varje väg som beslutar alls skickar KVITTOT först. Filerna räknas upp med
+  en glob i stället för en lista någon underhåller, eftersom en underhållen
+  lista är den andra halvan av samma fel — en transport som läggs till i morgon
+  täcks utan att någon behöver minnas den.
+
 ## [0.6.14] - 2026-09-09
 
 ### Added
