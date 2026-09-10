@@ -176,6 +176,33 @@ defmodule AshDispatch.UserPreference.LegacyProviderTest do
       refute logg =~ ":preference_provider is configured but"
     end
 
+    test "a provider configured LATER still gets warned about" do
+      # The latch used to be set before the condition was evaluated, so the
+      # first delivery in a VM decided forever whether the warning could ever
+      # appear. An app that wires the provider after that first send — an
+      # umbrella booting in an unlucky order, a runtime.exs read, a test —
+      # was latched into silence by a delivery that had nothing to report.
+      Application.delete_env(:ash_dispatch, :preference_provider)
+      Application.delete_env(:ash_dispatch, :user_preference)
+
+      forst =
+        capture_log(fn ->
+          Preferences.with_consent(%{user_id: nil}, sammanhang(), kanal(:sms), [], fn -> :ok end)
+        end)
+
+      refute forst =~ ":preference_provider is configured but"
+
+      Application.put_env(:ash_dispatch, :preference_provider, InaktivaFarInget)
+
+      sedan =
+        capture_log(fn ->
+          Preferences.with_consent(%{user_id: nil}, sammanhang(), kanal(:sms), [], fn -> :ok end)
+        end)
+
+      assert sedan =~ ":preference_provider is configured but",
+             "the first delivery latched the warning off before there was anything to warn about"
+    end
+
     test "it fires once, not on every delivery" do
       # A warning on every send is a warning nobody reads, and this one sits
       # on the path of every notification the app sends.
