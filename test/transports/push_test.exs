@@ -55,12 +55,18 @@ defmodule AshDispatch.Transports.PushTest do
       end
     end
 
+    # Kanalen är en riktig %Channel{} sedan 0.7.0: push frågar numera om
+    # samtycke, och samtyckesgrinden läser `channel.audience`. En tom map
+    # gick igenom så länge ingen läste ur den — och `:admin` är avsiktligt
+    # vald, en ogrindad publik, så provet förblir ett prov om delegeringen.
+    @ogrindad %AshDispatch.Channel{transport: :push, audience: :admin}
+
     test "delegerar deliver/4 till backend-modulen" do
       Application.put_env(:ash_dispatch, :push_backend, EkoBackend)
 
       kvitto = %{id: "r-1", user_id: "u-1", content: %{title: "Möte om 15 min"}}
 
-      assert {:ok, uppdaterat} = Push.deliver(kvitto, %{}, %{}, %{})
+      assert {:ok, uppdaterat} = Push.deliver(kvitto, %{}, @ogrindad, %{})
       assert uppdaterat.status == :sent
       assert_received {:push_levererad, ^kvitto}
     end
@@ -78,7 +84,7 @@ defmodule AshDispatch.Transports.PushTest do
       Application.put_env(:ash_dispatch, :push_backend, TrasigBackend)
 
       assert {:error, :push_service_unavailable} =
-               Push.deliver(%{id: "r-2"}, %{}, %{}, %{})
+               Push.deliver(%{id: "r-2"}, %{}, @ogrindad, %{})
     end
   end
 

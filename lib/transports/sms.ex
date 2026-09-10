@@ -33,8 +33,18 @@ defmodule AshDispatch.Transports.SMS do
   require Logger
 
   alias AshDispatch.Config
+  alias AshDispatch.Transports.Preferences
 
   def deliver(receipt, context, channel, event_config) do
+    Preferences.with_consent(receipt, context, channel, event_config, fn ->
+      leverera(receipt, context, channel, event_config)
+    end)
+  end
+
+  # The gate sits ABOVE the backend on purpose: a consumer's own backend
+  # cannot be expected to know about preferences, and asking it to would put
+  # the same eight lines in every app that wires SMS.
+  defp leverera(receipt, context, channel, event_config) do
     case Config.sms_backend() do
       nil ->
         Logger.info("SMS transport not yet implemented (no :sms_backend configured), skipping")

@@ -143,22 +143,118 @@ defmodule AshDispatch.Transports.PreferenceGatingTest do
     end
   end
 
-  describe "structural: the delivery paths gate per receipt" do
-    # Regression guard in the spirit of 0.6.1/0.6.2: a future refactor must
-    # not quietly put the context-based gate back into a delivery path.
-    for {transport, path} <- [
-          {"email", "lib/transports/email.ex"},
-          {"in_app", "lib/transports/in_app.ex"}
+  describe "structural: the verdict is per receipt, never per context" do
+    # Widened in 0.7.0. The guard used to demand the literal
+    # `allows_receipt?/4` call inside email.ex and in_app.ex. When the six
+    # copied gate blocks were replaced by one shared function the guard went
+    # red — while the property it exists to protect was untouched. It was
+    # measuring where the call is written, not what the call decides.
+    #
+    # It now measures the decision: no delivery path may derive consent from
+    # `context.user`, and every path that decides at all passes the RECEIPT
+    # first. The list of files is globbed rather than maintained, because a
+    # maintained list is the other half of the same failure — a transport
+    # added tomorrow is covered without anyone remembering to add it.
+    @vagar Path.wildcard("lib/transports/*.ex")
+
+    # Without this, every assertion below is green by iterating nothing.
+    test "the glob actually found the transports" do
+      assert length(@vagar) >= 8, "expected the transport directory, got #{inspect(@vagar)}"
+    end
+
+    test "no delivery path gates on the context user" do
+      fel = Enum.filter(@vagar, &(File.read!(&1) =~ "UserPreference.allows?("))
+
+      assert fel == [], """
+      These paths are back to the context-based gate:
+
+        #{inspect(fel)}
+
+      `allows?/3` reads `context.user` — the event's SUBJECT. A fan-out has
+      one receipt per recipient, so that verdict gets applied to all N of
+      them: the subject's opt-out silences everybody, and the subject's
+      consent overrides everybody else's no. That was the 0.6.1 bug.
+      """
+    end
+
+    test "every consent decision is made from the receipt" do
+      # Two forms are legitimate: asking directly, or delegating to the
+      # shared gate. Both pass `receipt` first — that is the property.
+      fel =
+        Enum.filter(@vagar, fn vag ->
+          src = File.read!(vag)
+          namner? = src =~ "allows_receipt?" or src =~ "with_consent"
+
+          ratt? =
+            src =~ "with_consent(receipt, context, channel, event_config" or
+              src =~ "allows_receipt?(receipt, context, channel, event_config)"
+
+          namner? and not ratt?
+        end)
+
+      assert fel == [], """
+      These decide consent, but not from the receipt's own recipient:
+
+        #{inspect(fel)}
+
+      Pass the receipt first — either `Preferences.with_consent(receipt,
+      context, channel, event_config, fn -> ... end)` or, if you have a
+      reason not to use the shared gate, `UserPreference.allows_receipt?/4`.
+      """
+    end
+
+    test "the shared gate itself asks per receipt" do
+      # Everything above trusts this one line, so it is asserted directly:
+      # widen the indirection and the property has to survive at the end of it.
+      assert File.read!("lib/transports/preferences.ex") =~
+               "UserPreference.allows_receipt?(receipt, context, channel, event_config)"
+    end
+  end
+
+  describe "the transports gated for the first time in 0.7.0" do
+    # `:slack`, `:discord`, `:sms` and `:push` delivered regardless of
+    # preferences until now. The structural guards above prove the call is
+    # written; these prove it RUNS — a source guard cannot tell the
+    # difference between a gate and a gate behind a condition that is never
+    # true.
+    #
+    # Only the gated side is asserted: the opted-out receipt must be skipped.
+    # The other side needs an Oban instance (slack, discord) or a configured
+    # backend (sms, push), neither of which exists in the library suite —
+    # and "was not skipped" is already covered for email and in_app above.
+    for {transport, modul} <- [
+          {:slack, AshDispatch.Transports.Slack},
+          {:discord, AshDispatch.Transports.Discord},
+          {:sms, AshDispatch.Transports.SMS},
+          {:push, AshDispatch.Transports.Push}
         ] do
-      test "#{transport} transport calls allows_receipt?/4, not allows?/3" do
-        source = File.read!(unquote(path))
+      test "#{transport}: an opted-out recipient is skipped, not delivered to", ctx do
+        channel = %Channel{transport: unquote(transport), audience: :user}
+        receipt = receipt!(@opted_out_marketing_user_id, unquote(transport), "optout@example.com")
 
-        assert source =~
-                 "UserPreference.allows_receipt?(receipt, context, channel, event_config)",
-               "#{unquote(path)} no longer gates on the receipt's own recipient"
+        assert {:ok, gated} =
+                 unquote(modul).deliver(receipt, ctx.context, channel, ctx.event_config)
 
-        refute source =~ "UserPreference.allows?(",
-               "#{unquote(path)} is back to the context-based gate (the wrong-user bug)"
+        assert gated.status == :skipped
+        assert gated.error_message == "user_opted_out"
+      end
+
+      test "#{transport}: an ungated audience is not silenced by the new gate", ctx do
+        # The gate must not become a blanket mute. `:admin` is outside
+        # `preference_gated_audiences`, so an opted-out user still gets it.
+        #
+        # The assertion is on the REASON, not on `:skipped`. These four
+        # transports skip for legitimate reasons of their own in a suite with
+        # no Oban and no backends — "transport_not_implemented", "No
+        # webhook_url configured". Asserting `refute status == :skipped`
+        # measured "was skipped at all" and failed on a gate that behaved
+        # perfectly. The property is: the CONSENT gate did not stop it.
+        channel = %Channel{transport: unquote(transport), audience: :admin}
+        receipt = receipt!(@opted_out_marketing_user_id, unquote(transport), "optout@example.com")
+
+        _ = unquote(modul).deliver(receipt, ctx.context, channel, ctx.event_config)
+
+        refute reload(receipt).error_message == "user_opted_out"
       end
     end
   end

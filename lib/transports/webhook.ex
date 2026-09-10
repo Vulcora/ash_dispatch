@@ -76,13 +76,16 @@ defmodule AshDispatch.Transports.Webhook do
   and delivering to someone who opted out because the last hop happens to be
   HTTP would be the wrong default.
 
-  > Note for maintainers: `:slack`, `:discord`, `:sms` and `:push` do **not**
-  > check preferences today. That looks like a gap rather than a decision, but
-  > changing them is a behaviour change for existing consumers and is left to
-  > its own change.
+  > As of 0.7.0 every transport that reaches a person asks the same question,
+  > through `AshDispatch.Transports.Preferences.with_consent/5`. The note that
+  > used to stand here — that `:slack`, `:discord`, `:sms` and `:push` did not
+  > — described a real gap: a preference honoured on one channel was silently
+  > ignored on another, and the difference was invisible to the person who
+  > set it.
   """
 
   alias AshDispatch.Channel
+  alias AshDispatch.Transports.Preferences
   alias AshDispatch.UserPreference
   alias AshDispatch.Workers.SendWebhook
 
@@ -97,7 +100,10 @@ defmodule AshDispatch.Transports.Webhook do
           "User #{inspect(Map.get(receipt, :user_id))} opted out of #{context.event_id} via :webhook, skipping"
         )
 
-        skip(receipt, "user_opted_out")
+        # The string comes from ONE place so it stays countable: a dashboard
+        # filtering on the opt-out reason must not miss a transport that
+        # spelled it differently.
+        skip(receipt, Preferences.reason())
 
       is_nil(webhook_url(channel)) ->
         Logger.warning(
