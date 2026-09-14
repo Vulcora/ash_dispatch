@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-14
+
+### Added
+
+- **`extra_content/2`** — en modul får bidra med EGNA innehållsnycklar.
+
+  Transporternas innehåll är en sluten lista: `:in_app` bär titel, text och en
+  väg vidare, `:webhook` detsamma, `:email` sina kroppar. Det räcker så länge
+  mottagaren är en notislista. Det räcker inte när mottagaren är en yta som kan
+  rendera fakta i två kolumner, flera knappar och en ikon — då är varje ny
+  sådan nyckel annars en ändring i biblioteket.
+
+      def extra_content(context, %Channel{audience: :slack_kanal}) do
+        %{slack_ikon: "avtal", slack_falt: [%{etikett: "Belopp", varde: "13 995 kr"}]}
+      end
+
+  Tillägget läggs **under** transportens egna nycklar: en modul som returnerar
+  `%{message: ...}` skriver inte över `notification_message/2`. Det är för det
+  som saknas, aldrig för att skriva om det som finns. Något annat än en karta
+  ignoreras, och en callback som kastar fäller inte dispatchen — en notis som
+  uteblir är dyrare än ett fält som saknas.
+
+### Fixed
+
+- **`:webhook` kunde inte bära rubrik eller väg vidare från en MODUL.**
+  `build_module_content/5` hade en gren per transport och `:webhook` föll
+  igenom till catch-allen — `%{message: notification_message(...)}` och inget
+  annat. `notification_title/2`, `action_url/2` och `action_label/2` anropades
+  aldrig för transporten.
+
+  `:in_app` har alltid burit alla fyra. Att `:webhook` inte gjorde det var
+  ingen deklaration, det var att ingen skrivit grenen. (0.7.3 rättade samma
+  klass på DSL-sidan; det här är modulsidan av samma lucka.)
+
+  Mätt hos en konsument: av sex distinkta kanalposter i produktion bar EN en
+  rubrik och NOLL en länk.
+
+  Vakten `AshDispatch.Transports.WebhookModuleContentTest` prövar båda
+  egenskaperna, mutationsprövad: tre mutationer fäller tre prov.
+
 ## [0.7.3] - 2026-09-14
 
 ### Fixed
