@@ -1026,39 +1026,78 @@ defmodule AshDispatch.Dispatcher do
           |> maybe_put(:action_label, interpolate(content_config[:action_label], context))
 
         :discord ->
-          %{
-            message:
-              interpolate(
-                content_config[:message] || content_config[:notification_message],
-                context
-              ),
-            webhook_url: channel.webhook_url
-          }
+          # `maybe_put` och inte en literal nyckel: `interpolate(nil, _)` ger
+          # `nil`, och en `%{message: nil}` hade skrivit över modulens
+          # callback-text med ingenting i hybridläget. Se `:webhook` nedan.
+          %{}
+          |> maybe_put(
+            :message,
+            interpolate(
+              content_config[:message] || content_config[:notification_message],
+              context
+            )
+          )
+          |> Map.put(:webhook_url, channel.webhook_url)
 
         :slack ->
-          %{
-            message:
-              interpolate(
-                content_config[:message] || content_config[:notification_message],
-                context
-              ),
-            webhook_url: channel.webhook_url
-          }
+          # `maybe_put` och inte en literal nyckel: `interpolate(nil, _)` ger
+          # `nil`, och en `%{message: nil}` hade skrivit över modulens
+          # callback-text med ingenting i hybridläget. Se `:webhook` nedan.
+          %{}
+          |> maybe_put(
+            :message,
+            interpolate(
+              content_config[:message] || content_config[:notification_message],
+              context
+            )
+          )
+          |> Map.put(:webhook_url, channel.webhook_url)
 
         :sms ->
-          %{
-            message:
-              interpolate(
-                content_config[:message] || content_config[:notification_message],
-                context
-              )
-          }
+          # Se `:discord` ovan om varför `maybe_put`.
+          %{}
+          |> maybe_put(
+            :message,
+            interpolate(
+              content_config[:message] || content_config[:notification_message],
+              context
+            )
+          )
 
         :webhook ->
-          %{
-            payload: content_config[:webhook_payload] || %{},
-            webhook_url: channel.webhook_url
-          }
+          # Texten läses HÄR också, precis som i varje annan transport.
+          #
+          # Den här grenen var den enda som inte gjorde det, och följden var
+          # tyst: ett event med en modul faller tillbaka på modulens
+          # `notification_message/2`, vars genererade default är
+          # "You have a new notification". Merge-ordningen i `build_content/5`
+          # låter modulens värde stå kvar för varje nyckel inline INTE sätter
+          # — så en deklarerad `content: [message: ...]` på en
+          # `transport: :webhook`-kanal blev dekoration, och mottagaren fick
+          # platshållaren med rätt form och fel innehåll.
+          #
+          # Mätt hos en konsument innan fixen: 41 av 41 levererade
+          # webhook-kvitton bar platshållaren, fördelade på nio deklarerade
+          # kanaler. Ingen av texterna hade någonsin nått fram.
+          #
+          # `maybe_put` och inte `Map.put`: saknas texten i DSL:en ska
+          # modulens callback fortsätta vinna (hybridläget). Jämför `:discord`
+          # och `:slack` ovan, som skriver `message:` ovillkorligt och därmed
+          # kan skriva över ett modulvärde med `nil`.
+          %{}
+          |> maybe_put(
+            :title,
+            interpolate(content_config[:title] || content_config[:notification_title], context)
+          )
+          |> maybe_put(
+            :message,
+            interpolate(
+              content_config[:message] || content_config[:notification_message],
+              context
+            )
+          )
+          |> Map.put(:payload, content_config[:webhook_payload] || %{})
+          |> Map.put(:webhook_url, channel.webhook_url)
 
         :push ->
           # Titel, text och destination. Håll det litet: push-tjänsterna

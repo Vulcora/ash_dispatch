@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-09-14
+
+### Fixed
+
+- **`:webhook`-transporten tappade sin deklarerade text.**
+  `build_inline_content/4`:s `:webhook`-gren byggde bara `payload` och
+  `webhook_url`. Den läste aldrig `content_config[:message]` — den enda av sex
+  textbärande grenar som inte gjorde det.
+
+  Felet var av den tysta klassen. Ett event MED en eventmodul faller tillbaka
+  på modulens `notification_message/2`, vars genererade default är
+  `"You have a new notification"`. Merge-ordningen i `build_content/5` låter
+  modulens värde stå kvar för varje nyckel inline inte sätter, så en deklarerad
+  `content: [message: ...]` på en webhook-kanal blev **dekoration** — och
+  mottagaren fick platshållaren med rätt form och fel innehåll. Utan modul hade
+  `message` saknats helt och mottagaren kunnat avvisa kuvertet; att eventet har
+  en modul förvandlade alltså ett hårt fel till en giltig sträng.
+
+  Mätt hos en konsument innan fixen: **41 av 41** levererade webhook-kvitton
+  bar platshållaren, fördelade på nio deklarerade kanaler. Ingen av texterna
+  hade någonsin nått fram, under lika lång tid som kanalerna funnits.
+
+  Grenen bär nu `:message` och `:title` via `maybe_put/3`.
+
+- **`:discord`, `:slack` och `:sms` kunde skriva över modulens text med `nil`.**
+  Samma klass åt andra hållet: de satte `message:` som en ovillkorlig nyckel,
+  och `interpolate(nil, _)` ger `nil`. En kanal som deklarerade allt UTOM
+  texten raderade därmed modulens callback-värde. Alla tre använder nu
+  `maybe_put/3`, som `:in_app` och `:push` redan gjorde.
+
+### Added
+
+- `AshDispatch.Transports.InlineContentTextTest` — vakt som kräver att varje
+  textbärande transportgren läser `content_config[:message]` och sätter den med
+  `maybe_put`. Det befintliga strukturprovet frågade bara om grenen FANNS, och
+  såg därför en gren som bar fel innehåll som en gren som fungerade.
+
 ## [0.7.1] - 2026-09-10
 
 ### Fixed
