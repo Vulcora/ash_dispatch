@@ -125,4 +125,33 @@ defmodule AshDispatch.Transports.InlineContentTextTest do
     assert g =~ "content_config[:webhook_payload]"
     assert g =~ "channel.webhook_url"
   end
+
+  # Transporter vars mottagare kan RENDERA en väg vidare. `:discord`,
+  # `:slack` och `:sms` står utanför med flit: deras nyttolaster har ingen
+  # egen knappform, och en url utan en yta som visar den är en nyckel som
+  # bara ser ut att göra något.
+  @vagbarande [":in_app", ":webhook", ":push"]
+
+  test "VAKT: varje transport med en väg vidare läser content_config[:action_url]" do
+    g = grenar()
+
+    utan = Enum.filter(@vagbarande, fn t -> not (g[t] =~ "content_config[:action_url]") end)
+
+    assert utan == [],
+           """
+           Dessa grenar bygger innehåll utan att läsa vägen vidare ur DSL:en:
+
+             #{Enum.join(utan, ", ")}
+
+           En deklarerad `action_url:` blir då DEKORATION: mottagaren får veta
+           att något hänt men har ingen väg dit, och avsändaren kan inte
+           upptäcka det utom genom att läsa det som kom fram. `:webhook` var
+           precis det fallet till 0.7.3 — en konsument rapporterade sina
+           kanalposter som "döda notiser".
+           """
+  end
+
+  test "webhook bär också knappens etikett — en url utan ord blir en knapp som heter \"Öppna\"" do
+    assert grenar()[":webhook"] =~ "content_config[:action_label]"
+  end
 end

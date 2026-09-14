@@ -1084,6 +1084,18 @@ defmodule AshDispatch.Dispatcher do
           # modulens callback fortsätta vinna (hybridläget). Jämför `:discord`
           # och `:slack` ovan, som skriver `message:` ovillkorligt och därmed
           # kan skriva över ett modulvärde med `nil`.
+          #
+          # `action_url`/`action_label` läses av samma skäl, och samma
+          # mätning visade behovet: en mottagare rapporterade kanalposter som
+          # "döda notiser" — laget fick veta att något hänt men hade ingen väg
+          # dit. `:in_app` ovan har alltid burit dem; `:webhook` var den enda
+          # transporten där en deklarerad `action_url:` tyst föll bort, så en
+          # avsändare som skrev en hade ingen möjlighet att upptäcka det utom
+          # genom att läsa det som kom fram.
+          #
+          # `:discord`, `:slack` och `:sms` får dem MEDVETET inte: deras
+          # nyttolaster har ingen egen knappform, och en url utan en yta som
+          # renderar den är en nyckel som bara ser ut att göra något.
           %{}
           |> maybe_put(
             :title,
@@ -1096,6 +1108,8 @@ defmodule AshDispatch.Dispatcher do
               context
             )
           )
+          |> maybe_put(:action_url, interpolate(content_config[:action_url], context))
+          |> maybe_put(:action_label, interpolate(content_config[:action_label], context))
           |> Map.put(:payload, content_config[:webhook_payload] || %{})
           |> Map.put(:webhook_url, channel.webhook_url)
 

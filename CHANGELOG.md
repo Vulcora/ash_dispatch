@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-09-14
+
+### Fixed
+
+- **`:webhook`-transporten kunde inte bära en väg vidare.**
+  `build_inline_content/4`:s `:webhook`-gren läste `title` och `message` (efter
+  0.7.2) men aldrig `action_url`/`action_label`. En deklarerad
+
+      content: [message: "...", action_url: "https://...", action_label: "Öppna demon"]
+
+  blev därmed halvt dekoration: texten kom fram, vägen dit gjorde det inte, och
+  avsändaren hade ingen möjlighet att upptäcka det utom genom att läsa det som
+  levererades. `:in_app` och `:push` har alltid burit nycklarna; `:webhook` var
+  den enda transporten med en mottagare som kan rendera en knapp och utan
+  förmågan att få en url dit.
+
+  Rapporterat av en konsument som beskrev sina Slack-kanalposter som *"döda
+  notiser"* — laget fick veta att något hänt men kunde inte komma dit.
+
+  `:discord`, `:slack` och `:sms` får nycklarna MEDVETET inte: deras
+  nyttolaster har ingen egen knappform, och en url utan en yta som renderar den
+  är en nyckel som bara ser ut att göra något.
+
+  Vakten `AshDispatch.Transports.InlineContentTextTest` prövar nu båda
+  egenskaperna per gren — att texten läses, och att vägen vidare läses av de
+  transporter som kan visa den. Mutationsprövad: att ta bort raderna fäller två
+  prov.
+
 ## [0.7.2] - 2026-09-14
 
 ### Fixed
