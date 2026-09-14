@@ -1412,6 +1412,22 @@ defmodule AshDispatch.Dispatcher do
             notification_type: get_notification_type(module, context)
           }
 
+        :webhook ->
+          # Samma nycklar som `:in_app`, och av samma skäl: mottagaren
+          # renderar ett KORT. En modulbaserad webhook-händelse kunde till
+          # 0.8.0 bara bidra med `message` — alltså kunde den inte sätta en
+          # rubrik, och inte en väg vidare, hur gärna den än ville.
+          #
+          # Mätt hos en konsument: av sex distinkta kanalposter i produktion
+          # bar EN en rubrik, och noll bar en länk. Det lästes som "ingen har
+          # brytt sig", men vägen fanns inte.
+          %{
+            title: module.notification_title(context, channel),
+            message: module.notification_message(context, channel),
+            action_url: module.action_url(context, channel),
+            action_label: module.action_label(context, channel)
+          }
+
         _ ->
           # For other transports, use basic message
           %{
@@ -1419,7 +1435,19 @@ defmodule AshDispatch.Dispatcher do
           }
       end
 
-    Map.merge(base_content, transport_content)
+    # `extra_content/2` — modulens egna nycklar, för det mottagaren kan
+    # rendera och biblioteket inte känner till.
+    #
+    # Den ligger UNDER transportens egna nycklar med flit: en modul som
+    # returnerar `%{message: ...}` här ska inte kunna tysta
+    # `notification_message/2`, och den som vill byta text har redan en
+    # callback för det. Tillägget är för det som saknas, aldrig för att
+    # skriva om det som finns.
+    extra = EventResolver.extra_content(module, context, channel)
+
+    base_content
+    |> Map.merge(extra)
+    |> Map.merge(transport_content)
   end
 
   defp get_notification_type(module, context) do

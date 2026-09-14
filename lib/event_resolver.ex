@@ -376,6 +376,22 @@ defmodule AshDispatch.EventResolver do
   end
 
   @doc """
+  Modulens EGNA innehållsnycklar — det mottagaren kan rendera och biblioteket
+  inte känner till.
+
+  Default `%{}`. Allt annat än en karta ignoreras: en modul som råkar svara
+  med en lista ska ge ett innehåll utan tillägget, aldrig en kraschad
+  dispatch. En notis som uteblir är dyrare än ett fält som saknas.
+  """
+  @spec extra_content(module(), Context.t(), AshDispatch.Channel.t()) :: map()
+  def extra_content(module, context, channel) do
+    case call_if_exported(module, :extra_content, [context, channel], default: %{}) do
+      extra when is_map(extra) -> extra
+      _ -> %{}
+    end
+  end
+
+  @doc """
   Get HTML body for email (for test modules without templates).
   Returns nil if callback not exported.
   """

@@ -233,6 +233,45 @@ defmodule AshDispatch.Event do
   @callback action_url(context(), channel()) :: String.t() | nil
 
   @doc """
+  Modulens EGNA innehållsnycklar — det mottagaren kan rendera och biblioteket
+  inte känner till.
+
+  ## Varför den finns
+
+  Transporternas innehåll är en sluten lista: `:in_app` bär titel, text och en
+  väg vidare, `:webhook` detsamma, `:email` sina kroppar. Det räcker så länge
+  mottagaren är en notislista. Det räcker inte när mottagaren är en Slack-yta
+  som kan rendera fakta i två kolumner, flera knappar och en ikon — då är
+  varje ny sådan nyckel annars en ändring i biblioteket.
+
+  Returnera en karta. Nycklarna hamnar i `receipt.content` och går vidare i
+  kuvertet som allt annat.
+
+      def extra_content(context, %Channel{audience: :slack_kanal}) do
+        %{
+          slack_ikon: "avtal",
+          slack_falt: [%{etikett: "Belopp", varde: "13 995 kr"}],
+          slack_knappar: [%{text: "Öppna kunden", url: kundlank(context)}]
+        }
+      end
+
+      def extra_content(_context, _channel), do: %{}
+
+  ## Vad den INTE får
+
+  Tillägget läggs UNDER transportens egna nycklar. En modul som returnerar
+  `%{message: ...}` här skriver alltså inte över `notification_message/2` —
+  den som vill byta text har redan en callback för det. Tillägget är för det
+  som saknas, aldrig för att skriva om det som finns.
+
+  Biblioteket VALIDERAR inte innehållet: nycklarna är en överenskommelse
+  mellan avsändaren och mottagaren, och en transport som inte känner igen dem
+  bär dem oförändrade. Mottagaren måste därför tåla skräp — se konsumentens
+  egen ingång.
+  """
+  @callback extra_content(context(), channel()) :: map()
+
+  @doc """
   Prepare additional template assigns.
 
   Return a map that will be available in templates.
@@ -517,6 +556,7 @@ defmodule AshDispatch.Event do
     notification_message: 2,
     action_label: 2,
     action_url: 2,
+    extra_content: 2,
     attachments: 2,
     prepare_template_assigns: 2,
     sample_data: 0,
@@ -703,6 +743,11 @@ defmodule AshDispatch.Event do
       end
 
       @impl true
+      # Inga extra nycklar som default. Den som vill bidra med något
+      # mottagaren kan rendera — fakta, knappar, en ikon — skriver över den.
+      def extra_content(_context, _channel), do: %{}
+
+      @impl true
       def prepare_template_assigns(_context, _channel), do: %{}
 
       @impl true
@@ -837,6 +882,7 @@ defmodule AshDispatch.Event do
                      notification_message: 2,
                      action_label: 2,
                      action_url: 2,
+                     extra_content: 2,
                      prepare_template_assigns: 2,
                      sample_data: 0,
                      counters: 2,
