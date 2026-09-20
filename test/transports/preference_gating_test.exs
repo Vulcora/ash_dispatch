@@ -20,6 +20,7 @@ defmodule AshDispatch.Transports.PreferenceGatingTest do
   alias AshDispatch.Test.TransportReceipt
   alias AshDispatch.Transports.Email
   alias AshDispatch.Transports.InApp
+  alias AshDispatch.Transports.SMS
 
   @opted_out_marketing_user_id "11111111-1111-1111-1111-111111111111"
   @subscribed_user_id "22222222-2222-2222-2222-222222222222"
@@ -121,6 +122,37 @@ defmodule AshDispatch.Transports.PreferenceGatingTest do
       _ = Email.deliver(receipt, ctx.context, channel, ctx.event_config)
 
       refute reload(receipt).status == :skipped
+    end
+  end
+
+  describe "sms transport" do
+    # SMS gatade INTE på preferenser före 0.6.11 — transporten anropade
+    # backenden rakt av. En mottagare som tackat nej fick sitt SMS ändå.
+    test "one fan-out, two recipients: exactly one receipt is gated", ctx do
+      channel = %Channel{transport: :sms, audience: :user}
+
+      opted_out = receipt!(@opted_out_marketing_user_id, :sms, "+46701111111")
+      subscribed = receipt!(@subscribed_user_id, :sms, "+46702222222")
+
+      assert {:ok, gated} = SMS.deliver(opted_out, ctx.context, channel, ctx.event_config)
+      assert gated.status == :skipped
+      assert gated.error_message == "user_opted_out"
+
+      # Den prenumererande når leveransvägen. Köandet kan inte lyckas utan en
+      # Oban-instans; det som prövas är att grinden släppte förbi.
+      _ = SMS.deliver(subscribed, ctx.context, channel, ctx.event_config)
+
+      refute reload(subscribed).status == :skipped
+    end
+
+    test "a receipt without a user_id is never gated (external recipient)", ctx do
+      channel = %Channel{transport: :sms, audience: :user}
+
+      external = receipt!(nil, :sms, "+46703333333")
+
+      _ = SMS.deliver(external, ctx.context, channel, ctx.event_config)
+
+      refute reload(external).status == :skipped
     end
   end
 

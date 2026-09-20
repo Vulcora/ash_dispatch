@@ -1,8 +1,8 @@
 defmodule AshDispatch.Test.TransportReceipt do
   @moduledoc """
   ETS-backed stand-in for `AshDispatch.Resources.DeliveryReceipt.Base`,
-  carrying just the fields and lifecycle actions the transports touch in
-  `deliver/4`.
+  carrying just the fields and lifecycle actions the transports and the
+  send workers touch.
 
   The library test suite has no Repo, so the real (AshPostgres) receipt
   resource can't be exercised here — but the transports only need a
@@ -32,6 +32,9 @@ defmodule AshDispatch.Test.TransportReceipt do
     attribute :content, :map, default: %{}, public?: true
     attribute :error_message, :string, public?: true
     attribute :oban_job_id, :integer, public?: true
+    attribute :provider_id, :string, public?: true
+    attribute :provider_response, :map, public?: true
+    attribute :retry_count, :integer, default: 0, public?: true
     attribute :notification_id, :uuid, public?: true
 
     create_timestamp :inserted_at
@@ -66,9 +69,18 @@ defmodule AshDispatch.Test.TransportReceipt do
       change set_attribute(:status, :scheduled)
     end
 
+    update :mark_sending do
+      change set_attribute(:status, :sending)
+    end
+
     update :mark_sent do
-      accept [:notification_id]
+      accept [:notification_id, :provider_id, :provider_response]
       change set_attribute(:status, :sent)
+    end
+
+    update :mark_failed_permanent do
+      accept [:error_message]
+      change set_attribute(:status, :failed_permanent)
     end
 
     update :mark_failed do
