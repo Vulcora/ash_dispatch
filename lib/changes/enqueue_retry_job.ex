@@ -7,8 +7,6 @@ defmodule AshDispatch.Changes.EnqueueRetryJob do
   """
   use Ash.Resource.Change
 
-  alias AshDispatch.Workers.SendEmail
-
   require Logger
 
   @impl true
@@ -39,28 +37,30 @@ defmodule AshDispatch.Changes.EnqueueRetryJob do
     end)
   end
 
-  defp enqueue_job(%{transport: :email} = receipt) do
-    # new_for_receipt/1 carries the original job's attachments forward —
-    # they only exist in job args, so a bare %{receipt_id: _} job would
-    # resend the mail without them.
-    receipt
-    |> SendEmail.new_for_receipt()
-    |> Oban.insert()
-  end
-
-  defp enqueue_job(%{transport: :in_app} = receipt) do
-    # In-app delivery is synchronous — retry directly
-    case AshDispatch.Transports.InApp.retry_from_receipt(receipt) do
-      :ok -> {:ok, %{id: :direct_retry}}
-      error -> error
-    end
-  end
-
+  # Vilken transport som går att göra om, och hur, bor i
+  # AshDispatch.Transport.Retry — samma lista som cronen i
+  # Workers.RetryFailedDeliveries använder. Två kopior av den listan betydde
+  # att en transport kunde få omförsök från cronen men inte från knapparna.
   defp enqueue_job(%{transport: transport} = receipt) do
-    Logger.warning(
-      "EnqueueRetryJob: Retry not implemented for transport #{transport}, receipt_id=#{receipt.id}"
-    )
+    case AshDispatch.Transport.Retry.strategy(transport) do
+      {:worker, _} ->
+        AshDispatch.Transport.Retry.enqueue_worker(receipt)
 
-    {:error, :transport_not_supported}
+      {:direct, modul} ->
+        # Synkron leverans — görs om direkt. Knappen vill ha ett "jobb" att
+        # rapportera, till skillnad från cronen som vill veta att kvittot
+        # redan är färdighanterat.
+        case modul.retry_from_receipt(receipt) do
+          :ok -> {:ok, %{id: :direct_retry}}
+          error -> error
+        end
+
+      :unsupported ->
+        Logger.warning(
+          "EnqueueRetryJob: Retry not implemented for transport #{transport}, receipt_id=#{receipt.id}"
+        )
+
+        {:error, :transport_not_supported}
+    end
   end
 end
