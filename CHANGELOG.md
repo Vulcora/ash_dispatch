@@ -7,6 +7,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-09-21
+
+### Added
+
+- **SMS går genom kön.** `:email` och `:webhook` köade ett Oban-jobb och satte
+  kvittot `:scheduled`. `:sms` anropade backendens `deliver/4` rakt av —
+  synkront, inne i den `after_action`-hook där dispatchen sker, alltså inne i
+  actionens transaktion. En långsam leverantör höll transaktionen öppen, och
+  `time:` gick inte att använda eftersom det inte fanns något jobb att
+  schemalägga.
+
+  Nu gäller samma form som för e-post, med `AshDispatch.Workers.SendSMS` som
+  spegling av `SendEmail`: kö, `:scheduled`, och därmed `time: {:in, n}` och
+  `{:at, dt}` gratis. Kräver en Oban-kö vid namn `:sms`.
+
+  Samtyckesgrinden kom i 0.8.0 (`Preferences.with_consent`) och ligger kvar
+  ovanför kön — ett kvitto mottagaren tackat nej till ska aldrig bli ett jobb.
+
+  En befintlig backend fortsätter fungera — den anropas bara från workern i
+  stället för från transaktionen. **Men** jobbet bär bara kvitto-id:t, så
+  kontexten den får är rekonstruerad ur kvittot: `event_id` och `audience`
+  stämmer, `data` och `variables` är tomma. En backend som läste `context.data`
+  ska i stället läsa `receipt.content`, som frystes vid skapandet och just
+  därför överlever ett omförsök.
+
+- **`AshDispatch.SMSBackend.Elks`** — 46elks, paketerad som
+  `EmailBackend.Swoosh` är det, bakom den redan optionella `req`-depen.
+  E.164-normalisering, `dryrun`-flagga, och `:req_options` för att kunna
+  stubbas i test. `400`, `401` och `403` markeras `:failed_permanent` direkt:
+  ett feltypat nummer blir inte rätt av fem omförsök, och så länge det ligger
+  kvar som `:failed` fördröjer det bara beskedet till den som ska rätta det.
+
+- **`AshDispatch.SMSBackend.Phone`** — E.164 ur svenska skrivsätt. Egen modul
+  med egen testtabell, för det är den funktionen som avgör om ett SMS når en
+  människa eller tyst går till ingenting.
+
+### Fixed
+
+- **Ett misslyckat SMS gjordes aldrig om.** `Workers.RetryFailedDeliveries`
+  och `Changes.EnqueueRetryJob` kände bara `:email` och `:in_app`; allt annat
+  föll i en catch-all. Följden var inte att kvittot lämnades ifred: `:retry`
+  körde ändå, räknade upp `retry_count`, och köandet misslyckades — tillbaka
+  till `:failed`. Fem cronvarv och 75 minuter senare stod det
+  `:failed_permanent`, utan att ha skickats om en enda gång. `:retry`,
+  `:reopen` och `:send_now` i admin avvisade det av samma skäl, så det fanns
+  ingen väg tillbaka alls.
+
+  Skilt från en transport som saknar worker med flit: `:broadcast` och
+  `:oban` kvitteras inte, och har därför inget att göra om.
+
+- **Kartan över vad som går att göra om låg i två exemplar.** Samma tre
+  grenar i cronen och i knapparna, så en transport kunde få omförsök från den
+  ena men inte den andra. Den bor nu i `AshDispatch.Transport.Retry`, som
+  svarar på vilken strategi en transport har. Resultathanteringen ligger kvar
+  hos anroparen, för den skiljer sig verkligen: cronen vill veta att kvittot
+  redan är färdighanterat, knappen vill ha ett jobb-id att spara.
+
+### Note
+
+`recipient_fields` måste ha en `:sms`-post, annars kastar **varje** mottagare
+`"No identifier field configured for sms transport"` — och felet säger inte
+var man ska leta:
+
+```elixir
+config :ash_dispatch,
+  recipient_fields: [
+    sms: [identifier: :phone, name: [:display_name, :name]]
+  ]
+```
+
 ## [0.8.1] - 2026-09-20
 
 ### Added

@@ -138,11 +138,13 @@ defmodule AshDispatch.Transports.PreferenceGatingTest do
       assert gated.status == :skipped
       assert gated.error_message == "user_opted_out"
 
-      # Den prenumererande når leveransvägen. Köandet kan inte lyckas utan en
-      # Oban-instans; det som prövas är att grinden släppte förbi.
+      # Den prenumererande når leveransvägen. Utan konfigurerad backend blir
+      # kvittot ändå :skipped — men av ett ANNAT skäl, och det är skälet
+      # testet handlar om. Att bara kräva "inte :skipped" hade slutat skilja
+      # en gindad mottagare från en osatt konfiguration.
       _ = SMS.deliver(subscribed, ctx.context, channel, ctx.event_config)
 
-      refute reload(subscribed).status == :skipped
+      refute reload(subscribed).error_message == "user_opted_out"
     end
 
     test "a receipt without a user_id is never gated (external recipient)", ctx do
@@ -152,7 +154,7 @@ defmodule AshDispatch.Transports.PreferenceGatingTest do
 
       _ = SMS.deliver(external, ctx.context, channel, ctx.event_config)
 
-      refute reload(external).status == :skipped
+      refute reload(external).error_message == "user_opted_out"
     end
   end
 
