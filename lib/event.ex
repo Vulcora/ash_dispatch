@@ -213,6 +213,41 @@ defmodule AshDispatch.Event do
   @callback from(context(), channel()) :: {String.t(), String.t()}
 
   @doc """
+  Svarsadressen för mejlet — `Reply-To` — eller `nil` för ingen.
+
+  ## Varför den finns
+
+  Avsändaren (`from/2`) är huset: en adress som ofta inte tar emot svar. Men
+  ett mejl som är SKRIVET av en människa — "vi flyttar vårt möte", "här är din
+  offert" — bjuder in till ett svar, och utan ett svarshuvud landar det i
+  `noreply@` och läses av ingen.
+
+  Fram till 0.8.1 fanns ingen väg alls. En konsument löste det med en proxy
+  framför Swoosh-backenden som slog upp avsändaren i databasen på mottagare
+  plus ämne, per mejl — alltså en andra statusmaskin bredvid bibliotekets,
+  och en läsning per utskick. Det är ett symptom på en saknad callback, inte
+  en design.
+
+  ## Form
+
+      def reply_to(context, %Channel{transport: :email}) do
+        context.data.meeting.user.email
+      end
+
+      def reply_to(_context, _channel), do: nil
+
+  Default är `nil`, alltså dagens beteende. Allt annat än en sträng ignoreras:
+  ett mejl utan svarshuvud är billigare än ett mejl som inte går iväg.
+
+  Värdet bärs i `receipt.content` och inte bara i jobbets args. Två skäl: ett
+  omförsök bygger sina args ur kvittot (`SendEmail.new_for_receipt/1`) och
+  skulle annars tappa huvudet — samma fälla som bilagorna redan har en
+  särskild hantering för — och fältet blir läsbart i efterhand, så en
+  konsument kan MÄTA att svarsvägen faktiskt sattes.
+  """
+  @callback reply_to(context(), channel()) :: String.t() | nil
+
+  @doc """
   In-app notification title.
   """
   @callback notification_title(context(), channel()) :: String.t()
@@ -552,6 +587,7 @@ defmodule AshDispatch.Event do
     notification_type: 1,
     subject: 2,
     from: 2,
+    reply_to: 2,
     notification_title: 2,
     notification_message: 2,
     action_label: 2,
@@ -743,6 +779,11 @@ defmodule AshDispatch.Event do
       end
 
       @impl true
+      # Ingen svarsadress som default — mejlet ser ut som före 0.8.1. Den som
+      # skriver ett mejl i en människas namn skriver över den.
+      def reply_to(_context, _channel), do: nil
+
+      @impl true
       # Inga extra nycklar som default. Den som vill bidra med något
       # mottagaren kan rendera — fakta, knappar, en ikon — skriver över den.
       def extra_content(_context, _channel), do: %{}
@@ -878,6 +919,7 @@ defmodule AshDispatch.Event do
                      notification_type: 1,
                      subject: 2,
                      from: 2,
+                     reply_to: 2,
                      notification_title: 2,
                      notification_message: 2,
                      action_label: 2,

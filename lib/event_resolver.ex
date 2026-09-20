@@ -376,6 +376,22 @@ defmodule AshDispatch.EventResolver do
   end
 
   @doc """
+  Mejlets svarsadress, eller `nil`.
+
+  Default `nil` — alltså inget `Reply-To`-huvud, precis som före 0.8.1. Allt
+  som inte är en icke-tom sträng behandlas som `nil`: en modul som råkar svara
+  med en tupel ska ge ett mejl utan svarshuvud, aldrig ett mejl som inte går
+  iväg.
+  """
+  @spec reply_to(module(), Context.t(), AshDispatch.Channel.t()) :: String.t() | nil
+  def reply_to(module, context, channel) do
+    case call_if_exported(module, :reply_to, [context, channel], default: nil) do
+      value when is_binary(value) and value != "" -> value
+      _ -> nil
+    end
+  end
+
+  @doc """
   Modulens EGNA innehållsnycklar — det mottagaren kan rendera och biblioteket
   inte känner till.
 

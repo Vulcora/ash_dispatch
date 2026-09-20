@@ -75,6 +75,7 @@ defmodule AshDispatch.Workers.SendEmail do
     unique: [keys: [:receipt_id], states: [:available, :scheduled, :executing]]
 
   alias AshDispatch.Config
+  alias AshDispatch.ContentMap
   alias AshDispatch.ReceiptStatus
 
   require Logger
@@ -146,6 +147,25 @@ defmodule AshDispatch.Workers.SendEmail do
   end
 
   defp maybe_put_original_attachments(args, _receipt), do: args
+
+  @doc false
+  # Svarsadressen för det här utskicket: jobbets args först, kvittot sedan.
+  #
+  # Kvittot är inte bara en bekvämlighet. `new_for_receipt/1` bygger ett
+  # omförsök ur kvittot och bär INGA innehålls-args alls — bara `receipt_id`
+  # och bilagorna — så ett `reply_to` som bara levde i det första jobbets args
+  # hade tappats vid varje retry och vid varje "skicka nu". Det är samma fälla
+  # som bilagorna har en egen hantering för; här löses den av att värdet redan
+  # står i `receipt.content`.
+  #
+  # `ContentMap.get_content/2` och inte `get_in/2`: innehållet har varit genom
+  # JSONB och nyckeln kan vara en sträng.
+  def reply_to_for(args, receipt) do
+    case args["reply_to"] do
+      value when is_binary(value) and value != "" -> value
+      _ -> ContentMap.get_content(Map.get(receipt, :content), :reply_to)
+    end
+  end
 
   # Private functions
 
@@ -221,6 +241,7 @@ defmodule AshDispatch.Workers.SendEmail do
       to: args["recipient_email"] || receipt.recipient,
       from: from,
       subject: args["subject"] || receipt.subject,
+      reply_to: reply_to_for(args, receipt),
       html_body: args["html_body"] || receipt.body_html,
       text_body: args["text_body"] || receipt.body_text,
       attachments: decode_attachments(args["attachments"])

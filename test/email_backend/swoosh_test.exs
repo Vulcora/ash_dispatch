@@ -23,6 +23,59 @@ defmodule AshDispatch.EmailBackend.SwooshTest do
     :ok
   end
 
+  describe "send_email/1 — reply_to" do
+    test "sätter Reply-To när params bär en adress" do
+      capture_log(fn ->
+        assert {:ok, _} =
+                 SwooshBackend.send_email(%{
+                   to: "kund@example.com",
+                   from: {"Siteflow", "noreply@example.com"},
+                   reply_to: "saljaren@example.com",
+                   subject: "Mötet har flyttats",
+                   html_body: "<p>Ny tid</p>",
+                   text_body: "Ny tid"
+                 })
+      end)
+
+      assert_email_sent(fn email ->
+        assert email.reply_to == {"", "saljaren@example.com"}
+      end)
+    end
+
+    test "utan reply_to byggs mejlet som före 0.8.1 — inget huvud" do
+      capture_log(fn ->
+        assert {:ok, _} =
+                 SwooshBackend.send_email(%{
+                   to: "kund@example.com",
+                   from: "noreply@example.com",
+                   subject: "Utan svarsväg",
+                   html_body: "<p>x</p>",
+                   text_body: "x"
+                 })
+      end)
+
+      assert_email_sent(fn email -> assert email.reply_to == nil end)
+    end
+
+    test "nil och tom sträng behandlas likadant: inget huvud" do
+      for varde <- [nil, ""] do
+        capture_log(fn ->
+          assert {:ok, _} =
+                   SwooshBackend.send_email(%{
+                     to: "kund@example.com",
+                     from: "noreply@example.com",
+                     reply_to: varde,
+                     subject: "Tomt",
+                     html_body: "<p>x</p>",
+                     text_body: "x"
+                   })
+        end)
+
+        assert_email_sent(fn email -> assert email.reply_to == nil end)
+      end
+    end
+  end
+
   describe "send_email/1" do
     test "sends email with string from address" do
       capture_log(fn ->

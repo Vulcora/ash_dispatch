@@ -1399,6 +1399,10 @@ defmodule AshDispatch.Dispatcher do
           %{
             subject: subject,
             from: %{"name" => from_name, "email" => from_email},
+            # `nil` när eventet inte har någon svarsväg — nyckeln bärs ändå,
+            # så ett kvitto kan läsas i efterhand utan att skilja "ingen
+            # svarsadress" från "biblioteket var äldre än fältet".
+            reply_to: EventResolver.reply_to(module, context, channel),
             html_body: html_body,
             text_body: text_body
           }
