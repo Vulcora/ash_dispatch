@@ -122,6 +122,13 @@ defmodule AshDispatch.EmailBackend.Swoosh do
       |> html_body(html)
       |> text_body(text)
       |> then(fn built ->
+        # `nil` (eller en tom sträng) ⇒ inget huvud alls, som före 0.8.1.
+        case params[:reply_to] do
+          value when is_binary(value) and value != "" -> reply_to(built, value)
+          _ -> built
+        end
+      end)
+      |> then(fn built ->
         params
         |> Map.get(:attachments, [])
         |> Enum.reduce(built, fn a, acc ->

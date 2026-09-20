@@ -42,6 +42,50 @@ defmodule AshDispatch.EventResolverTest do
     end
   end
 
+  describe "reply_to/3" do
+    test "returnerar modulens adress" do
+      defmodule MedSvarsvag do
+        def reply_to(_context, _channel), do: "saljaren@example.com"
+      end
+
+      assert EventResolver.reply_to(MedSvarsvag, ctx(), kanal()) == "saljaren@example.com"
+    end
+
+    test "en modul utan callbacken ger nil — dagens beteende före 0.8.1" do
+      defmodule UtanSvarsvag do
+      end
+
+      assert EventResolver.reply_to(UtanSvarsvag, ctx(), kanal()) == nil
+    end
+
+    # Det här är den bärande halvan: ett mejl som inte går iväg är dyrare än
+    # ett mejl utan svarshuvud.
+    test "skräp behandlas som nil i stället för att fälla utskicket" do
+      defmodule SkrapSvarsvag do
+        def reply_to(_context, _channel), do: {"Namn", "a@b.se"}
+      end
+
+      defmodule TomSvarsvag do
+        def reply_to(_context, _channel), do: ""
+      end
+
+      assert EventResolver.reply_to(SkrapSvarsvag, ctx(), kanal()) == nil
+      assert EventResolver.reply_to(TomSvarsvag, ctx(), kanal()) == nil
+    end
+
+    @tag :capture_log
+    test "en callback som kastar ger nil, inte ett kraschat utskick" do
+      defmodule KastandeSvarsvag do
+        def reply_to(_context, _channel), do: raise("boom")
+      end
+
+      assert EventResolver.reply_to(KastandeSvarsvag, ctx(), kanal()) == nil
+    end
+
+    defp ctx, do: %Context{event_id: "test", data: %{}, metadata: %{}}
+    defp kanal, do: %Channel{transport: :email, audience: :customer}
+  end
+
   describe "exports?/3" do
     test "returns true when function is exported" do
       defmodule ExportsTest do

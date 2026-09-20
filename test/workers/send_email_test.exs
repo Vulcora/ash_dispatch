@@ -34,6 +34,38 @@ defmodule AshDispatch.Workers.SendEmailTest do
     end
   end
 
+  describe "reply_to_for/2 — svarsvägen överlever ett omförsök" do
+    test "jobbets args vinner när de bär en adress" do
+      assert SendEmail.reply_to_for(
+               %{"reply_to" => "ur-jobbet@example.com"},
+               %{content: %{reply_to: "ur-kvittot@example.com"}}
+             ) == "ur-jobbet@example.com"
+    end
+
+    # Det bärande provet. `new_for_receipt/1` bär inga innehålls-args, så utan
+    # fallbacken hade varje retry och varje "skicka nu" gått ut UTAN svarsväg —
+    # tyst, och bara på omförsöket.
+    test "utan args läses kvittot — och det är vad ett omförsök har" do
+      assert SendEmail.reply_to_for(%{}, %{content: %{reply_to: "saljaren@example.com"}}) ==
+               "saljaren@example.com"
+
+      # Samma sak när innehållet varit genom JSONB och nyckeln är en sträng.
+      assert SendEmail.reply_to_for(%{}, %{content: %{"reply_to" => "saljaren@example.com"}}) ==
+               "saljaren@example.com"
+    end
+
+    test "ett jobb från före 0.8.1 ger nil — alltså dagens beteende" do
+      assert SendEmail.reply_to_for(%{}, %{content: %{}}) == nil
+      assert SendEmail.reply_to_for(%{}, %{content: nil}) == nil
+      assert SendEmail.reply_to_for(%{}, %{}) == nil
+    end
+
+    test "en tom sträng i args faller igenom till kvittot" do
+      assert SendEmail.reply_to_for(%{"reply_to" => ""}, %{content: %{reply_to: "a@b.se"}}) ==
+               "a@b.se"
+    end
+  end
+
   describe "attachment round-trip (event → transport args → worker)" do
     setup do
       # AshDispatch.Test.Events.OrderCreated ("order.created") implements

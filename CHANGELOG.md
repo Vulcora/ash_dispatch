@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-09-20
+
+### Added
+
+- **`reply_to/2`** — ett mejl kan äntligen bära ett `Reply-To`-huvud.
+
+  Avsändaren (`from/2`) är huset: en adress som ofta inte tar emot svar. Men
+  ett mejl som är SKRIVET av en människa — *"vi flyttar vårt möte"*, *"här är
+  din offert"* — bjuder in till ett svar, och utan svarshuvud landar det i
+  `noreply@` och läses av ingen.
+
+      def reply_to(context, %Channel{transport: :email}) do
+        context.data.meeting.user.email
+      end
+
+      def reply_to(_context, _channel), do: nil
+
+  Default är `nil`, alltså exakt dagens mejl. Allt som inte är en icke-tom
+  sträng behandlas som `nil`, och en callback som kastar fäller inte
+  utskicket: ett mejl utan svarshuvud är billigare än ett mejl som inte går
+  iväg.
+
+  **Varför den bärs i `receipt.content` och inte bara i jobbets args.**
+  `SendEmail.new_for_receipt/1` bygger ett omförsök — och varje *skicka nu* —
+  ur KVITTOT, och bär inga innehålls-args alls. Ett `reply_to` som bara levde
+  i det första jobbets args hade därför tappats vid varje retry, tyst och bara
+  på omförsöket. Det är samma fälla som bilagorna redan har en särskild
+  hantering för (`maybe_put_original_attachments/2`); här löses den av att
+  värdet står i kvittot. Bonus: fältet går att LÄSA i efterhand, så en
+  konsument kan mäta att svarsvägen faktiskt sattes i stället för att anta det.
+
+  Gamla köade jobb saknar nyckeln, får `nil`, och beter sig som före
+  uppgraderingen. `AshDispatch.Workers.SendEmailTest` bevisar båda riktningarna.
+
+  **Varför den behövdes.** En konsument hade löst det med en proxy framför
+  Swoosh-backenden som slog upp avsändaren i databasen på mottagare plus ämne,
+  per mejl — alltså en andra statusmaskin bredvid bibliotekets, och en läsning
+  per utskick. Det är ett symptom på en saknad callback, inte en design.
+
 ## [0.8.0] - 2026-09-14
 
 ### Added
