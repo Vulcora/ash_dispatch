@@ -94,7 +94,16 @@ replay window) — or a plug — fixes every consumer with one upgrade.
 
 Fix: implement or delete, and align the docs.
 
-## 6. `use AshDispatch.Setup` is a degraded second implementation
+## 6. `use AshDispatch.Setup` is a degraded second implementation — RESOLVED in 0.8.4
+
+Rebuilt as a thin wrapper over `DeliveryReceipt.Base` instead of a hand-kept
+copy, so there is one implementation again. It also turned out never to have
+compiled: the resource body was spliced into the domain module instead of
+being passed to `Module.create/3`, and it pointed `belongs_to :notification`
+at the docs-only placeholder `AshDispatch.Resources.Notification`. It now
+requires `:notification_resource`. Original finding kept below for context.
+
+### Original finding
 
 No `:slack` transport, constrained audiences, missing source/locale fields,
 missing `get_by_provider_id`/`send_now`/`record_webhook_event`, and a

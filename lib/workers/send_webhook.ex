@@ -76,6 +76,9 @@ defmodule AshDispatch.Workers.SendWebhook do
 
   require Logger
 
+  # req is optional; `send_webhook/1` returns an error when it is missing.
+  @compile {:no_warn_undefined, Req}
+
   @doc """
   Processes webhook sending job.
 
@@ -129,12 +132,12 @@ defmodule AshDispatch.Workers.SendWebhook do
         ReceiptStatus.mark_failed(receipt, reason)
 
         if permanent?(reason) do
-          # `{:cancel, _}` stoppar Oban-retryn. Ett 4xx betyder att MOTTAGAREN
-          # rejected THIS request — an unknown channel, a revoked
-          # webhook-URL, en mottagare som inte finns. Att skicka om exakt samma
-          # request five times changes nothing; it only hides the failure
-          # behind a queue that looks busy. The receipt is already `failed`,
-          # and that is the answer.
+          # `{:cancel, _}` stops Oban's retries. A 4xx means the RECEIVER
+          # rejected THIS request — an unknown channel, a revoked webhook URL,
+          # a recipient that doesn't exist. Sending the exact same request
+          # five times changes nothing; it only hides the failure behind a
+          # queue that looks busy. The receipt is already `failed`, and that
+          # is the answer.
           Logger.warning(
             "Webhook permanently rejected for receipt #{receipt.id}: #{inspect(reason)}"
           )
@@ -187,17 +190,28 @@ defmodule AshDispatch.Workers.SendWebhook do
   def body_option(%{"raw_body" => raw}) when is_binary(raw), do: [body: raw]
   def body_option(args), do: [json: args["payload"]]
 
+  # req is optional. Without it every webhook-based transport (:webhook,
+  # :discord, :slack) fails here with a message that says why, the same way
+  # the Elks SMS backend does, rather than with an UndefinedFunctionError.
   defp send_webhook(args) do
+    if Code.ensure_loaded?(Req) do
+      post_webhook(args)
+    else
+      {:error, "req is missing — add {:req, \"~> 0.5\"} to send webhooks"}
+    end
+  end
+
+  defp post_webhook(args) do
     webhook_url = args["webhook_url"]
     payload = args["payload"]
     headers = args["headers"] || %{"Content-Type" => "application/json"}
 
-    # `raw_body` ar en REDAN serialiserad kropp. Den finns for att en signerad
-    # webhook maste skicka exakt de bytes som signerades: later vi HTTP-klienten
-    # koda om en map kan nyckelordning och flyttalsformat andras, och signaturen
-    # blir fel — ibland, vilket ar varre an alltid. Saknas den beter sig workern
-    # precis som forr (`json: payload`), sa Discord- och Slack-transporterna ar
-    # oberorda.
+    # `raw_body` is an ALREADY serialised body. It exists because a signed
+    # webhook must send exactly the bytes that were signed: if the HTTP client
+    # re-encodes a map, key order and float formatting can change and the
+    # signature breaks — sometimes, which is worse than always. Without it the
+    # worker behaves as before (`json: payload`), so the Discord and Slack
+    # transports are unaffected.
     body_option = body_option(args)
 
     Logger.debug("""

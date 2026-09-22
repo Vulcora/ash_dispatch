@@ -126,7 +126,7 @@ mix ash.migrate
 ```elixir
 def deps do
   [
-    {:ash_dispatch, "~> 0.5.0"}
+    {:ash_dispatch, "~> 0.8"}
   ]
 end
 ```
