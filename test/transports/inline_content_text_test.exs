@@ -34,46 +34,46 @@ defmodule AshDispatch.Transports.InlineContentTextTest do
 
   # Transports whose content IS a body of text. `:email` is deliberately out:
   # it carries `subject` + `html_body` + `text_body` and has no `message`.
-  @textbarande [":in_app", ":discord", ":slack", ":sms", ":webhook", ":push"]
+  @text_bearing [":in_app", ":discord", ":slack", ":sms", ":webhook", ":push"]
 
-  defp grenar do
+  defp branches do
     [_, body] = String.split(@dispatcher, "defp build_inline_content(", parts: 2)
     [body, _] = String.split(body, "\n  defp ", parts: 2)
 
     # Split on the branch heads so each transport is checked on its own. A test
     # reading the whole body would stay green as long as ANY branch read it.
     Regex.split(~r/^\s{8}(?=:[a-z_]+ ->)/m, body, trim: true)
-    |> Enum.map(fn del ->
-      case Regex.run(~r/^\s*(:[a-z_]+) ->/, del) do
-        [_, namn] -> {namn, del}
-        _ -> {nil, del}
+    |> Enum.map(fn part ->
+      case Regex.run(~r/^\s*(:[a-z_]+) ->/, part) do
+        [_, name] -> {name, part}
+        _ -> {nil, part}
       end
     end)
-    |> Enum.filter(fn {namn, _} -> namn != nil end)
+    |> Enum.filter(fn {name, _} -> name != nil end)
     |> Map.new()
   end
 
-  test "provet hittar grenarna alls" do
+  test "the split finds the branches at all" do
     # Without this line the whole file goes green because the regex stopped
     # matching.
-    funna = Map.keys(grenar())
-    assert length(funna) >= 6, "hittade bara #{inspect(funna)}"
-    for t <- @textbarande, do: assert(Map.has_key?(grenar(), t), "grenen #{t} saknas")
+    found = Map.keys(branches())
+    assert length(found) >= 6, "found only #{inspect(found)}"
+    for t <- @text_bearing, do: assert(Map.has_key?(branches(), t), "branch #{t} is missing")
   end
 
   test "GUARD: every body-carrying transport reads content_config[:message]" do
-    g = grenar()
+    g = branches()
 
-    utan =
-      Enum.filter(@textbarande, fn t ->
+    missing =
+      Enum.filter(@text_bearing, fn t ->
         not (g[t] =~ "content_config[:message]")
       end)
 
-    assert utan == [],
+    assert missing == [],
            """
            These transport branches build content without reading the body from the DSL:
 
-             #{Enum.join(utan, ", ")}
+             #{Enum.join(missing, ", ")}
 
            A `content: [message: ...]` on such a channel becomes DECORATION. If
            the event has a module, the generated default from
@@ -93,21 +93,21 @@ defmodule AshDispatch.Transports.InlineContentTextTest do
   end
 
   test "GUARD: the body is set with maybe_put, never as an unconditional key" do
-    # `interpolate(nil, _)` ger `nil`. En literal `message:` i map-syntax
+    # `interpolate(nil, _)` returns `nil`. A literal `message:` in map syntax
     # therefore writes `nil` over the module's callback text in hybrid mode —
     # the same class of bug as above, in the other direction.
-    g = grenar()
+    g = branches()
 
-    fel =
-      Enum.filter(@textbarande, fn t ->
+    offenders =
+      Enum.filter(@text_bearing, fn t ->
         Regex.match?(~r/^\s*message:\s/m, g[t])
       end)
 
-    assert fel == [],
+    assert offenders == [],
            """
            These branches set `message:` unconditionally:
 
-             #{Enum.join(fel, ", ")}
+             #{Enum.join(offenders, ", ")}
 
            When the DSL omits the body the value is `nil`, and `Map.merge` in
            `build_content/5` then overwrites the module's callback with nothing.
@@ -116,12 +116,12 @@ defmodule AshDispatch.Transports.InlineContentTextTest do
   end
 
   test "webhook carries the title too — a receiver rendering a card needs it" do
-    assert grenar()[":webhook"] =~ "content_config[:title]"
+    assert branches()[":webhook"] =~ "content_config[:title]"
   end
 
   test "webhook keeps payload and url" do
     # The fix must not have dropped what the branch already did.
-    g = grenar()[":webhook"]
+    g = branches()[":webhook"]
     assert g =~ "content_config[:webhook_payload]"
     assert g =~ "channel.webhook_url"
   end
@@ -130,18 +130,19 @@ defmodule AshDispatch.Transports.InlineContentTextTest do
   # and `:sms` are deliberately out: their payloads have no button shape of
   # their own, and a url without a surface that shows it is a key that only
   # looks like it does something.
-  @vagbarande [":in_app", ":webhook", ":push"]
+  @action_bearing [":in_app", ":webhook", ":push"]
 
   test "GUARD: every transport with a way onward reads content_config[:action_url]" do
-    g = grenar()
+    g = branches()
 
-    utan = Enum.filter(@vagbarande, fn t -> not (g[t] =~ "content_config[:action_url]") end)
+    missing =
+      Enum.filter(@action_bearing, fn t -> not (g[t] =~ "content_config[:action_url]") end)
 
-    assert utan == [],
+    assert missing == [],
            """
            These branches build content without reading the way onward from the DSL:
 
-             #{Enum.join(utan, ", ")}
+             #{Enum.join(missing, ", ")}
 
            A declared `action_url:` then becomes DECORATION: the recipient
            learns something happened but has no way to get there, and the
@@ -152,6 +153,6 @@ defmodule AshDispatch.Transports.InlineContentTextTest do
   end
 
   test "webhook carries the button label too — a url without words becomes a button named \"Open\"" do
-    assert grenar()[":webhook"] =~ "content_config[:action_label]"
+    assert branches()[":webhook"] =~ "content_config[:action_label]"
   end
 end

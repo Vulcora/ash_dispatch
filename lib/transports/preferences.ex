@@ -80,8 +80,8 @@ defmodule AshDispatch.Transports.Preferences do
     # cost of being wrong about it.
     if Config.preference_provider() &&
          Config.user_preference() == AshDispatch.UserPreference.Default do
-      if not :persistent_term.get({__MODULE__, :varnat}, false) do
-        :persistent_term.put({__MODULE__, :varnat}, true)
+      if not :persistent_term.get({__MODULE__, :warned}, false) do
+        :persistent_term.put({__MODULE__, :warned}, true)
 
         Logger.warning("""
         ash_dispatch: :preference_provider is configured but :user_preference is not.

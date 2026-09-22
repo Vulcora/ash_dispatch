@@ -17,13 +17,13 @@ defmodule AshDispatch.RecipientExtractorReadableErrorTest do
   alias AshDispatch.Event.RecipientExtractor
 
   setup do
-    tidigare = Application.get_env(:ash_dispatch, :recipient_fields)
+    previous = Application.get_env(:ash_dispatch, :recipient_fields)
 
     Application.put_env(:ash_dispatch, :recipient_fields, email: [identifier: :email])
 
     on_exit(fn ->
-      if tidigare,
-        do: Application.put_env(:ash_dispatch, :recipient_fields, tidigare),
+      if previous,
+        do: Application.put_env(:ash_dispatch, :recipient_fields, previous),
         else: Application.delete_env(:ash_dispatch, :recipient_fields)
     end)
 
@@ -31,29 +31,29 @@ defmodule AshDispatch.RecipientExtractorReadableErrorTest do
   end
 
   test "a recipient that is a plain map gives a READABLE error, not KeyError" do
-    mottagare = %{id: "abc", email: nil, display_name: "Kedjan"}
+    recipient = %{id: "abc", email: nil, display_name: "Acme"}
 
-    fel =
+    error =
       assert_raise RuntimeError, fn ->
-        RecipientExtractor.extract_identifier(mottagare, :email, :user)
+        RecipientExtractor.extract_identifier(recipient, :email, :user)
       end
 
-    meddelande = Exception.message(fel)
+    message = Exception.message(error)
 
     # What is actually needed to understand the failure: which field, which
-    # transport, och vad mottagaren hade.
-    assert meddelande =~ ":email"
-    assert meddelande =~ "email transport"
-    assert meddelande =~ "Available keys"
-    refute meddelande =~ "KeyError"
+    # transport, and what the recipient had.
+    assert message =~ ":email"
+    assert message =~ "email transport"
+    assert message =~ "Available keys"
+    refute message =~ "KeyError"
   end
 
-  test "och en struct beskrivs fortfarande med sitt namn" do
-    fel =
+  test "and a struct is still described by its name" do
+    error =
       assert_raise RuntimeError, fn ->
         RecipientExtractor.extract_identifier(%URI{}, :email, :user)
       end
 
-    assert Exception.message(fel) =~ "URI"
+    assert Exception.message(error) =~ "URI"
   end
 end
