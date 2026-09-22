@@ -74,11 +74,11 @@ defmodule AshDispatch.Transport.RegistryTest do
   end
 
   describe "receipted_atoms/0" do
-    # Kvitto-resursens `one_of`-constraint läser den här listan. Den var
-    # tidigare hårdkodad på två ställen som glidit isär (setup.ex saknade
-    # `:slack`), så en ny transport kunde producera kvitton som resursen
-    # vägrade ta emot.
-    test "innehåller varje transport som faktiskt skapar ett kvitto" do
+    # The receipt resource's `one_of` constraint reads this list. It used to be
+    # hardcoded in two places that had drifted apart (setup.ex was missing
+    # `:slack`), so a new transport could produce receipts the resource refused
+    # to accept.
+    test "contains every transport that actually creates a receipt" do
       assert Registry.receipted_atoms() == [
                :discord,
                :email,
@@ -90,18 +90,18 @@ defmodule AshDispatch.Transport.RegistryTest do
              ]
     end
 
-    test "utesluter de lättviktiga transporterna" do
+    test "excludes the lightweight transports" do
       refute :broadcast in Registry.receipted_atoms()
       refute :oban in Registry.receipted_atoms()
     end
 
-    test "är exakt registret minus skip_receipt", %{} do
-      förväntat =
+    test "is exactly the registry minus skip_receipt", %{} do
+      expected =
         Registry.atoms()
         |> Enum.reject(&Registry.skip_receipt?/1)
         |> Enum.sort()
 
-      assert Registry.receipted_atoms() == förväntat
+      assert Registry.receipted_atoms() == expected
     end
   end
 

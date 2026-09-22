@@ -546,9 +546,9 @@ defmodule AshDispatch.Dispatcher do
       :skip ->
         {:ok, :skipped_optional}
 
-      # Den här mottagaren gick inte att nå. Ett FEL på raden, inte på
-      # kanalen — `do_dispatch_channel/3` räknar redan "minst en lyckades",
-      # så resten av mottagarna går igenom.
+      # This recipient could not be reached. An error for THIS row, not for
+      # the channel — `do_dispatch_channel/3` already counts "at least one
+      # succeeded", so the remaining recipients still go through.
       :unreachable ->
         {:error, :recipient_unreachable}
 
@@ -666,7 +666,7 @@ defmodule AshDispatch.Dispatcher do
         # partial failure and returns success when at least one dispatch
         # worked. One unreachable recipient must cost exactly one recipient.
         #
-        # Seen in magasin 2026-09-02: an audience resolved to the buyer plus
+        # Seen at a consumer on 2026-09-02: an audience resolved to the buyer plus
         # their company, the company was a login-less grouping row with no
         # email, and the customer's order confirmation was never created. The
         # buyer had a perfectly good address; they lost their letter to
@@ -1026,9 +1026,9 @@ defmodule AshDispatch.Dispatcher do
           |> maybe_put(:action_label, interpolate(content_config[:action_label], context))
 
         :discord ->
-          # `maybe_put` och inte en literal nyckel: `interpolate(nil, _)` ger
-          # `nil`, och en `%{message: nil}` hade skrivit över modulens
-          # callback-text med ingenting i hybridläget. Se `:webhook` nedan.
+          # `maybe_put` rather than a literal key: `interpolate(nil, _)`
+          # returns `nil`, and a `%{message: nil}` would overwrite the module
+          # callback's text with nothing in hybrid mode. See `:webhook` below.
           %{}
           |> maybe_put(
             :message,
@@ -1040,9 +1040,9 @@ defmodule AshDispatch.Dispatcher do
           |> Map.put(:webhook_url, channel.webhook_url)
 
         :slack ->
-          # `maybe_put` och inte en literal nyckel: `interpolate(nil, _)` ger
-          # `nil`, och en `%{message: nil}` hade skrivit över modulens
-          # callback-text med ingenting i hybridläget. Se `:webhook` nedan.
+          # `maybe_put` rather than a literal key: `interpolate(nil, _)`
+          # returns `nil`, and a `%{message: nil}` would overwrite the module
+          # callback's text with nothing in hybrid mode. See `:webhook` below.
           %{}
           |> maybe_put(
             :message,
@@ -1054,7 +1054,7 @@ defmodule AshDispatch.Dispatcher do
           |> Map.put(:webhook_url, channel.webhook_url)
 
         :sms ->
-          # Se `:discord` ovan om varför `maybe_put`.
+          # See `:discord` above for why `maybe_put`.
           %{}
           |> maybe_put(
             :message,
@@ -1065,37 +1065,39 @@ defmodule AshDispatch.Dispatcher do
           )
 
         :webhook ->
-          # Texten läses HÄR också, precis som i varje annan transport.
+          # The body is read HERE too, exactly as in every other transport.
           #
-          # Den här grenen var den enda som inte gjorde det, och följden var
-          # tyst: ett event med en modul faller tillbaka på modulens
-          # `notification_message/2`, vars genererade default är
-          # "You have a new notification". Merge-ordningen i `build_content/5`
-          # låter modulens värde stå kvar för varje nyckel inline INTE sätter
-          # — så en deklarerad `content: [message: ...]` på en
-          # `transport: :webhook`-kanal blev dekoration, och mottagaren fick
-          # platshållaren med rätt form och fel innehåll.
+          # This branch was the only one that did not, and the consequence was
+          # silent: an event with a module falls back on the module's
+          # `notification_message/2`, whose generated default is "You have a
+          # new notification". The merge order in `build_content/5` lets the
+          # module's value stand for every key inline content does NOT set — so
+          # a declared `content: [message: ...]` on a `transport: :webhook`
+          # channel was decoration, and the recipient got the placeholder: the
+          # right shape with the wrong content.
           #
-          # Mätt hos en konsument innan fixen: 41 av 41 levererade
-          # webhook-kvitton bar platshållaren, fördelade på nio deklarerade
-          # kanaler. Ingen av texterna hade någonsin nått fram.
+          # Measured at a consumer before the fix: 41 of 41 delivered webhook
+          # receipts carried the placeholder, across nine declared channels.
+          # None of the written text had ever arrived.
           #
-          # `maybe_put` och inte `Map.put`: saknas texten i DSL:en ska
-          # modulens callback fortsätta vinna (hybridläget). Jämför `:discord`
-          # och `:slack` ovan, som skriver `message:` ovillkorligt och därmed
-          # kan skriva över ett modulvärde med `nil`.
+          # `maybe_put` rather than `Map.put`: when the DSL omits the body, the
+          # module's callback should keep winning (hybrid mode). Compare
+          # `:discord` and `:slack` above, which write `message:`
+          # unconditionally and can therefore overwrite a module value with
+          # `nil`.
           #
-          # `action_url`/`action_label` läses av samma skäl, och samma
-          # mätning visade behovet: en mottagare rapporterade kanalposter som
-          # "döda notiser" — laget fick veta att något hänt men hade ingen väg
-          # dit. `:in_app` ovan har alltid burit dem; `:webhook` var den enda
-          # transporten där en deklarerad `action_url:` tyst föll bort, så en
-          # avsändare som skrev en hade ingen möjlighet att upptäcka det utom
-          # genom att läsa det som kom fram.
+          # `action_url`/`action_label` are read for the same reason, and the
+          # same measurement showed the need: a recipient reported channel
+          # entries as "dead notifications" — the team learned something had
+          # happened but had no way to get there. `:in_app` above has always
+          # carried them; `:webhook` was the only transport where a declared
+          # `action_url:` was silently dropped, so a sender who wrote one had
+          # no way to notice except by reading what arrived.
           #
-          # `:discord`, `:slack` och `:sms` får dem MEDVETET inte: deras
-          # nyttolaster har ingen egen knappform, och en url utan en yta som
-          # renderar den är en nyckel som bara ser ut att göra något.
+          # `:discord`, `:slack` and `:sms` DELIBERATELY do not get them: their
+          # payloads have no button shape of their own, and a url without a
+          # surface that renders it is a key that only looks like it does
+          # something.
           %{}
           |> maybe_put(
             :title,
@@ -1114,9 +1116,9 @@ defmodule AshDispatch.Dispatcher do
           |> Map.put(:webhook_url, channel.webhook_url)
 
         :push ->
-          # Titel, text och destination. Håll det litet: push-tjänsterna
-          # kapar krypterade nyttolaster runt 4 KB, och allt annat kan
-          # hämtas när användaren väl tryckt.
+          # Title, body and destination. Keep it small: push services cut
+          # encrypted payloads off around 4 KB, and everything else can be
+          # fetched once the user has tapped.
           %{}
           |> maybe_put(
             :title,
@@ -1131,12 +1133,13 @@ defmodule AshDispatch.Dispatcher do
           )
           |> maybe_put(:action_url, interpolate(content_config[:action_url], context))
 
-        # Catch-all. Utan den kraschar HELA dispatchen med CaseClauseError
-        # så snart en transport registreras utan en gren här — vilket är
-        # precis vad `AshDispatch.Transport`-beteendet lovar att man ska
-        # slippa ("en ny fil + en rad i registret"). En transport utan
-        # inline-content får ett tomt innehåll och levererar ändå; dess
-        # backend läser typiskt receipt.content eller kontexten själv.
+        # Catch-all. Without it the WHOLE dispatch crashes with a
+        # CaseClauseError as soon as a transport is registered without a branch
+        # here — which is exactly what the `AshDispatch.Transport` behaviour
+        # promises you are spared ("one new file plus one line in the
+        # registry"). A transport with no inline content gets empty content and
+        # still delivers; its backend typically reads receipt.content or the
+        # context itself.
         _ ->
           %{}
       end
@@ -1238,19 +1241,22 @@ defmodule AshDispatch.Dispatcher do
       end
     else
       # For inline DSL events, derive from event_id
-      # e.g., "requests.new_reseller_request" -> extract "Magasin" from data key
+      # e.g. "requests.new_reseller_request" -> derive the app from the data key
       derive_otp_app_from_event_id(context.event_id)
     end
   end
 
   # Derive OTP app - use configured value (single source of truth)
   defp derive_otp_app_from_event_id(_event_id) do
-    Config.otp_app() || :magasin
+    # Falls back to the library's own app rather than guessing a consumer's:
+    # an unset `:otp_app` should fail to find templates, not look for them
+    # under some other application's name.
+    Config.otp_app() || :ash_dispatch
   end
 
   # Derive event directory from module name for file-based template loading
   # Uses Naming.module_directory for consistent path derivation
-  # Example: Magasin.Accounts.Events.PasswordReset.Event -> lib/magasin/accounts/events/password_reset
+  # Example: MyApp.Accounts.Events.PasswordReset.Event -> lib/my_app/accounts/events/password_reset
   defp derive_event_dir_from_module(module, _otp_app) when is_atom(module) do
     # Use Naming for consistent path derivation
     relative_path = Naming.module_directory(module)
@@ -1399,9 +1405,10 @@ defmodule AshDispatch.Dispatcher do
           %{
             subject: subject,
             from: %{"name" => from_name, "email" => from_email},
-            # `nil` när eventet inte har någon svarsväg — nyckeln bärs ändå,
-            # så ett kvitto kan läsas i efterhand utan att skilja "ingen
-            # svarsadress" från "biblioteket var äldre än fältet".
+            # `nil` when the event has no reply path — the key is carried
+            # anyway, so a receipt can be read afterwards without having to
+            # tell "no reply address" apart from "the library predated the
+            # field".
             reply_to: EventResolver.reply_to(module, context, channel),
             html_body: html_body,
             text_body: text_body
@@ -1417,14 +1424,14 @@ defmodule AshDispatch.Dispatcher do
           }
 
         :webhook ->
-          # Samma nycklar som `:in_app`, och av samma skäl: mottagaren
-          # renderar ett KORT. En modulbaserad webhook-händelse kunde till
-          # 0.8.0 bara bidra med `message` — alltså kunde den inte sätta en
-          # rubrik, och inte en väg vidare, hur gärna den än ville.
+          # The same keys as `:in_app`, and for the same reason: the receiver
+          # renders a CARD. Until 0.8.0 a module-based webhook event could only
+          # contribute `message` — so it could set neither a heading nor a way
+          # onward, however much it wanted to.
           #
-          # Mätt hos en konsument: av sex distinkta kanalposter i produktion
-          # bar EN en rubrik, och noll bar en länk. Det lästes som "ingen har
-          # brytt sig", men vägen fanns inte.
+          # Measured at a consumer: of six distinct channel entries in
+          # production, ONE carried a heading and none carried a link. It read
+          # as "nobody bothered", but the path did not exist.
           %{
             title: module.notification_title(context, channel),
             message: module.notification_message(context, channel),
@@ -1439,14 +1446,14 @@ defmodule AshDispatch.Dispatcher do
           }
       end
 
-    # `extra_content/2` — modulens egna nycklar, för det mottagaren kan
-    # rendera och biblioteket inte känner till.
+    # `extra_content/2` — the module's own keys, for whatever the receiver can
+    # render and the library knows nothing about.
     #
-    # Den ligger UNDER transportens egna nycklar med flit: en modul som
-    # returnerar `%{message: ...}` här ska inte kunna tysta
-    # `notification_message/2`, och den som vill byta text har redan en
-    # callback för det. Tillägget är för det som saknas, aldrig för att
-    # skriva om det som finns.
+    # It sits BELOW the transport's own keys deliberately: a module returning
+    # `%{message: ...}` here must not be able to silence
+    # `notification_message/2`, and anyone wanting to change the body already
+    # has a callback for it. The addition is for what is missing, never for
+    # rewriting what is there.
     extra = EventResolver.extra_content(module, context, channel)
 
     base_content

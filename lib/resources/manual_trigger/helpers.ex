@@ -752,7 +752,7 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
     end
   end
 
-  # Convert domain atom like :accounts to module like Magasin.Accounts
+  # Convert domain atom like :accounts to module like MyApp.Accounts
   defp domain_to_module(domain_atom) when is_atom(domain_atom) do
     # Get configured domains and find matching one
     domains = Config.domains()

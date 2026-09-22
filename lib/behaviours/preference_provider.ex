@@ -7,7 +7,7 @@ defmodule AshDispatch.Behaviours.PreferenceProvider do
 
   ## Simple Implementation
 
-  For straightforward preference systems (like Magasin):
+  For straightforward preference systems:
 
       defmodule MyApp.PreferenceProvider do
         @behaviour AshDispatch.Behaviours.PreferenceProvider

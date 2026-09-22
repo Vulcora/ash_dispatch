@@ -107,8 +107,8 @@ defmodule AshDispatch.TemplateResolver do
      - Domain: "requests"
      - Resource: "reseller_request"
      - Convention: "lib/{otp_app}/{domain}/templates/{resource_name}/{event_name}"
-     - Result: "lib/magasin/requests/templates/reseller_request/new_reseller_request"
-     - Legacy (no resource_name): "lib/magasin/requests/templates/new_reseller_request"
+     - Result: "lib/my_app/requests/templates/reseller_request/new_reseller_request"
+     - Legacy (no resource_name): "lib/my_app/requests/templates/new_reseller_request"
   4. **Error:** `:template_not_found`
 
   ## Returns
@@ -861,11 +861,11 @@ defmodule AshDispatch.TemplateResolver do
 
   ## Examples
 
-      resolve_template_directory(%{domain: :accounts, name: :email_confirmation}, :magasin)
-      # => "lib/magasin/accounts/events/email_confirmation/templates"
+      resolve_template_directory(%{domain: :accounts, name: :email_confirmation}, :my_app)
+      # => "lib/my_app/accounts/events/email_confirmation/templates"
 
-      resolve_template_directory(%{domain: :orders, name: :created}, :magasin)
-      # => "lib/magasin/orders/events/created/templates"
+      resolve_template_directory(%{domain: :orders, name: :created}, :my_app)
+      # => "lib/my_app/orders/events/created/templates"
   """
   @spec resolve_template_directory(map(), atom()) :: String.t()
   def resolve_template_directory(event_info, otp_app) do
@@ -890,8 +890,8 @@ defmodule AshDispatch.TemplateResolver do
 
   ## Examples
 
-      derive_event_module(%{domain: :accounts, name: :email_confirmation, resource: Magasin.Accounts.User}, :magasin)
-      # => Magasin.Accounts.Events.EmailConfirmation.Event
+      derive_event_module(%{domain: :accounts, name: :email_confirmation, resource: MyApp.Accounts.User}, :my_app)
+      # => MyApp.Accounts.Events.EmailConfirmation.Event
   """
   @spec derive_event_module(map(), atom()) :: module()
   def derive_event_module(event_info, otp_app) do
@@ -914,8 +914,8 @@ defmodule AshDispatch.TemplateResolver do
 
   # Derives template path from module name
   # Delegates to Naming.template_directory/1 for consistent path derivation
-  # Module: Magasin.Accounts.Events.PasswordReset.Event
-  # Path: lib/magasin/accounts/events/password_reset/templates
+  # Module: MyApp.Accounts.Events.PasswordReset.Event
+  # Path: lib/my_app/accounts/events/password_reset/templates
   defp module_path_from_module(module) do
     Naming.template_directory(module)
   end
@@ -934,11 +934,11 @@ defmodule AshDispatch.TemplateResolver do
 
   ## Examples
 
-      derive_template_path("orders.created", :magasin)
-      # => "lib/magasin/orders/events/created/templates"
+      derive_template_path("orders.created", :my_app)
+      # => "lib/my_app/orders/events/created/templates"
 
-      derive_template_path("user.email_confirmation", :magasin, "accounts")
-      # => "lib/magasin/accounts/events/email_confirmation/templates"
+      derive_template_path("user.email_confirmation", :my_app, "accounts")
+      # => "lib/my_app/accounts/events/email_confirmation/templates"
   """
   def derive_template_path(event_id, otp_app, domain \\ nil, _resource_name \\ nil)
       when is_binary(event_id) and is_atom(otp_app) do

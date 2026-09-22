@@ -162,7 +162,7 @@ defmodule Mix.Tasks.Compile.AshDispatch do
 
     Enum.reduce(template_dirs, %{}, fn dir, acc ->
       # Extract domain, resource, event from path
-      # Example: lib/magasin/requests/templates/reseller_request/new
+      # Example: lib/my_app/requests/templates/reseller_request/new
       parts = Path.split(dir)
 
       case parts do
@@ -191,12 +191,12 @@ defmodule Mix.Tasks.Compile.AshDispatch do
 
     Enum.reduce(template_dirs, %{}, fn dir, acc ->
       # Extract module path
-      # Example: lib/magasin/accounts/events/invited/templates
+      # Example: lib/my_app/accounts/events/invited/templates
       parts = Path.split(dir)
 
       case parts do
         [_, app, domain, "events", event_name, "templates"] ->
-          # Derive module name: Magasin.Accounts.Events.Invited.Event
+          # Derive module name: MyApp.Accounts.Events.Invited.Event
           module_parts = [
             Macro.camelize(to_string(app)),
             Macro.camelize(domain),
@@ -267,7 +267,7 @@ defmodule Mix.Tasks.Compile.AshDispatch do
                                                          {files_acc, gen_acc} ->
             # Create unique destination filename
             # event_id: "reseller_request.new.email.html.heex"
-            # module: "Elixir.Magasin.Accounts.Events.Invited.Event.email.html.heex"
+            # module: "Elixir.MyApp.Accounts.Events.Invited.Event.email.html.heex"
             dest_filename =
               case lookup_key do
                 {:event_id, event_id} -> "#{event_id}.#{filename}"

@@ -213,22 +213,22 @@ defmodule AshDispatch.Event do
   @callback from(context(), channel()) :: {String.t(), String.t()}
 
   @doc """
-  Svarsadressen för mejlet — `Reply-To` — eller `nil` för ingen.
+  The email's reply address — `Reply-To` — or `nil` for none.
 
-  ## Varför den finns
+  ## Why it exists
 
-  Avsändaren (`from/2`) är huset: en adress som ofta inte tar emot svar. Men
-  ett mejl som är SKRIVET av en människa — "vi flyttar vårt möte", "här är din
-  offert" — bjuder in till ett svar, och utan ett svarshuvud landar det i
-  `noreply@` och läses av ingen.
+  The sender (`from/2`) is the organisation: an address that often does not
+  accept replies. But an email WRITTEN by a person — *"we're moving our
+  meeting"*, *"here's your quote"* — invites an answer, and without a reply
+  header that answer lands in `noreply@` and is read by nobody.
 
-  Fram till 0.8.1 fanns ingen väg alls. En konsument löste det med en proxy
-  framför Swoosh-backenden som slog upp avsändaren i databasen på mottagare
-  plus ämne, per mejl — alltså en andra statusmaskin bredvid bibliotekets,
-  och en läsning per utskick. Det är ett symptom på en saknad callback, inte
-  en design.
+  Until 0.8.1 there was no way at all. One consumer worked around it with a
+  proxy in front of the Swoosh backend that looked the sender up in the
+  database by recipient plus subject, per email — a second state machine
+  beside the library's, and one read per send. That is a symptom of a missing
+  callback, not a design.
 
-  ## Form
+  ## Shape
 
       def reply_to(context, %Channel{transport: :email}) do
         context.data.meeting.user.email
@@ -236,14 +236,16 @@ defmodule AshDispatch.Event do
 
       def reply_to(_context, _channel), do: nil
 
-  Default är `nil`, alltså dagens beteende. Allt annat än en sträng ignoreras:
-  ett mejl utan svarshuvud är billigare än ett mejl som inte går iväg.
+  The default is `nil`, i.e. today's behaviour. Anything that is not a string
+  is ignored: an email without a reply header is cheaper than an email that
+  never leaves.
 
-  Värdet bärs i `receipt.content` och inte bara i jobbets args. Två skäl: ett
-  omförsök bygger sina args ur kvittot (`SendEmail.new_for_receipt/1`) och
-  skulle annars tappa huvudet — samma fälla som bilagorna redan har en
-  särskild hantering för — och fältet blir läsbart i efterhand, så en
-  konsument kan MÄTA att svarsvägen faktiskt sattes.
+  The value is carried in `receipt.content` and not only in the job's args.
+  Two reasons: a retry builds its args from the receipt
+  (`SendEmail.new_for_receipt/1`) and would otherwise lose the header — the
+  same trap attachments already have special handling for — and the field
+  becomes readable afterwards, so a consumer can MEASURE that the reply path
+  was actually set.
   """
   @callback reply_to(context(), channel()) :: String.t() | nil
 
@@ -268,41 +270,43 @@ defmodule AshDispatch.Event do
   @callback action_url(context(), channel()) :: String.t() | nil
 
   @doc """
-  Modulens EGNA innehållsnycklar — det mottagaren kan rendera och biblioteket
-  inte känner till.
+  The module's OWN content keys — whatever the receiver can render and the
+  library knows nothing about.
 
-  ## Varför den finns
+  ## Why it exists
 
-  Transporternas innehåll är en sluten lista: `:in_app` bär titel, text och en
-  väg vidare, `:webhook` detsamma, `:email` sina kroppar. Det räcker så länge
-  mottagaren är en notislista. Det räcker inte när mottagaren är en Slack-yta
-  som kan rendera fakta i två kolumner, flera knappar och en ikon — då är
-  varje ny sådan nyckel annars en ändring i biblioteket.
+  A transport's content is a closed list: `:in_app` carries a title, a body
+  and a way onward, `:webhook` the same, `:email` its bodies. That is enough
+  while the receiver is a notification list. It is not enough when the
+  receiver is a Slack surface that can render facts in two columns, several
+  buttons and an icon — without this, every new key of that kind is a change
+  to the library.
 
-  Returnera en karta. Nycklarna hamnar i `receipt.content` och går vidare i
-  kuvertet som allt annat.
+  Return a map. The keys land in `receipt.content` and travel in the envelope
+  like everything else.
 
-      def extra_content(context, %Channel{audience: :slack_kanal}) do
+      def extra_content(context, %Channel{audience: :slack_channel}) do
         %{
-          slack_ikon: "avtal",
-          slack_falt: [%{etikett: "Belopp", varde: "13 995 kr"}],
-          slack_knappar: [%{text: "Öppna kunden", url: kundlank(context)}]
+          slack_icon: "contract",
+          slack_fields: [%{label: "Amount", value: "13,995"}],
+          slack_buttons: [%{text: "Open customer", url: customer_link(context)}]
         }
       end
 
       def extra_content(_context, _channel), do: %{}
 
-  ## Vad den INTE får
+  ## What it may NOT do
 
-  Tillägget läggs UNDER transportens egna nycklar. En modul som returnerar
-  `%{message: ...}` här skriver alltså inte över `notification_message/2` —
-  den som vill byta text har redan en callback för det. Tillägget är för det
-  som saknas, aldrig för att skriva om det som finns.
+  The addition is merged BELOW the transport's own keys. A module returning
+  `%{message: ...}` here therefore does not overwrite
+  `notification_message/2` — anyone wanting to change the body already has a
+  callback for that. The addition is for what is missing, never for rewriting
+  what is there.
 
-  Biblioteket VALIDERAR inte innehållet: nycklarna är en överenskommelse
-  mellan avsändaren och mottagaren, och en transport som inte känner igen dem
-  bär dem oförändrade. Mottagaren måste därför tåla skräp — se konsumentens
-  egen ingång.
+  The library does NOT validate the content: the keys are an agreement between
+  sender and receiver, and a transport that does not recognise them carries
+  them unchanged. The receiver must therefore tolerate junk — see the
+  consumer's own entry point.
   """
   @callback extra_content(context(), channel()) :: map()
 
@@ -392,19 +396,19 @@ defmodule AshDispatch.Event do
 
       # Event needs an order, any status
       def required_resources do
-        [order: Magasin.Orders.ProductOrder]
+        [order: MyApp.Orders.ProductOrder]
       end
 
       # Event needs a processed order only
       def required_resources do
-        [order: {Magasin.Orders.ProductOrder, filter: [status: :processed]}]
+        [order: {MyApp.Orders.ProductOrder, filter: [status: :processed]}]
       end
 
       # Event needs multiple resources
       def required_resources do
         [
-          order: {Magasin.Orders.ProductOrder, filter: [status: :completed]},
-          user: Magasin.Accounts.User
+          order: {MyApp.Orders.ProductOrder, filter: [status: :completed]},
+          user: MyApp.Accounts.User
         ]
       end
 
@@ -779,13 +783,13 @@ defmodule AshDispatch.Event do
       end
 
       @impl true
-      # Ingen svarsadress som default — mejlet ser ut som före 0.8.1. Den som
-      # skriver ett mejl i en människas namn skriver över den.
+      # No reply address by default — the email looks as it did before 0.8.1.
+      # Anyone writing an email in a person's name overrides this.
       def reply_to(_context, _channel), do: nil
 
       @impl true
-      # Inga extra nycklar som default. Den som vill bidra med något
-      # mottagaren kan rendera — fakta, knappar, en ikon — skriver över den.
+      # No extra keys by default. Anyone wanting to contribute something the
+      # receiver can render — facts, buttons, an icon — overrides this.
       def extra_content(_context, _channel), do: %{}
 
       @impl true

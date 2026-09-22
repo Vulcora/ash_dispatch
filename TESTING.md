@@ -5,7 +5,7 @@
 AshDispatch is a library that provides event dispatching capabilities for Ash resources. The test suite is split between:
 
 1. **Library tests** (in `ash_dispatch/test/`) - Pure unit tests for calculations
-2. **Integration tests** (in consuming app, e.g., `magasin/test/ash_dispatch/`) - Full integration tests
+2. **Integration tests** (in the consuming app, e.g. `my_app/test/ash_dispatch/`) - Full integration tests
 
 ## Running Library Tests
 
@@ -27,10 +27,10 @@ These tests run **standalone** without requiring a consuming application.
 
 ## Running Integration Tests
 
-Integration tests run in the context of a consuming application (e.g., `magasin`):
+Integration tests run in the context of a consuming application:
 
 ```bash
-cd ../magasin  # or your consuming app
+cd ../my_app  # your consuming app
 mix test test/ash_dispatch/
 ```
 
@@ -50,7 +50,7 @@ Integration tests include:
 AshDispatch uses runtime configuration to avoid compile-time dependencies on consuming applications. This means:
 
 - The library itself has minimal test fixtures
-- Full integration testing requires a real application context (magasin)
+- Full integration testing requires a real application context
 - This is a common pattern for Ash extensions and libraries
 
 ## Cross-Project User Association
@@ -60,7 +60,7 @@ The library uses **calculations instead of belongs_to** to avoid compile-time wa
 ### Old Approach (caused warnings):
 ```elixir
 # In DeliveryReceipt
-belongs_to :user, Magasin.Accounts.User  # ❌ Compile warning!
+belongs_to :user, MyApp.Accounts.User  # ❌ Compile warning!
 ```
 
 ### New Approach (clean):

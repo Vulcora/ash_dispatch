@@ -277,7 +277,7 @@ defmodule AshDispatch.Resource.Dsl do
           If not provided, derives from event_id automatically:
           - Event ID: "requests.new_reseller_request"
           - Convention: "lib/{otp_app}/{domain}/templates/{event_name}"
-          - Result: "lib/magasin/requests/templates/new_reseller_request"
+          - Result: "lib/my_app/requests/templates/new_reseller_request"
 
           This only applies when using file-based templates (development).
           Module-based events use their own __DIR__ for templates.
@@ -1133,7 +1133,7 @@ defmodule AshDispatch.Resource.Dsl do
               # In Cart resource
               counter :cart_items,
                 trigger_on: [:add_item, :remove_item],
-                resource: Magasin.Catalog.CartItem,
+                resource: MyApp.Catalog.CartItem,
                 filter_by_record: [field: :cart_id],
                 audience: :user
 

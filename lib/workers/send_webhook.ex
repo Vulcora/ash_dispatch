@@ -130,10 +130,11 @@ defmodule AshDispatch.Workers.SendWebhook do
 
         if permanent?(reason) do
           # `{:cancel, _}` stoppar Oban-retryn. Ett 4xx betyder att MOTTAGAREN
-          # avvisade just den här requesten — en okänd kanal, en återkallad
+          # rejected THIS request — an unknown channel, a revoked
           # webhook-URL, en mottagare som inte finns. Att skicka om exakt samma
-          # request fem gånger ändrar ingenting; det döljer bara felet bakom en
-          # kö som ser upptagen ut. Kvittot är redan `failed`, och det är svaret.
+          # request five times changes nothing; it only hides the failure
+          # behind a queue that looks busy. The receipt is already `failed`,
+          # and that is the answer.
           Logger.warning(
             "Webhook permanently rejected for receipt #{receipt.id}: #{inspect(reason)}"
           )

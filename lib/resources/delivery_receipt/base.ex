@@ -150,7 +150,7 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
 
         attribute :event_id, :string, allow_nil?: false, public?: true
 
-        # Härledd ur transport-registret — se `Registry.receipted_atoms/0`.
+        # Derived from the transport registry — see `Registry.receipted_atoms/0`.
         attribute :transport, :atom,
           allow_nil?: false,
           public?: true,

@@ -130,12 +130,12 @@ defmodule AshDispatch.Transports.Webhook do
       headers: request_headers(url, body, metadata)
     }
 
-    # Schemalägg FÖRE insert. Från det ögonblick jobbet finns i kön kan en
-    # worker plocka det — och med `Oban, testing: :inline` körs det redan
-    # inuti `Oban.insert/1`. Sätter man `:scheduled` efteråt försöker man
-    # flytta ett kvitto som hunnit bli `:sending`, `:sent` eller `:failed`,
-    # och `schedule` går bara från `:pending`. Resultatet är ett kastat
-    # `NoMatchingTransition` mitt i en lyckad leverans.
+    # Schedule BEFORE the insert. From the moment the job is in the queue a
+    # worker can pick it up — and with `Oban, testing: :inline` it already runs
+    # inside `Oban.insert/1`. Marking `:scheduled` afterwards tries to move a
+    # receipt that has become `:sending`, `:sent` or `:failed`, and `schedule`
+    # only goes from `:pending`. The result is a raised
+    # `NoMatchingTransition` in the middle of a successful delivery.
     scheduled =
       receipt
       |> Ash.Changeset.for_update(:schedule, %{})
@@ -144,11 +144,11 @@ defmodule AshDispatch.Transports.Webhook do
     case job_args |> SendWebhook.new() |> Oban.insert() do
       {:ok, _job} ->
         Logger.info("Webhook job enqueued for receipt #{receipt.id}")
-        # Läs om: har jobbet redan kört (inline, eller en snabb worker) är
-        # `scheduled` en inaktuell bild, och att rapportera `:scheduled` för
-        # något som redan är `:failed` vore precis den tysta grönskan
-        # kvittona finns för att undvika.
-        {:ok, aktuell(scheduled)}
+        # Re-read: if the job has already run (inline, or a fast worker),
+        # `scheduled` is a stale picture, and reporting `:scheduled` for
+        # something already `:failed` would be exactly the silent green the
+        # receipts exist to prevent.
+        {:ok, current(scheduled)}
 
       {:error, reason} ->
         Logger.error("Failed to enqueue webhook job: #{inspect(reason)}")
@@ -179,9 +179,10 @@ defmodule AshDispatch.Transports.Webhook do
       "event_id" => Map.get(context, :event_id),
       "receipt_id" => receipt.id,
       "user_id" => Map.get(receipt, :user_id),
-      # VAD händelsen handlar om. Utan det vet en mottagare att något hände
-      # och till vem, men inte om vilket objekt — och kan därför inte erbjuda
-      # en åtgärd. Kvittot bär redan fälten; de saknades bara i kuvertet.
+      # WHAT the event is about. Without this a receiver knows something
+      # happened and to whom, but not about which object — and therefore
+      # cannot offer an action. The receipt already carries these fields; they
+      # were simply missing from the envelope.
       "source_type" => Map.get(receipt, :source_type),
       "source_id" => Map.get(receipt, :source_id),
       "recipient" => Map.get(receipt, :recipient),
@@ -259,12 +260,12 @@ defmodule AshDispatch.Transports.Webhook do
 
   def hemlighet(_), do: nil
 
-  # Metadata når oss med atom-nycklar från DSL:en och kan nå oss med
-  # sträng-nycklar från en runtime-byggd map. Att bara läsa atomen vore tyst
-  # farligt just för `secret`: strykningen nedan tar bort BÅDA formerna ur
-  # payloaden, så en sträng-nycklad hemlighet hade försvunnit ur kroppen utan
-  # att någonsin signera den — anropet går osignerat, utan ett ord.
-  # Samma både-och-form som `AshDispatch.ContentMap.get_content/2`.
+  # Metadata reaches us with atom keys from the DSL, and can reach us with
+  # string keys from a map built at runtime. Reading only the atom would be
+  # quietly dangerous for `secret` in particular: the strip below removes BOTH
+  # forms from the payload, so a string-keyed secret would vanish from the body
+  # without ever signing it — the call goes out unsigned, without a word. Same
+  # both-forms shape as `AshDispatch.ContentMap.get_content/2`.
   defp meta_get(metadata, key, default \\ nil) when is_map(metadata) and is_atom(key) do
     case metadata[key] do
       nil -> metadata[Atom.to_string(key)] || default
@@ -293,10 +294,10 @@ defmodule AshDispatch.Transports.Webhook do
     |> Base.encode16(case: :lower)
   end
 
-  # Kvittots aktuella tillstånd. Har jobbet redan kört är den struct vi håller
-  # inaktuell, och att rapportera `:scheduled` för något som redan är `:failed`
-  # vore precis den tysta grönskan kvittona finns för att undvika.
-  defp aktuell(receipt) do
+  # The receipt's current state. If the job has already run, the struct we
+  # hold is stale, and reporting `:scheduled` for something already `:failed`
+  # would be exactly the silent green the receipts exist to prevent.
+  defp current(receipt) do
     case AshDispatch.Config.delivery_receipt_resource()
          |> Ash.get(receipt.id, authorize?: false) do
       {:ok, farsk} -> farsk
@@ -306,10 +307,10 @@ defmodule AshDispatch.Transports.Webhook do
 
   defp webhook_url(%Channel{webhook_url: url}) when is_binary(url) and url != "", do: url
 
-  # `metadata.webhook_url_env` av samma skäl som `secret_env`, och med en
-  # skarpare konsekvens: en URL som bakas in vid kompilering följer med till
-  # STAGING, och staging postar då till produktionens mottagare. Ett fel som
-  # inte syns som ett fel — meddelandet kommer fram, bara på fel ställe.
+  # `metadata.webhook_url_env` for the same reason as `secret_env`, and with a
+  # sharper consequence: a URL baked in at compile time travels to STAGING, and
+  # staging then posts to production's receiver. A failure that does not look
+  # like one — the message arrives, just in the wrong place.
   defp webhook_url(%Channel{metadata: metadata} = channel) when is_map(metadata) do
     case meta_get(metadata, :webhook_url_env) do
       namn when is_binary(namn) and namn != "" ->

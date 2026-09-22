@@ -230,7 +230,7 @@ receipt = Ash.get!(DeliveryReceipt, id, load: [:from_email, :from_name])
 
 # Display sender
 "#{receipt.from_name} <#{receipt.from_email}>"
-# => "Siteflow <noreply@siteflow.se>"
+# => "Acme <noreply@acme.test>"
 ```
 
 This is useful for:

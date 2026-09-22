@@ -122,7 +122,7 @@ defmodule AshDispatch.EmailBackend.Swoosh do
       |> html_body(html)
       |> text_body(text)
       |> then(fn built ->
-        # `nil` (eller en tom sträng) ⇒ inget huvud alls, som före 0.8.1.
+        # `nil` (or an empty string) means no header at all, as before 0.8.1.
         case params[:reply_to] do
           value when is_binary(value) and value != "" -> reply_to(built, value)
           _ -> built

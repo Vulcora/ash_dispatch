@@ -74,8 +74,8 @@ remains open. Original finding kept below for context.
 The webhook handler does no signature verification and the moduledoc's
 example controller doesn't either. Of the four consumers, only
 one consumer verifies (hand-rolled Svix HMAC in its controller);
-siteflow's router even claims "verified by provider-specific signatures"
-while verifying nothing, and both siteflow and magasin expose unauthenticated
+one consumer's router even claims "verified by provider-specific signatures"
+while verifying nothing, and two consumers expose unauthenticated
 endpoints that mutate receipt state. A `AshDispatch.WebhookHandlers.
 Resend.verify/2` (svix-id/timestamp/signature + raw body + secret, with
 replay window) — or a plug — fixes every consumer with one upgrade.
