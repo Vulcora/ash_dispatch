@@ -117,9 +117,10 @@ defmodule AshDispatch.Transports.Email do
       "from" => from,
       "html_body" => receipt.body_html,
       "text_body" => receipt.body_text,
-      # Svarsadressen är redan avgjord och ligger i kvittots innehåll; den
-      # följer med i args så det vanliga fallet slipper läsa om kartan, och
-      # workern faller tillbaka på kvittot när args saknar den (omförsök).
+      # The reply address is already decided and sits in the receipt's
+      # content; it rides along in the args so the common case avoids re-reading
+      # the map, and the worker falls back to the receipt when the args lack it
+      # (a retry).
       "reply_to" => AshDispatch.ContentMap.get_content(receipt.content, :reply_to),
       "attachments" => resolve_attachments(context, channel)
     }

@@ -155,16 +155,16 @@ Templates only contain event-specific content. The layout (from `priv/ash_dispat
 
 ```heex
 <!-- lib/my_app/orders/events/created/templates/email.html.heex -->
-<p>Hej <strong><%= @display_name %></strong>,</p>
+<p>Hi <strong><%= @display_name %></strong>,</p>
 
-<p>Tack för din beställning!</p>
+<p>Thanks for your order!</p>
 
 <div style="background: #f0f9ff; padding: 20px;">
-  <h2>Orderdetaljer</h2>
-  <p>Ordernummer: <%= @order_number %></p>
+  <h2>Order details</h2>
+  <p>Order number: <%= @order_number %></p>
 </div>
 
-<a href={@source_url}>Visa order →</a>
+<a href={@source_url}>View order →</a>
 ```
 
 No DOCTYPE, html, head, body, header, or footer needed - the layout provides all that.

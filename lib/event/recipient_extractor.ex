@@ -305,7 +305,7 @@ defmodule AshDispatch.Event.RecipientExtractor do
   # KeyError about `:__struct__` instead of "this recipient has no email", so
   # the one line that could have explained the failure was the line that broke.
   #
-  # Seen in magasin 2026-09-02: an order's confirmation never went out, and the
+  # Seen at a consumer on 2026-09-02: an order's confirmation never went out, and the
   # log said `%KeyError{key: :__struct__}` with no mention of a recipient or a
   # field.
   defp raise_extraction_error(recipient, field, transport, audience, field_type) do

@@ -24,14 +24,14 @@ defmodule AshDispatch.EmailBackend.SwooshTest do
   end
 
   describe "send_email/1 — reply_to" do
-    test "sätter Reply-To när params bär en adress" do
+    test "sets Reply-To when the params carry an address" do
       capture_log(fn ->
         assert {:ok, _} =
                  SwooshBackend.send_email(%{
                    to: "kund@example.com",
-                   from: {"Siteflow", "noreply@example.com"},
+                   from: {"Acme", "noreply@example.com"},
                    reply_to: "saljaren@example.com",
-                   subject: "Mötet har flyttats",
+                   subject: "The meeting has moved",
                    html_body: "<p>Ny tid</p>",
                    text_body: "Ny tid"
                  })
@@ -42,13 +42,13 @@ defmodule AshDispatch.EmailBackend.SwooshTest do
       end)
     end
 
-    test "utan reply_to byggs mejlet som före 0.8.1 — inget huvud" do
+    test "without reply_to the email is built as before 0.8.1 — no header" do
       capture_log(fn ->
         assert {:ok, _} =
                  SwooshBackend.send_email(%{
                    to: "kund@example.com",
                    from: "noreply@example.com",
-                   subject: "Utan svarsväg",
+                   subject: "No reply path",
                    html_body: "<p>x</p>",
                    text_body: "x"
                  })
@@ -57,7 +57,7 @@ defmodule AshDispatch.EmailBackend.SwooshTest do
       assert_email_sent(fn email -> assert email.reply_to == nil end)
     end
 
-    test "nil och tom sträng behandlas likadant: inget huvud" do
+    test "nil and an empty string behave the same: no header" do
       for varde <- [nil, ""] do
         capture_log(fn ->
           assert {:ok, _} =
@@ -344,7 +344,7 @@ defmodule AshDispatch.EmailBackend.SwooshTest do
         result =
           SwooshBackend.send_email(%{
             to: "user@example.com",
-            from: {"Fyndgrossisten Ärenden", "arenden@fyndgrossisten.se"},
+            from: {"Café Söderberg Ärenden", "arenden@example.se"},
             subject: "Välkommen!",
             html_body: "<p>Hälsningar</p>",
             text_body: "Hälsningar"

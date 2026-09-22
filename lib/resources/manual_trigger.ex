@@ -627,8 +627,8 @@ defmodule AshDispatch.Resources.ManualTrigger do
 
   defp get_event_description(event_module) do
     case Module.split(event_module) do
-      # Pattern: Magasin.Orders.Events.Created.Event -> Orders > Created
-      # Pattern: Magasin.Accounts.Events.EmailConfirmation.Event -> Accounts > EmailConfirmation
+      # Pattern: MyApp.Orders.Events.Created.Event -> Orders > Created
+      # Pattern: MyApp.Accounts.Events.EmailConfirmation.Event -> Accounts > EmailConfirmation
       parts when length(parts) >= 5 ->
         # Get domain (e.g., "Orders", "Accounts") and event name (e.g., "Created")
         # Second part is the domain

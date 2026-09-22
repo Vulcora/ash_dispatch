@@ -1,15 +1,16 @@
 defmodule AshDispatch.RecipientExtractorReadableErrorTest do
   @moduledoc """
-  Felmeddelandet får inte vara det som går sönder.
+  The error message must not be the thing that breaks.
 
-  `raise_extraction_error/5` skrev `recipient.__struct__` rakt av. Målgrupper
-  kan lösas till VANLIGA MAPPAR, och på en sådan kastade punktåtkomsten
-  KeyError **inuti felmeddelandet**. Anroparen såg alltså
-  `%KeyError{key: :__struct__}` i stället för "den här mottagaren saknar
-  e-post" — den enda rad som kunde ha förklarat felet var raden som brast.
+  `raise_extraction_error/5` wrote `recipient.__struct__` directly. Audiences
+  can resolve to PLAIN MAPS, and on one of those the dot access raised a
+  KeyError **inside the error message**. The caller therefore saw
+  `%KeyError{key: :__struct__}` rather than "this recipient has no email
+  address" — the one line that could have explained the failure was the line
+  that broke.
 
-  Sett i magasin 2026-09-02: en orderbekräftelse gick aldrig ut, och loggen
-  nämnde varken mottagare eller fält.
+  Seen at a consumer on 2026-09-02: an order confirmation never went out, and
+  the log named neither the recipient nor the field.
   """
   use ExUnit.Case, async: true
 
@@ -29,7 +30,7 @@ defmodule AshDispatch.RecipientExtractorReadableErrorTest do
     :ok
   end
 
-  test "en mottagare som är en vanlig map ger ett LÄSBART fel, inte KeyError" do
+  test "a recipient that is a plain map gives a READABLE error, not KeyError" do
     mottagare = %{id: "abc", email: nil, display_name: "Kedjan"}
 
     fel =
@@ -39,7 +40,7 @@ defmodule AshDispatch.RecipientExtractorReadableErrorTest do
 
     meddelande = Exception.message(fel)
 
-    # Det som faktiskt behövs för att förstå felet: vilket fält, vilken
+    # What is actually needed to understand the failure: which field, which
     # transport, och vad mottagaren hade.
     assert meddelande =~ ":email"
     assert meddelande =~ "email transport"

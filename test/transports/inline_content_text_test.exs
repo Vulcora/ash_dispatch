@@ -1,48 +1,47 @@
 defmodule AshDispatch.Transports.InlineContentTextTest do
   @moduledoc """
-  Varje transport som BÄR en text måste också LÄSA den ur DSL:en.
+  Every transport that CARRIES a body must also READ it from the DSL.
 
-  ## Felet vakten finns för
+  ## The bug this guard exists for
 
-  `build_inline_content/4`:s `:webhook`-gren byggde bara `payload` och
-  `webhook_url`. Den läste aldrig `content_config[:message]` — den enda av
-  sex grenar som inte gjorde det.
+  The `:webhook` branch of `build_inline_content/4` built only `payload` and
+  `webhook_url`. It never read `content_config[:message]` — the only one of
+  six branches that did not.
 
-  Följden var tyst, och det är hela poängen. Ett event MED en eventmodul
-  faller tillbaka på modulens `notification_message/2`, vars genererade
-  default är `"You have a new notification"`. Merge-ordningen i
-  `build_content/5` låter modulens värde stå kvar för varje nyckel inline
-  inte sätter, så en deklarerad `content: [message: ...]` blev dekoration
-  och mottagaren fick platshållaren — med rätt form och fel innehåll.
+  The consequence was silent, and that is the whole point. An event WITH an
+  event module falls back on the module's `notification_message/2`, whose
+  generated default is `"You have a new notification"`. The merge order in
+  `build_content/5` lets the module's value stand for every key inline content
+  does not set, so a declared `content: [message: ...]` became decoration and
+  the recipient got the placeholder — the right shape with the wrong content.
 
-  Mätt hos en konsument innan fixen: **41 av 41** levererade
-  webhook-kvitton bar platshållaren, fördelade på nio deklarerade kanaler.
-  Ingen av texterna hade någonsin nått fram. Att den ena halvan var
-  kanalposter och den andra personliga DM gjorde ingen skillnad; det var
-  transporten, inte eventet.
+  Measured at a consumer before the fix: **41 of 41** delivered webhook
+  receipts carried the placeholder, across nine declared channels. None of the
+  written text had ever arrived. That one half were channel posts and the
+  other personal DMs made no difference; it was the transport, not the event.
 
-  ## Varför provet läser källan
+  ## Why this test reads the source
 
-  Dispatchen har ingen lättviktig harness här — samma skäl som
-  `push_test.exs` skriver ut. Men ett STRUKTURELLT prov som bara frågar
-  "finns grenen?" var precis vad som fanns, och det såg en gren som bar fel
-  innehåll som en gren som fanns. Vakten frågar därför vad grenen GÖR.
+  Dispatch has no lightweight harness here — the same reason `push_test.exs`
+  spells out. But a STRUCTURAL test that only asks "does the branch exist?"
+  was exactly what was there, and it saw a branch carrying the wrong content
+  as a branch that existed. This guard therefore asks what the branch DOES.
   """
 
   use ExUnit.Case, async: true
 
   @dispatcher File.read!("lib/dispatcher.ex")
 
-  # Transporter vars innehåll ÄR en text. `:email` står utanför med flit:
-  # den bär `subject` + `html_body` + `text_body` och har ingen `message`.
+  # Transports whose content IS a body of text. `:email` is deliberately out:
+  # it carries `subject` + `html_body` + `text_body` and has no `message`.
   @textbarande [":in_app", ":discord", ":slack", ":sms", ":webhook", ":push"]
 
   defp grenar do
     [_, body] = String.split(@dispatcher, "defp build_inline_content(", parts: 2)
     [body, _] = String.split(body, "\n  defp ", parts: 2)
 
-    # Dela på grenhuvudena så varje transport prövas för sig. Ett prov som
-    # läste hela kroppen hade varit grönt så länge NÅGON gren läste texten.
+    # Split on the branch heads so each transport is checked on its own. A test
+    # reading the whole body would stay green as long as ANY branch read it.
     Regex.split(~r/^\s{8}(?=:[a-z_]+ ->)/m, body, trim: true)
     |> Enum.map(fn del ->
       case Regex.run(~r/^\s*(:[a-z_]+) ->/, del) do
@@ -55,13 +54,14 @@ defmodule AshDispatch.Transports.InlineContentTextTest do
   end
 
   test "provet hittar grenarna alls" do
-    # Utan den här raden är hela filen grön av att regexen slutat träffa.
+    # Without this line the whole file goes green because the regex stopped
+    # matching.
     funna = Map.keys(grenar())
     assert length(funna) >= 6, "hittade bara #{inspect(funna)}"
     for t <- @textbarande, do: assert(Map.has_key?(grenar(), t), "grenen #{t} saknas")
   end
 
-  test "VAKT: varje textbärande transport läser content_config[:message]" do
+  test "GUARD: every body-carrying transport reads content_config[:message]" do
     g = grenar()
 
     utan =
@@ -71,16 +71,16 @@ defmodule AshDispatch.Transports.InlineContentTextTest do
 
     assert utan == [],
            """
-           Dessa transportgrenar bygger innehåll utan att läsa texten ur DSL:en:
+           These transport branches build content without reading the body from the DSL:
 
              #{Enum.join(utan, ", ")}
 
-           En `content: [message: ...]` på en sådan kanal blir DEKORATION. Har
-           eventet en modul skickas i stället `notification_message/2`:s
-           genererade default — "You have a new notification" — och mottagaren
-           kan inte skilja den från en riktig text.
+           A `content: [message: ...]` on such a channel becomes DECORATION. If
+           the event has a module, the generated default from
+           `notification_message/2` is sent instead — "You have a new
+           notification" — and the recipient cannot tell it from a real message.
 
-           Lägg till i grenen:
+           Add to the branch:
 
                |> maybe_put(
                  :message,
@@ -92,10 +92,10 @@ defmodule AshDispatch.Transports.InlineContentTextTest do
            """
   end
 
-  test "VAKT: texten sätts med maybe_put, aldrig som en ovillkorlig nyckel" do
+  test "GUARD: the body is set with maybe_put, never as an unconditional key" do
     # `interpolate(nil, _)` ger `nil`. En literal `message:` i map-syntax
-    # skriver därför `nil` över modulens callback-text i hybridläget — samma
-    # klass som buggen ovan, fast åt andra hållet.
+    # therefore writes `nil` over the module's callback text in hybrid mode —
+    # the same class of bug as above, in the other direction.
     g = grenar()
 
     fel =
@@ -105,53 +105,53 @@ defmodule AshDispatch.Transports.InlineContentTextTest do
 
     assert fel == [],
            """
-           Dessa grenar sätter `message:` ovillkorligt:
+           These branches set `message:` unconditionally:
 
              #{Enum.join(fel, ", ")}
 
-           Saknas texten i DSL:en blir värdet `nil`, och `Map.merge` i
-           `build_content/5` skriver då över modulens callback med ingenting.
-           Använd `maybe_put/3`, som hoppar nil.
+           When the DSL omits the body the value is `nil`, and `Map.merge` in
+           `build_content/5` then overwrites the module's callback with nothing.
+           Use `maybe_put/3`, which skips nil.
            """
   end
 
-  test "webhook bär också rubriken — en mottagare som renderar ett kort behöver den" do
+  test "webhook carries the title too — a receiver rendering a card needs it" do
     assert grenar()[":webhook"] =~ "content_config[:title]"
   end
 
-  test "webhook behåller payload och url" do
-    # Fixen får inte ha tappat det grenen redan gjorde.
+  test "webhook keeps payload and url" do
+    # The fix must not have dropped what the branch already did.
     g = grenar()[":webhook"]
     assert g =~ "content_config[:webhook_payload]"
     assert g =~ "channel.webhook_url"
   end
 
-  # Transporter vars mottagare kan RENDERA en väg vidare. `:discord`,
-  # `:slack` och `:sms` står utanför med flit: deras nyttolaster har ingen
-  # egen knappform, och en url utan en yta som visar den är en nyckel som
-  # bara ser ut att göra något.
+  # Transports whose receiver can RENDER a way onward. `:discord`, `:slack`
+  # and `:sms` are deliberately out: their payloads have no button shape of
+  # their own, and a url without a surface that shows it is a key that only
+  # looks like it does something.
   @vagbarande [":in_app", ":webhook", ":push"]
 
-  test "VAKT: varje transport med en väg vidare läser content_config[:action_url]" do
+  test "GUARD: every transport with a way onward reads content_config[:action_url]" do
     g = grenar()
 
     utan = Enum.filter(@vagbarande, fn t -> not (g[t] =~ "content_config[:action_url]") end)
 
     assert utan == [],
            """
-           Dessa grenar bygger innehåll utan att läsa vägen vidare ur DSL:en:
+           These branches build content without reading the way onward from the DSL:
 
              #{Enum.join(utan, ", ")}
 
-           En deklarerad `action_url:` blir då DEKORATION: mottagaren får veta
-           att något hänt men har ingen väg dit, och avsändaren kan inte
-           upptäcka det utom genom att läsa det som kom fram. `:webhook` var
-           precis det fallet till 0.7.3 — en konsument rapporterade sina
-           kanalposter som "döda notiser".
+           A declared `action_url:` then becomes DECORATION: the recipient
+           learns something happened but has no way to get there, and the
+           sender cannot notice except by reading what arrived. `:webhook` was
+           exactly that case until 0.7.3 — one consumer reported their channel
+           posts as "dead notifications".
            """
   end
 
-  test "webhook bär också knappens etikett — en url utan ord blir en knapp som heter \"Öppna\"" do
+  test "webhook carries the button label too — a url without words becomes a button named \"Open\"" do
     assert grenar()[":webhook"] =~ "content_config[:action_label]"
   end
 end

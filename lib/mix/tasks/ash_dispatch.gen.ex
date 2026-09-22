@@ -1616,8 +1616,8 @@ defmodule Mix.Tasks.AshDispatch.Gen do
         """
 
               // Register built-in event: entity_change → entity store
-              // Widens callback till `unknown` så strict-mode TS-consumers inte
-              // failar på contravarians-mismatch.
+              // Widen the callback to `unknown` so strict-mode TS consumers do
+              // not fail on a contravariance mismatch.
               channel.on('entity_change', (rawPayload: unknown) => {
                 const payload = rawPayload as { resource: string; action: string; data: Record<string, unknown> }
                 if (!mountedRef.current) return
@@ -1763,10 +1763,11 @@ defmodule Mix.Tasks.AshDispatch.Gen do
             channelRef.current = channel
 
             // Register built-in events: initial_state and counter_updated
-            // Note: phoenix-js types `channel.on`-callback som `(payload: unknown) => void`;
-            // vi widens till `unknown` på callback-signaturen och narrowar inuti via
-            // `as`-cast så strict-mode consumers (TS strict) inte failar på
-            // contravarians-mismatch mellan {counters} ↔ unknown.
+            // Note: phoenix-js types the `channel.on` callback as
+            // `(payload: unknown) => void`; we widen the callback signature to
+            // `unknown` and narrow inside via an `as` cast so strict-mode
+            // consumers do not fail on a contravariance mismatch between
+            // {counters} and unknown.
             channel.on('initial_state', (rawPayload: unknown) => {
               const payload = rawPayload as { counters?: Record<string, number> }
               if (!mountedRef.current) return
@@ -2610,9 +2611,9 @@ defmodule Mix.Tasks.AshDispatch.Gen do
           })
 
           // Listen for counter updates (from UserChannel.broadcast_counter or custom broadcast)
-          // Note: phoenix-js types callback som `(payload: unknown)`; widens till
-          // `unknown` och narrowar via `as`-cast så TS-strict consumers (saleflow
-          // m.fl.) inte failar på contravarians.
+          // Note: phoenix-js types the callback as `(payload: unknown)`; we
+          // widen to `unknown` and narrow via an `as` cast so strict-mode TS
+          // consumers do not fail on contravariance.
           channel.on('counter_updated', (rawPayload: unknown) => {
             const payload = rawPayload as { counter: string; value: number; metadata?: { invalidate_queries?: string[] } }
             if (!mountedRef.current) return

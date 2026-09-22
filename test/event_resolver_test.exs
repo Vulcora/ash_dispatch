@@ -51,16 +51,16 @@ defmodule AshDispatch.EventResolverTest do
       assert EventResolver.reply_to(MedSvarsvag, ctx(), kanal()) == "saljaren@example.com"
     end
 
-    test "en modul utan callbacken ger nil — dagens beteende före 0.8.1" do
+    test "a module without the callback gives nil — the behaviour before 0.8.1" do
       defmodule UtanSvarsvag do
       end
 
       assert EventResolver.reply_to(UtanSvarsvag, ctx(), kanal()) == nil
     end
 
-    # Det här är den bärande halvan: ett mejl som inte går iväg är dyrare än
+    # This is the load-bearing half: an email that never leaves costs more than
     # ett mejl utan svarshuvud.
-    test "skräp behandlas som nil i stället för att fälla utskicket" do
+    test "junk is treated as nil rather than bringing the send down" do
       defmodule SkrapSvarsvag do
         def reply_to(_context, _channel), do: {"Namn", "a@b.se"}
       end

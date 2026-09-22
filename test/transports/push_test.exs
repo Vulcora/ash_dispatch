@@ -1,7 +1,7 @@
 defmodule AshDispatch.Transports.PushTest do
   @moduledoc """
-  Web Push-transporten. Samma form som SMS: ash_dispatch äger routingen
-  och kvittot, konsumenten äger protokollet (VAPID, RFC 8291-kryptering,
+  The Web Push transport. Same shape as SMS: ash_dispatch owns the routing
+  and the receipt, the consumer owns the protocol (VAPID, RFC 8291 encryption,
   per-endpoint-POST).
   """
 
@@ -25,54 +25,54 @@ defmodule AshDispatch.Transports.PushTest do
   end
 
   describe "transport-metadata" do
-    test "registrerar sig som :push och skapar kvitton" do
+    test "registers as :push and creates receipts" do
       assert Push.transport_atom() == :push
       assert Push.skip_receipt?() == false
     end
 
-    test "är nåbar via registret" do
+    test "is reachable through the registry" do
       assert {:ok, Push} = AshDispatch.Transport.Registry.module_for(:push)
     end
   end
 
-  describe "utan konfigurerad backend" do
-    test "delegerar inte — appen ska kunna deklarera :push-kanaler innan backend finns" do
-      # Vi verifierar kontraktet utan att röra databasen: `deliver/4`
-      # ska INTE försöka anropa någon backend när ingen är satt.
+  describe "with no backend configured" do
+    test "does not delegate — an app may declare :push channels before a backend exists" do
+      # We verify the contract without touching the database: `deliver/4` must
+      # NOT try to call a backend when none is configured.
       assert Application.get_env(:ash_dispatch, :push_backend) == nil
       assert AshDispatch.Config.push_backend() == nil
     end
   end
 
-  describe "med konfigurerad backend" do
-    defmodule EkoBackend do
+  describe "with a backend configured" do
+    defmodule EchoBackend do
       @behaviour AshDispatch.PushBackend
 
       @impl true
       def deliver(receipt, _context, _channel, _event_config) do
-        send(self(), {:push_levererad, receipt})
+        send(self(), {:push_delivered, receipt})
         {:ok, Map.put(receipt, :status, :sent)}
       end
     end
 
-    # Kanalen är en riktig %Channel{} sedan 0.7.0: push frågar numera om
-    # samtycke, och samtyckesgrinden läser `channel.audience`. En tom map
-    # gick igenom så länge ingen läste ur den — och `:admin` är avsiktligt
-    # vald, en ogrindad publik, så provet förblir ett prov om delegeringen.
-    @ogrindad %AshDispatch.Channel{transport: :push, audience: :admin}
+    # The channel is a real %Channel{} as of 0.7.0: push now asks for consent,
+    # and the consent gate reads `channel.audience`. An empty map worked while
+    # nobody read from it — and `:admin` is chosen deliberately, an ungated
+    # audience, so this stays a test about delegation.
+    @ungated %AshDispatch.Channel{transport: :push, audience: :admin}
 
-    test "delegerar deliver/4 till backend-modulen" do
-      Application.put_env(:ash_dispatch, :push_backend, EkoBackend)
+    test "delegates deliver/4 to the backend module" do
+      Application.put_env(:ash_dispatch, :push_backend, EchoBackend)
 
-      kvitto = %{id: "r-1", user_id: "u-1", content: %{title: "Möte om 15 min"}}
+      receipt = %{id: "r-1", user_id: "u-1", content: %{title: "Meeting in 15 minutes"}}
 
-      assert {:ok, uppdaterat} = Push.deliver(kvitto, %{}, @ogrindad, %{})
-      assert uppdaterat.status == :sent
-      assert_received {:push_levererad, ^kvitto}
+      assert {:ok, updated} = Push.deliver(receipt, %{}, @ungated, %{})
+      assert updated.status == :sent
+      assert_received {:push_delivered, ^receipt}
     end
 
-    test "backend-fel bubblar upp till dispatchern i stället för att svälja" do
-      defmodule TrasigBackend do
+    test "backend errors bubble up to the dispatcher instead of being swallowed" do
+      defmodule BrokenBackend do
         @behaviour AshDispatch.PushBackend
 
         @impl true
@@ -81,51 +81,51 @@ defmodule AshDispatch.Transports.PushTest do
         end
       end
 
-      Application.put_env(:ash_dispatch, :push_backend, TrasigBackend)
+      Application.put_env(:ash_dispatch, :push_backend, BrokenBackend)
 
       assert {:error, :push_service_unavailable} =
-               Push.deliver(%{id: "r-2"}, %{}, @ogrindad, %{})
+               Push.deliver(%{id: "r-2"}, %{}, @ungated, %{})
     end
   end
 
   describe "Config.push_backend/0" do
-    test "läser :ash_dispatch, :push_backend" do
-      Application.put_env(:ash_dispatch, :push_backend, EkoBackend)
-      assert AshDispatch.Config.push_backend() == EkoBackend
+    test "reads :ash_dispatch, :push_backend" do
+      Application.put_env(:ash_dispatch, :push_backend, EchoBackend)
+      assert AshDispatch.Config.push_backend() == EchoBackend
     end
 
-    test "är nil när inget är konfigurerat" do
+    test "is nil when nothing is configured" do
       assert AshDispatch.Config.push_backend() == nil
     end
   end
 
-  describe "dispatcherns innehållsbyggare" do
+  describe "the dispatcher's content builder" do
     # Regressionen 0.6.0 introducerade: `build_inline_content/4` hade ett
-    # `case channel.transport` UTAN catch-all, så en nyregistrerad
+    # `case channel.transport` WITHOUT a catch-all, so a newly registered
     # transport kraschade HELA dispatchen med CaseClauseError — inte bara
-    # sin egen kanal. Det motsäger vad `AshDispatch.Transport` lovar:
+    # its own channel. That contradicts what `AshDispatch.Transport` promises:
     # "en ny fil + en rad i registret".
     #
-    # Dispatchen har ingen lättviktig test-harness här (den testas från
-    # konsument-apparna), och att exponera en privat funktion enbart för
-    # test vore värre än problemet. Garantin blir därför strukturell:
-    # källan måste ha en catch-all.
+    # Dispatch has no lightweight test harness here (it is tested from the
+    # consumer applications), and exposing a private function purely for tests
+    # would be worse than the problem. The guarantee is therefore structural:
+    # the source must have a catch-all.
     @dispatcher File.read!("lib/dispatcher.ex")
 
-    test "build_inline_content har en catch-all för okända transporter" do
+    test "build_inline_content has a catch-all for unknown transports" do
       [_, body] = String.split(@dispatcher, "defp build_inline_content(", parts: 2)
       [body, _] = String.split(body, "\n  defp ", parts: 2)
 
       assert body =~ ~r/^\s+_ ->/m,
              """
              `build_inline_content/4` saknar catch-all i sitt
-             transport-case. Utan den kraschar hela dispatchen så snart
-             någon registrerar en transport utan att lägga till en gren —
-             tvärtemot vad AshDispatch.Transport lovar.
+             transport case. Without it the whole dispatch crashes as soon as
+             someone registers a transport without adding a branch — contrary
+             to what AshDispatch.Transport promises.
              """
     end
 
-    test "push har en egen innehållsgren" do
+    test "push has a content branch of its own" do
       [_, body] = String.split(@dispatcher, "defp build_inline_content(", parts: 2)
       [body, _] = String.split(body, "\n  defp ", parts: 2)
 

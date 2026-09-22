@@ -11,64 +11,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **SMS går genom kön.** `:email` och `:webhook` köade ett Oban-jobb och satte
-  kvittot `:scheduled`. `:sms` anropade backendens `deliver/4` rakt av —
-  synkront, inne i den `after_action`-hook där dispatchen sker, alltså inne i
-  actionens transaktion. En långsam leverantör höll transaktionen öppen, och
-  `time:` gick inte att använda eftersom det inte fanns något jobb att
-  schemalägga.
+- **SMS goes through the queue.** `:email` and `:webhook` enqueued an Oban job
+  and marked the receipt `:scheduled`. `:sms` called the backend's `deliver/4`
+  directly — synchronously, inside the `after_action` hook where dispatch
+  happens, and therefore inside the action's transaction. A slow provider held
+  that transaction open, and `time:` could not be used because there was no job
+  to schedule.
 
-  Nu gäller samma form som för e-post, med `AshDispatch.Workers.SendSMS` som
-  spegling av `SendEmail`: kö, `:scheduled`, och därmed `time: {:in, n}` och
-  `{:at, dt}` gratis. Kräver en Oban-kö vid namn `:sms`.
+  It now takes the same shape as email, with `AshDispatch.Workers.SendSMS`
+  mirroring `SendEmail`: queue, `:scheduled`, and therefore `time: {:in, n}`
+  and `{:at, dt}` for free. Requires an Oban queue named `:sms`.
 
-  Samtyckesgrinden kom i 0.8.0 (`Preferences.with_consent`) och ligger kvar
-  ovanför kön — ett kvitto mottagaren tackat nej till ska aldrig bli ett jobb.
+  The consent gate arrived in 0.8.0 (`Preferences.with_consent`) and stays
+  above the queue — a receipt the recipient opted out of should never become a
+  job.
 
-  En befintlig backend fortsätter fungera — den anropas bara från workern i
-  stället för från transaktionen. **Men** jobbet bär bara kvitto-id:t, så
-  kontexten den får är rekonstruerad ur kvittot: `event_id` och `audience`
-  stämmer, `data` och `variables` är tomma. En backend som läste `context.data`
-  ska i stället läsa `receipt.content`, som frystes vid skapandet och just
-  därför överlever ett omförsök.
+  An existing backend keeps working — it is simply called from the worker
+  rather than from the transaction. **But** the job carries only the receipt
+  id, so the context it receives is reconstructed from the receipt: `event_id`
+  and `audience` are real, `data` and `variables` are empty. A backend that
+  read `context.data` should read `receipt.content` instead, which was frozen
+  at creation and survives a retry for exactly that reason.
 
-- **`AshDispatch.SMSBackend.Elks`** — 46elks, paketerad som
-  `EmailBackend.Swoosh` är det, bakom den redan optionella `req`-depen.
-  E.164-normalisering, `dryrun`-flagga, och `:req_options` för att kunna
-  stubbas i test. `400`, `401` och `403` markeras `:failed_permanent` direkt:
-  ett feltypat nummer blir inte rätt av fem omförsök, och så länge det ligger
-  kvar som `:failed` fördröjer det bara beskedet till den som ska rätta det.
+- **`AshDispatch.SMSBackend.Elks`** — 46elks, packaged the way
+  `EmailBackend.Swoosh` is, behind the already-optional `req` dependency.
+  E.164 normalisation, a `dryrun` flag, and `:req_options` so it can be stubbed
+  in tests. `400`, `401` and `403` are marked `:failed_permanent` immediately: a
+  malformed number does not become valid after five retries, and while it sits
+  as `:failed` it only delays telling the person who can fix it.
 
-- **`AshDispatch.SMSBackend.Phone`** — E.164 ur svenska skrivsätt. Egen modul
-  med egen testtabell, för det är den funktionen som avgör om ett SMS når en
-  människa eller tyst går till ingenting.
+- **`AshDispatch.SMSBackend.Phone`** — E.164 from the ways people write phone
+  numbers. Its own module with its own test table, because this is the function
+  that decides whether a message reaches a person or goes quietly nowhere.
 
 ### Fixed
 
-- **Ett misslyckat SMS gjordes aldrig om.** `Workers.RetryFailedDeliveries`
-  och `Changes.EnqueueRetryJob` kände bara `:email` och `:in_app`; allt annat
-  föll i en catch-all. Följden var inte att kvittot lämnades ifred: `:retry`
-  körde ändå, räknade upp `retry_count`, och köandet misslyckades — tillbaka
-  till `:failed`. Fem cronvarv och 75 minuter senare stod det
-  `:failed_permanent`, utan att ha skickats om en enda gång. `:retry`,
-  `:reopen` och `:send_now` i admin avvisade det av samma skäl, så det fanns
-  ingen väg tillbaka alls.
+- **A failed SMS was never retried.** `Workers.RetryFailedDeliveries` and
+  `Changes.EnqueueRetryJob` knew only `:email` and `:in_app`; everything else
+  fell into a catch-all. The consequence was not that the receipt was left
+  alone: `:retry` still ran, incremented `retry_count`, and the enqueue failed
+  — back to `:failed`. Five cron passes and 75 minutes later it read
+  `:failed_permanent`, without having been resent even once. `:retry`,
+  `:reopen` and `:send_now` in admin refused it for the same reason, so there
+  was no way back at all.
 
-  Skilt från en transport som saknar worker med flit: `:broadcast` och
-  `:oban` kvitteras inte, och har därför inget att göra om.
+  Deliberately distinct from a transport that has no worker: `:broadcast` and
+  `:oban` keep no receipts, and therefore have nothing to retry.
 
-- **Kartan över vad som går att göra om låg i två exemplar.** Samma tre
-  grenar i cronen och i knapparna, så en transport kunde få omförsök från den
-  ena men inte den andra. Den bor nu i `AshDispatch.Transport.Retry`, som
-  svarar på vilken strategi en transport har. Resultathanteringen ligger kvar
-  hos anroparen, för den skiljer sig verkligen: cronen vill veta att kvittot
-  redan är färdighanterat, knappen vill ha ett jobb-id att spara.
+- **The map of what can be retried existed in two copies.** The same three
+  branches in the cron and in the admin actions, so a transport could be
+  retried by one and not the other. It now lives in
+  `AshDispatch.Transport.Retry`, which answers which strategy a transport has.
+  Result handling stays with the caller, because that genuinely differs: the
+  cron wants to know the receipt is already fully handled, the action wants a
+  job id to store.
 
 ### Note
 
-`recipient_fields` måste ha en `:sms`-post, annars kastar **varje** mottagare
-`"No identifier field configured for sms transport"` — och felet säger inte
-var man ska leta:
+`recipient_fields` must carry an `:sms` entry, or **every** recipient raises
+`"No identifier field configured for sms transport"` — and the error does not
+say where to look:
 
 ```elixir
 config :ash_dispatch,
@@ -81,12 +83,12 @@ config :ash_dispatch,
 
 ### Added
 
-- **`reply_to/2`** — ett mejl kan äntligen bära ett `Reply-To`-huvud.
+- **`reply_to/2`** — an email can finally carry a `Reply-To` header.
 
-  Avsändaren (`from/2`) är huset: en adress som ofta inte tar emot svar. Men
-  ett mejl som är SKRIVET av en människa — *"vi flyttar vårt möte"*, *"här är
-  din offert"* — bjuder in till ett svar, och utan svarshuvud landar det i
-  `noreply@` och läses av ingen.
+  The sender (`from/2`) is the organisation: an address that often does not
+  accept replies. But an email WRITTEN by a person — *"we're moving our
+  meeting"*, *"here's your quote"* — invites an answer, and without a reply
+  header that answer lands in `noreply@` and is read by nobody.
 
       def reply_to(context, %Channel{transport: :email}) do
         context.data.meeting.user.email
@@ -94,426 +96,436 @@ config :ash_dispatch,
 
       def reply_to(_context, _channel), do: nil
 
-  Default är `nil`, alltså exakt dagens mejl. Allt som inte är en icke-tom
-  sträng behandlas som `nil`, och en callback som kastar fäller inte
-  utskicket: ett mejl utan svarshuvud är billigare än ett mejl som inte går
-  iväg.
+  The default is `nil`, i.e. exactly today's emails. Anything that is not a
+  non-empty string is treated as `nil`, and a callback that raises does not
+  bring the send down: an email without a reply header is cheaper than an
+  email that never leaves.
 
-  **Varför den bärs i `receipt.content` och inte bara i jobbets args.**
-  `SendEmail.new_for_receipt/1` bygger ett omförsök — och varje *skicka nu* —
-  ur KVITTOT, och bär inga innehålls-args alls. Ett `reply_to` som bara levde
-  i det första jobbets args hade därför tappats vid varje retry, tyst och bara
-  på omförsöket. Det är samma fälla som bilagorna redan har en särskild
-  hantering för (`maybe_put_original_attachments/2`); här löses den av att
-  värdet står i kvittot. Bonus: fältet går att LÄSA i efterhand, så en
-  konsument kan mäta att svarsvägen faktiskt sattes i stället för att anta det.
+  **Why it is carried in `receipt.content` and not only in the job's args.**
+  `SendEmail.new_for_receipt/1` builds a retry — and every *send now* — from
+  the RECEIPT, and carries no content args at all. A `reply_to` that lived
+  only in the first job's args would therefore be lost on every retry,
+  silently, and only on the retry. It is the same trap attachments already
+  have special handling for (`maybe_put_original_attachments/2`); here it is
+  solved by the value being in the receipt. A bonus: the field can be READ
+  afterwards, so a consumer can measure that the reply path was actually set
+  rather than assume it.
 
-  Gamla köade jobb saknar nyckeln, får `nil`, och beter sig som före
-  uppgraderingen. `AshDispatch.Workers.SendEmailTest` bevisar båda riktningarna.
+  Old queued jobs lack the key, get `nil`, and behave as before the upgrade.
+  `AshDispatch.Workers.SendEmailTest` proves both directions.
 
-  **Varför den behövdes.** En konsument hade löst det med en proxy framför
-  Swoosh-backenden som slog upp avsändaren i databasen på mottagare plus ämne,
-  per mejl — alltså en andra statusmaskin bredvid bibliotekets, och en läsning
-  per utskick. Det är ett symptom på en saknad callback, inte en design.
+  **Why it was needed.** One consumer had solved it with a proxy in front of
+  the Swoosh backend that looked the sender up in the database by recipient
+  plus subject, per email — a second state machine beside the library's, and
+  one read per send. That is a symptom of a missing callback, not a design.
 
 ## [0.8.0] - 2026-09-14
 
 ### Added
 
-- **`extra_content/2`** — en modul får bidra med EGNA innehållsnycklar.
+- **`extra_content/2`** — a module may contribute content keys of its OWN.
 
-  Transporternas innehåll är en sluten lista: `:in_app` bär titel, text och en
-  väg vidare, `:webhook` detsamma, `:email` sina kroppar. Det räcker så länge
-  mottagaren är en notislista. Det räcker inte när mottagaren är en yta som kan
-  rendera fakta i två kolumner, flera knappar och en ikon — då är varje ny
-  sådan nyckel annars en ändring i biblioteket.
+  A transport's content is a closed list: `:in_app` carries a title, a body and
+  a way onward, `:webhook` the same, `:email` its bodies. That is enough while
+  the receiver is a notification list. It is not enough when the receiver is a
+  surface that can render facts in two columns, several buttons and an icon —
+  without this, every new key of that kind is a change to the library.
 
-      def extra_content(context, %Channel{audience: :slack_kanal}) do
-        %{slack_ikon: "avtal", slack_falt: [%{etikett: "Belopp", varde: "13 995 kr"}]}
+      def extra_content(context, %Channel{audience: :slack_channel}) do
+        %{slack_icon: "contract", slack_fields: [%{label: "Amount", value: "13,995"}]}
       end
 
-  Tillägget läggs **under** transportens egna nycklar: en modul som returnerar
-  `%{message: ...}` skriver inte över `notification_message/2`. Det är för det
-  som saknas, aldrig för att skriva om det som finns. Något annat än en karta
-  ignoreras, och en callback som kastar fäller inte dispatchen — en notis som
-  uteblir är dyrare än ett fält som saknas.
+  The addition is merged **below** the transport's own keys: a module
+  returning `%{message: ...}` does not overwrite `notification_message/2`. It
+  is for what is missing, never for rewriting what is there. Anything that is
+  not a map is ignored, and a callback that raises does not bring the dispatch
+  down — a notification that never arrives costs more than a field that is
+  missing.
 
 ### Fixed
 
-- **`:webhook` kunde inte bära rubrik eller väg vidare från en MODUL.**
-  `build_module_content/5` hade en gren per transport och `:webhook` föll
-  igenom till catch-allen — `%{message: notification_message(...)}` och inget
-  annat. `notification_title/2`, `action_url/2` och `action_label/2` anropades
-  aldrig för transporten.
+- **`:webhook` could not carry a title or a way onward from a MODULE.**
+  `build_module_content/5` had a branch per transport and `:webhook` fell
+  through to the catch-all — `%{message: notification_message(...)}` and
+  nothing else. `notification_title/2`, `action_url/2` and `action_label/2`
+  were never called for that transport.
 
-  `:in_app` har alltid burit alla fyra. Att `:webhook` inte gjorde det var
-  ingen deklaration, det var att ingen skrivit grenen. (0.7.3 rättade samma
-  klass på DSL-sidan; det här är modulsidan av samma lucka.)
+  `:in_app` has always carried all four. That `:webhook` did not was no
+  declaration, it was that nobody had written the branch. (0.7.3 fixed the same
+  class on the DSL side; this is the module side of the same gap.)
 
-  Mätt hos en konsument: av sex distinkta kanalposter i produktion bar EN en
-  rubrik och NOLL en länk.
+  Measured at a consumer: of six distinct channel posts in production, ONE
+  carried a title and NONE carried a link.
 
-  Vakten `AshDispatch.Transports.WebhookModuleContentTest` prövar båda
-  egenskaperna, mutationsprövad: tre mutationer fäller tre prov.
+  The guard `AshDispatch.Transports.WebhookModuleContentTest` checks both
+  properties, mutation-tested: three mutations fail three tests.
 
 ## [0.7.3] - 2026-09-14
 
 ### Fixed
 
-- **`:webhook`-transporten kunde inte bära en väg vidare.**
-  `build_inline_content/4`:s `:webhook`-gren läste `title` och `message` (efter
-  0.7.2) men aldrig `action_url`/`action_label`. En deklarerad
+- **The `:webhook` transport could not carry a way onward.** The `:webhook`
+  branch of `build_inline_content/4` read `title` and `message` (after 0.7.2)
+  but never `action_url`/`action_label`. A declared
 
-      content: [message: "...", action_url: "https://...", action_label: "Öppna demon"]
+      content: [message: "...", action_url: "https://...", action_label: "Open the demo"]
 
-  blev därmed halvt dekoration: texten kom fram, vägen dit gjorde det inte, och
-  avsändaren hade ingen möjlighet att upptäcka det utom genom att läsa det som
-  levererades. `:in_app` och `:push` har alltid burit nycklarna; `:webhook` var
-  den enda transporten med en mottagare som kan rendera en knapp och utan
-  förmågan att få en url dit.
+  was therefore half decoration: the text arrived, the way there did not, and
+  the sender had no way to notice except by reading what was delivered.
+  `:in_app` and `:push` have always carried the keys; `:webhook` was the only
+  transport with a receiver that can render a button and no ability to get a
+  url to it.
 
-  Rapporterat av en konsument som beskrev sina Slack-kanalposter som *"döda
-  notiser"* — laget fick veta att något hänt men kunde inte komma dit.
+  Reported by a consumer who described their Slack channel posts as *"dead
+  notifications"* — the team learned something had happened but could not get
+  there.
 
-  `:discord`, `:slack` och `:sms` får nycklarna MEDVETET inte: deras
-  nyttolaster har ingen egen knappform, och en url utan en yta som renderar den
-  är en nyckel som bara ser ut att göra något.
+  `:discord`, `:slack` and `:sms` DELIBERATELY do not get the keys: their
+  payloads have no button shape of their own, and a url without a surface that
+  renders it is a key that only looks like it does something.
 
-  Vakten `AshDispatch.Transports.InlineContentTextTest` prövar nu båda
-  egenskaperna per gren — att texten läses, och att vägen vidare läses av de
-  transporter som kan visa den. Mutationsprövad: att ta bort raderna fäller två
-  prov.
+  The guard `AshDispatch.Transports.InlineContentTextTest` now checks both
+  properties per branch — that the body is read, and that the way onward is
+  read by the transports that can show it. Mutation-tested: removing the lines
+  fails two tests.
 
 ## [0.7.2] - 2026-09-14
 
 ### Fixed
 
-- **`:webhook`-transporten tappade sin deklarerade text.**
-  `build_inline_content/4`:s `:webhook`-gren byggde bara `payload` och
-  `webhook_url`. Den läste aldrig `content_config[:message]` — den enda av sex
-  textbärande grenar som inte gjorde det.
+- **The `:webhook` transport dropped its declared body.** The `:webhook` branch
+  of `build_inline_content/4` built only `payload` and `webhook_url`. It never
+  read `content_config[:message]` — the only one of six body-carrying branches
+  that did not.
 
-  Felet var av den tysta klassen. Ett event MED en eventmodul faller tillbaka
-  på modulens `notification_message/2`, vars genererade default är
-  `"You have a new notification"`. Merge-ordningen i `build_content/5` låter
-  modulens värde stå kvar för varje nyckel inline inte sätter, så en deklarerad
-  `content: [message: ...]` på en webhook-kanal blev **dekoration** — och
-  mottagaren fick platshållaren med rätt form och fel innehåll. Utan modul hade
-  `message` saknats helt och mottagaren kunnat avvisa kuvertet; att eventet har
-  en modul förvandlade alltså ett hårt fel till en giltig sträng.
+  The bug was of the silent kind. An event WITH an event module falls back on
+  the module's `notification_message/2`, whose generated default is
+  `"You have a new notification"`. The merge order in `build_content/5` lets
+  the module's value stand for every key inline content does not set, so a
+  declared `content: [message: ...]` on a webhook channel became
+  **decoration** — and the recipient got the placeholder, the right shape with
+  the wrong content. Without a module, `message` would have been missing
+  entirely and the receiver could have rejected the envelope; the event having
+  a module therefore turned a hard failure into a valid string.
 
-  Mätt hos en konsument innan fixen: **41 av 41** levererade webhook-kvitton
-  bar platshållaren, fördelade på nio deklarerade kanaler. Ingen av texterna
-  hade någonsin nått fram, under lika lång tid som kanalerna funnits.
+  Measured at a consumer before the fix: **41 of 41** delivered webhook
+  receipts carried the placeholder, across nine declared channels. None of the
+  written text had ever arrived, for as long as the channels had existed.
 
-  Grenen bär nu `:message` och `:title` via `maybe_put/3`.
+  The branch now carries `:message` and `:title` through `maybe_put/3`.
 
-- **`:discord`, `:slack` och `:sms` kunde skriva över modulens text med `nil`.**
-  Samma klass åt andra hållet: de satte `message:` som en ovillkorlig nyckel,
-  och `interpolate(nil, _)` ger `nil`. En kanal som deklarerade allt UTOM
-  texten raderade därmed modulens callback-värde. Alla tre använder nu
-  `maybe_put/3`, som `:in_app` och `:push` redan gjorde.
+- **`:discord`, `:slack` and `:sms` could overwrite the module's body with
+  `nil`.** The same class in the other direction: they set `message:` as an
+  unconditional key, and `interpolate(nil, _)` returns `nil`. A channel that
+  declared everything EXCEPT the body therefore erased the module's callback
+  value. All three now use `maybe_put/3`, as `:in_app` and `:push` already did.
 
 ### Added
 
-- `AshDispatch.Transports.InlineContentTextTest` — vakt som kräver att varje
-  textbärande transportgren läser `content_config[:message]` och sätter den med
-  `maybe_put`. Det befintliga strukturprovet frågade bara om grenen FANNS, och
-  såg därför en gren som bar fel innehåll som en gren som fungerade.
+- `AshDispatch.Transports.InlineContentTextTest` — a guard requiring every
+  body-carrying transport branch to read `content_config[:message]` and set it
+  with `maybe_put`. The existing structural test only asked whether the branch
+  EXISTED, and therefore saw a branch carrying the wrong content as a branch
+  that worked.
 
 ## [0.7.1] - 2026-09-10
 
 ### Fixed
 
-- **Varningen om den föräldralösa leverantören kunde tyst utebli.** Latchen
-  som gör att den bara loggas en gång per VM sattes **före** villkoret
-  prövades. Den allra första leveransen i en nod avgjorde därmed för alltid om
-  varningen någonsin kunde synas: en app som satte `:preference_provider` efter
-  den leveransen — en umbrella som bootar i ogynnsam ordning, en `runtime.exs`,
-  en testsvit — latchades in i tystnad av ett anrop som inte hade något att
-  varna om.
+- **The orphaned-provider warning could go silently missing.** The latch that
+  makes it log only once per VM was set **before** the condition was checked.
+  The very first delivery in a node therefore decided forever whether the
+  warning could ever appear: an app that set `:preference_provider` after that
+  delivery — an umbrella booting in an unlucky order, a `runtime.exs`, a test
+  suite — was latched into silence by a call that had nothing to warn about.
 
-  En varning som tyst kan utebli är exakt den buggklass varningen finns för att
-  rapportera. Villkoret prövas nu först och latchen sätts bara när varningen
-  faktiskt loggas. Kostnaden är två ETS-läsningar per leverans, vilket är
-  mindre än kostnaden av att ha fel om det.
+  A warning that can silently go missing is exactly the class of bug the
+  warning exists to report. The condition is now checked first and the latch is
+  set only when the warning actually logs. The cost is two ETS reads per
+  delivery, which is less than the cost of being wrong about it.
 
 ## [0.7.0] - 2026-09-10
 
 ### Changed
 
-- **Varje transport som når en människa frågar nu om samtycke.** Fram till nu
-  gjorde tre av sju det: `:email`, `:in_app` och `:webhook`. `:slack`,
-  `:discord`, `:sms` och `:push` levererade oavsett vad mottagaren hade valt.
+- **Every transport that reaches a person now asks for consent.** Until now
+  three of seven did: `:email`, `:in_app` and `:webhook`. `:slack`, `:discord`,
+  `:sms` and `:push` delivered regardless of what the recipient had chosen.
 
-  Det såg ut som en lucka snarare än ett beslut, och den var av det tysta
-  slaget: en person som stängde av en notistyp fick den ändå — på en annan
-  kanal, utan att något sa ifrån. Preferensen var inte bruten, den var
-  **delvis** hedrad, vilket är sämre än att inte finnas, eftersom personen tror
-  att den gäller.
+  It looked like a gap rather than a decision, and it was of the silent kind: a
+  person who turned a notification type off got it anyway — on another channel,
+  without anything saying so. The preference was not broken, it was
+  **partially** honoured, which is worse than not existing, because the person
+  believes it applies.
 
-  Detta är en BETEENDEÄNDRING för befintliga konsumenter, och därför en
-  minor-bump snarare än en patch: en `:slack`-kanal med en grindad publik
-  (`:user` som standard) kommer nu att skippa kvitton den tidigare skickade.
-  Sätt publiken till något ogrindat, eller `preference_gated_audiences`, om det
-  inte är vad ni vill.
-
-### Added
-
-- **`AshDispatch.Transports.Preferences.with_consent/5` — grinden på ETT
-  ställe.** Kontrollen är åtta rader, och åtta rader kopierade sex gånger är sex
-  chanser att glida isär. Kopiorna hade redan börjat: `:in_app` loggade
-  användar-id, `:webhook` loggade kvitto-id, och ingen av dem sa vilket som var
-  avsett.
-
-  `:email`, `:in_app` och `:webhook` flyttades till samma funktion — inte som
-  städning, utan för att skälet på ett skippat kvitto ska vara **ett** värde man
-  kan räkna. En instrumentpanel som filtrerar på opt-out ska inte missa en
-  transport som stavade det annorlunda. `Preferences.reason/0` är publik just
-  därför.
-
-  Förbehållet, utskrivet: detta gäller transportgrindens skäl. `SendEmail`-
-  workern skriver fortfarande `"User opted out of this email category"` när den
-  egna leverantörsvägen nekar (se nedan). Två skäl, två system — en räkning
-  måste tills vidare känna till båda.
-
-- `:oban` och `:broadcast` är avsiktligt utanför regeln. De har ingen person att
-  fråga, och en samtyckesgrind där skulle antyda en mottagare som inte finns.
-  Ett prov vaktar att de förblir utanför, så att nästa läsare ser att det är ett
-  beslut och inte något som glömdes.
+  This is a BEHAVIOUR CHANGE for existing consumers, and therefore a minor bump
+  rather than a patch: a `:slack` channel with a gated audience (`:user` by
+  default) will now skip receipts it used to send. Set the audience to
+  something ungated, or use `preference_gated_audiences`, if that is not what
+  you want.
 
 ### Added
 
-- **`AshDispatch.UserPreference.LegacyProvider` — bron mellan bibliotekets TVÅ
-  preferenssystem.** Det här är det egentliga fyndet i den här releasen, och det
-  hittades först när ovanstående skulle mätas mot en riktig konsument.
+- **`AshDispatch.Transports.Preferences.with_consent/5` — the gate in ONE
+  place.** The check is eight lines, and eight lines copied six times are six
+  chances to drift apart. The copies had already started: `:in_app` logged the
+  user id, `:webhook` logged the receipt id, and neither said which was
+  intended.
 
-  Biblioteket har två preferenssystem som aldrig möttes:
+  `:email`, `:in_app` and `:webhook` moved to the same function — not as
+  tidying, but so that the reason on a skipped receipt is **one** value you can
+  count. A dashboard filtering on opt-out should not miss a transport that
+  spelled it differently. `Preferences.reason/0` is public for exactly that
+  reason.
 
-  | | läses av | konfigureras som |
+  The caveat, written down: this covers the transport gate's reason. The
+  `SendEmail` worker still writes `"User opted out of this email category"`
+  when its own provider path refuses (see below). Two reasons, two systems — a
+  count has to know about both for now.
+
+- `:oban` and `:broadcast` are deliberately outside the rule. They have no
+  person to ask, and a consent gate there would imply a recipient that does not
+  exist. A test guards that they stay outside, so the next reader sees it is a
+  decision and not something forgotten.
+
+### Added
+
+- **`AshDispatch.UserPreference.LegacyProvider` — the bridge between the
+  library's TWO preference systems.** This is the real finding in this release,
+  and it only surfaced when the above was measured against a real consumer.
+
+  The library has two preference systems that never met:
+
+  | | read by | configured as |
   |---|---|---|
-  | `AshDispatch.UserPreference` | varje transport, via `allows_receipt?/4` | `:user_preference` |
-  | `AshDispatch.Behaviours.PreferenceProvider` | `SendEmail`-workern och manual triggers | `:preference_provider` |
+  | `AshDispatch.UserPreference` | every transport, via `allows_receipt?/4` | `:user_preference` |
+  | `AshDispatch.Behaviours.PreferenceProvider` | the `SendEmail` worker and manual triggers | `:preference_provider` |
 
-  En app som kopplat in **bara** den andra — och guiderna pekade dit i åratal —
-  får sin regel hedrad **på e-post och ingen annanstans**. Ingenting sa det.
-  Regeln såg konfigurerad ut, var konfigurerad, och täckte tyst en transport av
-  sju.
+  An app that wired up **only** the second — and the guides pointed there for
+  years — gets its rule honoured **on email and nowhere else**. Nothing said
+  so. The rule looked configured, was configured, and silently covered one
+  transport out of seven.
 
-  Det är samma klass som resten av releasen, men värre: en app som INTE
-  konfigurerat något alls vet åtminstone att den inte har opt-out.
+  That is the same class as the rest of this release, but worse: an app that
+  has configured nothing at all at least knows it has no opt-out.
 
-  Bron gör att den befintliga leverantören svarar för alla sju:
+  The bridge lets the existing provider answer for all seven:
 
       config :ash_dispatch,
         preference_provider: MyApp.PreferenceProvider,
         user_preference: AshDispatch.UserPreference.LegacyProvider
 
-  Semantiken är kopierad ur `SendEmail.check_user_preferences/1` — inklusive att
-  ett `{:error, _}` från leverantören **släpper igenom**. En preferensdatabas som
-  ligger nere får inte bli en mute-knapp: en utebliven avisering är osynlig för
-  alla, även för mottagaren.
+  The semantics are copied from `SendEmail.check_user_preferences/1` —
+  including that an `{:error, _}` from the provider **lets the message
+  through**. A preference database that is down must not become a mute button:
+  a notification that never arrives is invisible to everyone, including the
+  recipient.
 
-  Inkopplingen är opt-in med flit. Att göra bron till standard hade tystat
-  mottagare i befintliga appar vid en patch-uppgradering — precis det som gör
-  den här buggklassen svår att upptäcka.
+  Wiring it up is opt-in deliberately. Making the bridge the default would have
+  silenced recipients in existing apps on a patch upgrade — precisely what
+  makes this class of bug hard to find.
 
-- **Biblioteket säger ifrån om den föräldralösa leverantören.** Är
-  `:preference_provider` satt medan `:user_preference` inte är det, loggas en
-  varning en gång per VM med vad som gäller och hur man kopplar in bron. Ingen
-  ska behöva upptäcka det här på det sätt det upptäcktes.
+- **The library speaks up about the orphaned provider.** If
+  `:preference_provider` is set while `:user_preference` is not, a warning logs
+  once per VM with what applies and how to wire up the bridge. Nobody should
+  have to discover this the way it was discovered.
 
 ### Fixed
 
-- Regressionsgrinden för den per-mottagare-baserade domen (0.6.1) **mätte
-  mekanismen, inte egenskapen**: den krävde att den bokstavliga
-  `allows_receipt?/4`-raden stod inne i `email.ex` och `in_app.ex`. När de sex
-  kopierade blocken ersattes av en delad funktion gick grinden röd — medan
-  egenskapen den finns för att skydda var orörd.
+- The regression guard for the per-recipient verdict (0.6.1) **measured the
+  mechanism, not the property**: it required the literal `allows_receipt?/4`
+  line to appear inside `email.ex` and `in_app.ex`. When the six copied blocks
+  were replaced by a shared function the guard went red — while the property it
+  exists to protect was untouched.
 
-  Den mäter nu domen: ingen leveransväg får härleda samtycke ur `context.user`,
-  och varje väg som beslutar alls skickar KVITTOT först. Filerna räknas upp med
-  en glob i stället för en lista någon underhåller, eftersom en underhållen
-  lista är den andra halvan av samma fel — en transport som läggs till i morgon
-  täcks utan att någon behöver minnas den.
+  It now measures the verdict: no delivery path may derive consent from
+  `context.user`, and every path that decides at all passes the RECEIPT first.
+  The files are enumerated with a glob rather than a list someone maintains,
+  because a maintained list is the other half of the same mistake — a transport
+  added tomorrow is covered without anyone having to remember it.
 
 ## [0.6.14] - 2026-09-09
 
 ### Added
 
-- **`metadata.secret_env` — signeringsnyckelns NAMN i DSL:en, värdet vid
-  utskick.** Kanaler deklarerade i `dispatch do` är kompileringstidsdata, men
-  en signeringsnyckel är driftdata. Bakad in vid kompilering slår en
-  nyckelrotation inte igenom förrän någon kompilerar om — och ingenting säger
-  ifrån.
+- **`metadata.secret_env` — the signing secret's NAME in the DSL, the value at
+  send time.** Channels declared in `dispatch do` are compile-time data, but a
+  signing secret is operational data. Baked in at compile time, a key rotation
+  does not take effect until someone recompiles — and nothing says a word.
 
-  Alternativet var att flytta hela kanalen till eventmodulens `channels/1`,
-  vilket fungerar men offrar DSL:en för varje ANNAN egenskap hos kanalen
-  (audience, tid, policy, dedupe). Att läsa namnet vid kompilering och värdet
-  vid utskick behåller båda: kanalen förblir deklarativ, nyckeln förblir
-  operativ.
+  The alternative was to move the whole channel into the event module's
+  `channels/1`, which works but sacrifices the DSL for every OTHER property of
+  the channel (audience, timing, policy, dedupe). Reading the name at compile
+  time and the value at send time keeps both: the channel stays declarative,
+  the secret stays operational.
 
-- **`metadata.webhook_url_env`** av samma skäl, med en skarpare konsekvens: en
-  URL som bakas in vid kompilering följer med till STAGING, och staging postar
-  då till produktionens mottagare. Meddelandet kommer fram — bara på fel
-  ställe, vilket inte syns som ett fel.
+- **`metadata.webhook_url_env`** for the same reason, with a sharper
+  consequence: a URL baked in at compile time travels to STAGING, and staging
+  then posts to production's receiver. The message arrives — just in the wrong
+  place, which does not look like a failure.
 
-- **Kuvertet bär `source_type` och `source_id`.** Utan dem vet en mottagare att
-  något hänt och till vem, men inte om VILKET objekt — och kan därför inte
-  erbjuda en åtgärd. En Slack-knapp som ska sätta ett val på ett möte behöver
-  mötets id. Kvittot bar redan fälten; de saknades bara i kuvertet.
+- **The envelope carries `source_type` and `source_id`.** Without them a
+  receiver knows something happened and to whom, but not about WHICH object —
+  and therefore cannot offer an action. A Slack button that should record a
+  choice on a meeting needs the meeting's id. The receipt already carried the
+  fields; they were simply missing from the envelope.
 
-  `secret` vinner när båda anges, så ett prov kan sätta ett explicit värde.
-  `secret_env` stryks ur det vidarebefordrade kuvertet av samma skäl som
-  `secret`: den avslöjar inget värde, men den är konfiguration och inte
-  händelsedata. `hemlighet/1` är publik.
+  `secret` wins when both are given, so a test can set an explicit value.
+  `secret_env` is stripped from the forwarded envelope for the same reason as
+  `secret`: it reveals no value, but it is configuration rather than event
+  data. `secret/1` is public.
 
 ## [0.6.13] - 2026-09-08
 
 ### Fixed
 
-- **Kvittot schemalades EFTER att jobbet köats, och tävlade med sin egen
-  worker.** Från det ögonblick jobbet finns i kön kan en worker plocka det —
-  och med `Oban, testing: :inline` körs det redan inuti `Oban.insert/1`. Då
-  hann kvittot bli `:sending`, `:sent` eller `:failed` innan transporten satte
-  `:scheduled`, och `schedule` går bara från `:pending`. Följden var ett kastat
-  `NoMatchingTransition` mitt i en **lyckad** leverans: meddelandet gick fram,
-  men anroparen fick ett fel.
+- **The receipt was scheduled AFTER the job was enqueued, and raced its own
+  worker.** From the moment the job is in the queue a worker can pick it up —
+  and with `Oban, testing: :inline` it already runs inside `Oban.insert/1`. The
+  receipt could therefore become `:sending`, `:sent` or `:failed` before the
+  transport marked `:scheduled`, and `schedule` only goes from `:pending`. The
+  result was a raised `NoMatchingTransition` in the middle of a **successful**
+  delivery: the message arrived, but the caller got an error.
 
-  `:webhook` markerar nu `:scheduled` före insert, och läser om kvittot
-  efteråt så att den rapporterade statusen är den verkliga och inte den
-  förväntade.
+  `:webhook` now marks `:scheduled` before the insert, and re-reads the receipt
+  afterwards so the reported status is the real one rather than the expected
+  one.
 
-  Samma ordning finns i `:slack` och `:discord`. De är orörda här — det är en
-  beteendeändring för befintliga konsumenter och hör till en egen ändring — men
-  buggen är densamma och värd att känna till.
+  The same ordering exists in `:slack` and `:discord`. They are untouched here
+  — that is a behaviour change for existing consumers and belongs in its own
+  change — but the bug is the same and worth knowing about.
 
 ## [0.6.12] - 2026-09-08
 
 ### Added
 
-- **`:webhook` levererar nu på riktigt.** Transporten har funnits i registret
-  och i `@type transport` sedan länge, men `deliver/4` loggade
-  `"Webhook transport not yet implemented"` och satte kvittot till `:skipped`
-  med `transport_not_implemented`. En kanal kopplad dit skickade alltså
-  ingenting — och gjorde det *tyst*: kvittot var en giltig terminalstatus, inte
-  ett fel, så ingen yta uppströms hade anledning att larma. Det är den värsta
-  sorten, för den syns först när någon undrar varför en notis aldrig kom.
+- **`:webhook` now actually delivers.** The transport had been in the registry
+  and in `@type transport` for a long time, but `deliver/4` logged
+  `"Webhook transport not yet implemented"` and marked the receipt `:skipped`
+  with `transport_not_implemented`. A channel wired to it therefore sent
+  nothing — and did so *silently*: the receipt was a valid terminal status, not
+  an error, so no surface upstream had reason to raise anything. That is the
+  worst kind, because it only shows up when someone wonders why a notification
+  never came.
 
-  Transporten POSTar nu en stabil kuvertform (`event_id`, `receipt_id`,
-  `user_id`, `recipient`, `audience`, `content`, `metadata`, `sent_at`) via
-  `SendWebhook`, så en mottagare kan skrivas en gång.
+  The transport now POSTs a stable envelope shape (`event_id`, `receipt_id`,
+  `user_id`, `recipient`, `audience`, `content`, `metadata`, `sent_at`) through
+  `SendWebhook`, so a receiver can be written once.
 
-- **Signering.** Sätts `metadata.secret` bär anropet
-  `<signature_header>: sha256=<hex>` (default `x-webhook-signature`), räknat som
-  HMAC-SHA256 över `METHOD \n path \n sorterad_query \n kropp`. Att binda
-  vägen och queryn — inte bara kroppen — gör att en avlyssnad signatur inte kan
-  spelas upp mot en annan endpoint på samma värd. `canonical_string/3` är
-  publik så en mottagare kan prova sin verifierare mot vår i stället för mot
-  sin läsning av dokumentationen.
+- **Signing.** With `metadata.secret` set, the call carries
+  `<signature_header>: sha256=<hex>` (default `x-webhook-signature`), computed
+  as HMAC-SHA256 over `METHOD \n path \n sorted_query \n body`. Binding the
+  path and the query — not only the body — means an intercepted signature
+  cannot be replayed against a different endpoint on the same host.
+  `canonical_string/3` is public so a receiver can test its verifier against
+  ours rather than against its reading of the documentation.
 
-  Nyckeln stryks ur den vidarebefordrade metadatan: en signeringsnyckel ska
-  aldrig resa inuti kroppen den signerar.
+  The secret is stripped from the forwarded metadata: a signing secret must
+  never travel inside the body it signs.
 
-- **`SendWebhook` tar `raw_body`.** En signerad webhook måste sända exakt de
-  bytes som signerades. Låter man HTTP-klienten koda om en map kan
-  nyckelordning och flyttalsformat ändras, och signaturen failar *ibland* —
-  vilket är värre än alltid, för det ser ut som en flake i stället för en bugg.
-  Transporten serialiserar därför själv och skickar strängen vidare. Saknas
-  `raw_body` är beteendet oförändrat (`json: payload`), så Discord- och
-  Slack-transporterna är oberörda.
+- **`SendWebhook` accepts `raw_body`.** A signed webhook must send exactly the
+  bytes that were signed. Let the HTTP client re-encode a map and key order and
+  float formatting can change, and the signature fails *intermittently* — which
+  is worse than always, because it looks like a flake rather than a bug. The
+  transport therefore serialises itself and passes the string on. Without
+  `raw_body` the behaviour is unchanged (`json: payload`), so the Discord and
+  Slack transports are untouched.
 
-- **Ett `4xx` retry:as inte längre.** `SendWebhook` behandlade varje icke-2xx
-  likadant och lät Oban försöka om fem gånger. Men ett `4xx` är mottagaren som
-  säger *den här requesten är fel* — en okänd kanal, en återkallad webhook-URL,
-  en mottagare som inte finns. Att skicka om exakt samma bytes ändrar ingenting;
-  det döljer bara felet bakom en kö som ser upptagen ut. Nu `{:cancel, reason}`
-  med kvittot redan satt till `failed`. Undantagen är `408` och `429`, som
-  handlar om tid och inte om innehåll, och `5xx`/nätverksfel som förr.
+- **A `4xx` is no longer retried.** `SendWebhook` treated every non-2xx the
+  same and let Oban try five times. But a `4xx` is the receiver saying *this
+  request is wrong* — an unknown channel, a revoked webhook URL, a recipient
+  that does not exist. Resending exactly the same bytes changes nothing; it
+  only hides the failure behind a queue that looks busy. It is now
+  `{:cancel, reason}` with the receipt already set to `failed`. The exceptions
+  are `408` and `429`, which are about time rather than content, and
+  `5xx`/network errors as before.
 
-  Det gör det möjligt för en mottagare att svara `422` när en notis inte kan
-  levereras och få ett ärligt `failed`-kvitto på första försöket, i stället för
-  fem identiska försök och en sanning som kommer minuter senare.
-  `permanent?/1` är publik.
+  This lets a receiver answer `422` when a notification cannot be delivered and
+  get an honest `failed` receipt on the first attempt, rather than five
+  identical attempts and a truth that arrives minutes later. `permanent?/1` is
+  public.
 
-- **Signeringsnyckeln kan inte längre tappas tyst.** `metadata` lästes bara med
-  atom-nyckel medan strykningen ur payloaden hanterade både atom och sträng. En
-  `metadata: %{"secret" => …}` blev därför struken ur kroppen men aldrig använd
-  — anropet gick osignerat, utan ett ord. Läsningen speglar nu
-  `ContentMap.get_content/2` och tar båda formerna. `request_headers/3` är
-  publik så signeringskontraktet går att pröva utifrån.
+- **The signing secret can no longer be dropped silently.** `metadata` was read
+  with an atom key only, while the strip from the payload handled both atom and
+  string. A `metadata: %{"secret" => …}` was therefore stripped from the body
+  but never used — the call went out unsigned, without a word. The read now
+  mirrors `ContentMap.get_content/2` and takes both forms.
+  `request_headers/3` is public so the signing contract can be tested from the
+  outside.
 
 ### Notes
 
-- `:webhook` respekterar mottagarens opt-out via
-  `UserPreference.allows_receipt?/4`, som `:email` och `:in_app` — en webhook är
-  ofta första hoppet till en människa, och att leverera till någon som tackat
-  nej för att sista hoppet råkar vara HTTP vore fel förval. `:slack`,
-  `:discord`, `:sms` och `:push` gör ännu inte den kontrollen. Det ser ut som
-  en lucka snarare än ett beslut, men att ändra dem är en beteendeändring för
-  befintliga konsumenter och hör till en egen ändring.
+- `:webhook` honours the recipient's opt-out through
+  `UserPreference.allows_receipt?/4`, like `:email` and `:in_app` — a webhook
+  is often the first hop to a person, and delivering to someone who opted out
+  because the last hop happens to be HTTP would be the wrong default.
+  `:slack`, `:discord`, `:sms` and `:push` do not yet make that check. It looks
+  like a gap rather than a decision, but changing them is a behaviour change
+  for existing consumers and belongs in its own change.
 
 ## [0.6.11] - 2026-09-07
 
 ### Fixed
 
-- **In-app-notisen kunde levereras en gång per MOTTAGARE, inte en gång per
-  händelse.** Idempotensnyckeln byggdes av `extract_resource_id/1`, som tar
-  första värdet i `data` som bär ett binärt `:id`. Bär `data` både mottagaren
-  och det som hänt avgörs vinnaren av mappens iterationsordning — i praktiken
-  ofta mottagaren. Då blir nyckeln
-  `event:<user>:<audience>:<user>`, konstant över alla framtida händelser för
-  den användaren, och varje senare händelse kolliderar med den första. Sett i
-  drift på ett "ditt mål är nått"-event: EN rad i hela tabellen, resten
-  kolliderade.
+- **The in-app notification could be delivered once per RECIPIENT rather than
+  once per event.** The idempotency key was built by `extract_resource_id/1`,
+  which takes the first value in `data` carrying a binary `:id`. When `data`
+  holds both the recipient and the thing that happened, the winner is decided
+  by the map's iteration order — in practice often the recipient. The key then
+  becomes `event:<user>:<audience>:<user>`, constant across all future events
+  for that user, and every later event collides with the first. Seen in
+  production on a "you reached your goal" event: ONE row in the whole table,
+  the rest collided.
 
-  Kanaler tar nu `idempotency_source:` — nyckeln i `data` som pekar ut vilken
-  händelse detta är. Utan den gäller den gamla heuristiken oförändrat, så
-  befintliga event beter sig likadant.
+  Channels now take `idempotency_source:` — the key in `data` that identifies
+  which event this is. Without it the old heuristic applies unchanged, so
+  existing events behave the same.
 
-- **En kollision kunde lämna transporten som ett undantag.** `Ash.create`
-  ger `{:error, _}` för ett unikhetsbrott bara när den äger transaktionen.
-  Inuti en YTTRE transaktion — en Ash-action som dispatchar ur en hook —
-  raisar AshPostgres i stället, `case`-satsens felgren nås aldrig, och raisen
-  river anroparens transaktion med allt den hunnit göra. En trigger som
-  stämplar sin egen idempotensflagga före utskicket förlorade då stämpeln och
-  kördes om i all evighet. Transporten slår nu upp nyckeln före insert och
-  behandlar även ett *kastat* unikhetsbrott som den kollision det är.
+- **A collision could leave the transport as an exception.** `Ash.create`
+  returns `{:error, _}` for a uniqueness violation only when it owns the
+  transaction. Inside an OUTER transaction — an Ash action dispatching from a
+  hook — AshPostgres raises instead, the `case` statement's error branch is
+  never reached, and the raise tears down the caller's transaction along with
+  everything it had done. A trigger stamping its own idempotency flag before
+  sending would then lose the stamp and run again forever. The transport now
+  looks the key up before the insert and treats a *raised* uniqueness violation
+  as the collision it is.
 
-- **Ett omförsök på ett kvitto som redan bär `notification_id` skapar inte en
-  andra notis.** Retry-vägen bygger nyckeln ur kvittots `source_id` och kan
-  inte se kanalens `idempotency_source`, så den kunde skriva en dubblett under
-  en annan nyckel. Den kvitterar nu i stället.
+- **A retry on a receipt that already carries `notification_id` does not create
+  a second notification.** The retry path builds the key from the receipt's
+  `source_id` and cannot see the channel's `idempotency_source`, so it could
+  write a duplicate under a different key. It now acknowledges instead.
 
 ## [0.6.10] - 2026-09-02
 
 ### Fixed
 
-- **En oåtkomlig mottagare tar inte längre ner hela kanalen.** När
-  `extract_identifier/4` inte kunde få fram en adress kastade
-  `extract_recipient_identifier/3` vidare, och undantaget tog sig ur
-  `Enum.map/2` i `do_dispatch_channel/3` — trots att den funktionen redan
-  tolererar delvis misslyckande och returnerar framgång när minst en
-  leverans gick igenom. En mottagare utan adress kostade alltså ALLA
-  mottagare i kanalen. Den ger nu `{:error, :recipient_unreachable}` för just
-  den raden; felet loggas som förut.
+- **An unreachable recipient no longer takes down the whole channel.** When
+  `extract_identifier/4` could not produce an address,
+  `extract_recipient_identifier/3` re-raised, and the exception escaped
+  `Enum.map/2` in `do_dispatch_channel/3` — even though that function already
+  tolerates partial failure and returns success when at least one delivery went
+  through. A recipient without an address therefore cost ALL recipients in the
+  channel. It now returns `{:error, :recipient_unreachable}` for that row only;
+  the error is logged as before.
 
-  Sett i skarp drift 2026-09-02: en målgrupp löstes till beställaren plus
-  hens företag, företaget var en inloggningslös grupperingsrad utan e-post,
-  och kundens orderbekräftelse skapades aldrig. Beställaren hade en fullt
-  fungerande adress och förlorade sitt brev på någon annans saknade.
+  Seen in production on 2026-09-02: an audience resolved to the buyer plus
+  their company, the company was a login-less grouping row with no email
+  address, and the customer's order confirmation was never created. The buyer
+  had a perfectly good address and lost their email to someone else's missing
+  one.
 
-  Skilt från `optional: true`-hoppet, som är ett medvetet överhopp och
-  räknas som framgång. Att slå ihop dem hade rapporterat en kanal som
-  levererad fastän ingen kunde nås.
+  Distinct from the `optional: true` skip, which is a deliberate skip and
+  counts as success. Merging the two would have reported a channel as delivered
+  even though nobody could be reached.
 
-- **Felmeddelandet slutar vara det som går sönder.**
-  `raise_extraction_error/5` läste `recipient.__struct__` rakt av. Målgrupper
-  kan lösas till vanliga mappar, och på en sådan kastade punktåtkomsten
-  `KeyError` *inuti felmeddelandet* — anroparen såg
-  `%KeyError{key: :__struct__}` i stället för vilken mottagare och vilket
-  fält det gällde. Den enda rad som kunde ha förklarat felet var den som
-  brast.
+- **The error message stops being the thing that breaks.**
+  `raise_extraction_error/5` read `recipient.__struct__` directly. Audiences
+  can resolve to plain maps, and on one of those the dot access raised a
+  `KeyError` *inside the error message* — the caller saw
+  `%KeyError{key: :__struct__}` rather than which recipient and which field it
+  was about. The one line that could have explained the failure was the one
+  that broke.
 
 ## [0.6.9] - 2026-08-24
 
@@ -659,7 +671,7 @@ config :ash_dispatch,
   dispatch-to-receipt flow: no application-level `recipient_fields`, no
   configured `delivery_receipt_resource`, and further gaps behind those. An
   attempt to build one was abandoned as larger than the change it would
-  guard. The behaviour is exercised end-to-end by magasin's mailing
+  guard. The behaviour is exercised end-to-end by a consumer's mailing
   byte-identity test, which compares a preview rendered for a chosen
   recipient against what that recipient actually receives.
 
@@ -993,7 +1005,7 @@ revision folded them into 0.5.3; in fact 0.5.3 had already been published
   `svix-id.svix-timestamp.raw_body` with constant-time comparison,
   multi-signature support (secret rotation) and a replay window. Ported
   from a client app, where it was the only verified endpoint in the
-  fleet; siteflow/magasin expose unauthenticated receipt mutation today.
+  fleet; two consumers expose unauthenticated receipt mutation today.
 - **Sensitive-content scrubbing**:
   `AshDispatch.Workers.ScrubSensitiveContent` (cron) blanks `body_text`/
   `body_html` of receipts whose event declares
@@ -1281,7 +1293,7 @@ left in the event module for derived assigns.
 ### Fixed
 - **TypeScript SDK generator emits strict-mode-clean channel handlers.**
   Previously, `channel.on('initial_state', (payload: {...}) => {...})` failed
-  to type-check in consumers running `strict: true` (saleflow) because
+  to type-check in consumers running `strict: true` because
   phoenix-js types the callback parameter as `(payload: unknown)` and TS
   function-parameter contravariance rejects narrower handler types.
   Generator now widens all `channel.on`/`socket.on` callbacks to

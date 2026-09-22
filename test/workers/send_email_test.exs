@@ -34,33 +34,33 @@ defmodule AshDispatch.Workers.SendEmailTest do
     end
   end
 
-  describe "reply_to_for/2 — svarsvägen överlever ett omförsök" do
-    test "jobbets args vinner när de bär en adress" do
+  describe "reply_to_for/2 — the reply path survives a retry" do
+    test "the job's args win when they carry an address" do
       assert SendEmail.reply_to_for(
                %{"reply_to" => "ur-jobbet@example.com"},
                %{content: %{reply_to: "ur-kvittot@example.com"}}
              ) == "ur-jobbet@example.com"
     end
 
-    # Det bärande provet. `new_for_receipt/1` bär inga innehålls-args, så utan
-    # fallbacken hade varje retry och varje "skicka nu" gått ut UTAN svarsväg —
-    # tyst, och bara på omförsöket.
-    test "utan args läses kvittot — och det är vad ett omförsök har" do
+    # The load-bearing test. `new_for_receipt/1` carries no content args, so
+    # without the fallback every retry and every "send now" would have gone out
+    # WITHOUT a reply path — silently, and only on the retry.
+    test "without args the receipt is read — and that is what a retry has" do
       assert SendEmail.reply_to_for(%{}, %{content: %{reply_to: "saljaren@example.com"}}) ==
                "saljaren@example.com"
 
-      # Samma sak när innehållet varit genom JSONB och nyckeln är en sträng.
+      # The same when the content has been through JSONB and the key is a string.
       assert SendEmail.reply_to_for(%{}, %{content: %{"reply_to" => "saljaren@example.com"}}) ==
                "saljaren@example.com"
     end
 
-    test "ett jobb från före 0.8.1 ger nil — alltså dagens beteende" do
+    test "a job from before 0.8.1 gives nil — i.e. today's behaviour" do
       assert SendEmail.reply_to_for(%{}, %{content: %{}}) == nil
       assert SendEmail.reply_to_for(%{}, %{content: nil}) == nil
       assert SendEmail.reply_to_for(%{}, %{}) == nil
     end
 
-    test "en tom sträng i args faller igenom till kvittot" do
+    test "an empty string in the args falls through to the receipt" do
       assert SendEmail.reply_to_for(%{"reply_to" => ""}, %{content: %{reply_to: "a@b.se"}}) ==
                "a@b.se"
     end

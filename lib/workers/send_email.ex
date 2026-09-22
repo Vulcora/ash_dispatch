@@ -149,17 +149,17 @@ defmodule AshDispatch.Workers.SendEmail do
   defp maybe_put_original_attachments(args, _receipt), do: args
 
   @doc false
-  # Svarsadressen för det här utskicket: jobbets args först, kvittot sedan.
+  # The reply address for this send: the job's args first, then the receipt.
   #
-  # Kvittot är inte bara en bekvämlighet. `new_for_receipt/1` bygger ett
-  # omförsök ur kvittot och bär INGA innehålls-args alls — bara `receipt_id`
-  # och bilagorna — så ett `reply_to` som bara levde i det första jobbets args
-  # hade tappats vid varje retry och vid varje "skicka nu". Det är samma fälla
-  # som bilagorna har en egen hantering för; här löses den av att värdet redan
-  # står i `receipt.content`.
+  # The receipt is not merely a convenience. `new_for_receipt/1` builds a retry
+  # from the receipt and carries NO content args at all — only `receipt_id` and
+  # the attachments — so a `reply_to` that lived only in the first job's args
+  # would be lost on every retry and every "send now". It is the same trap
+  # attachments have their own handling for; here it is solved by the value
+  # already being in `receipt.content`.
   #
-  # `ContentMap.get_content/2` och inte `get_in/2`: innehållet har varit genom
-  # JSONB och nyckeln kan vara en sträng.
+  # `ContentMap.get_content/2` rather than `get_in/2`: the content has been
+  # through JSONB and the key may be a string.
   def reply_to_for(args, receipt) do
     case args["reply_to"] do
       value when is_binary(value) and value != "" -> value

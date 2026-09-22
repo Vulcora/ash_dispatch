@@ -378,10 +378,10 @@ defmodule AshDispatch.EventResolver do
   @doc """
   Mejlets svarsadress, eller `nil`.
 
-  Default `nil` — alltså inget `Reply-To`-huvud, precis som före 0.8.1. Allt
-  som inte är en icke-tom sträng behandlas som `nil`: en modul som råkar svara
-  med en tupel ska ge ett mejl utan svarshuvud, aldrig ett mejl som inte går
-  iväg.
+  Defaults to `nil` — no `Reply-To` header, exactly as before 0.8.1. Anything
+  that is not a non-empty string is treated as `nil`: a module that happens to
+  answer with a tuple should produce an email without a reply header, never an
+  email that fails to leave.
   """
   @spec reply_to(module(), Context.t(), AshDispatch.Channel.t()) :: String.t() | nil
   def reply_to(module, context, channel) do
@@ -392,12 +392,13 @@ defmodule AshDispatch.EventResolver do
   end
 
   @doc """
-  Modulens EGNA innehållsnycklar — det mottagaren kan rendera och biblioteket
-  inte känner till.
+  The module's OWN content keys — whatever the receiver can render and the
+  library knows nothing about.
 
-  Default `%{}`. Allt annat än en karta ignoreras: en modul som råkar svara
-  med en lista ska ge ett innehåll utan tillägget, aldrig en kraschad
-  dispatch. En notis som uteblir är dyrare än ett fält som saknas.
+  Defaults to `%{}`. Anything that is not a map is ignored: a module that
+  happens to answer with a list should produce content without the addition,
+  never a crashed dispatch. A notification that never arrives costs more than
+  a field that is missing.
   """
   @spec extra_content(module(), Context.t(), AshDispatch.Channel.t()) :: map()
   def extra_content(module, context, channel) do

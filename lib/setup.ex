@@ -113,10 +113,10 @@ defmodule AshDispatch.Setup do
 
         attribute :event_id, :string, allow_nil?: false, public?: true
 
-        # Härledd ur transport-registret, inte hårdkodad: listan här och i
-        # DeliveryReceipt.Base hade redan glidit isär (den här saknade
-        # `:slack`), så en ny transport kunde producera kvitton som
-        # resursen vägrade ta emot.
+        # Derived from the transport registry rather than hardcoded: this list
+        # and the one in DeliveryReceipt.Base had already drifted apart (this
+        # one was missing `:slack`), so a new transport could produce receipts
+        # the resource refused to accept.
         attribute :transport, :atom,
           allow_nil?: false,
           public?: true,
