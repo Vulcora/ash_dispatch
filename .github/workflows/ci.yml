@@ -33,3 +33,47 @@ jobs:
 
       - name: Run tests
         run: mix test
+
+  # `ash_typescript` is an optional dependency, but the job above always has
+  # it installed — so nothing there notices when library code starts to
+  # require it — and no release before 0.8.3 compiled without it (#31). This
+  # builds ash_dispatch the way an app without it does. Pinned to our own
+  # mix.lock, so an upstream release cannot fail it.
+  compile-without-ash-typescript:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: ash_dispatch
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.15'
+          otp-version: '26'
+
+      # swoosh is listed because `AshDispatch.EmailBackend.Swoosh` does not
+      # yet compile without it — a separate gap from the one this job guards.
+      - name: Compile as a dependency of an app without ash_typescript
+        run: |
+          mkdir consumer && cd consumer
+          cp ../ash_dispatch/mix.lock .
+          cat > mix.exs <<'EOF'
+          defmodule Consumer.MixProject do
+            use Mix.Project
+
+            def project do
+              [app: :consumer, version: "0.1.0", deps: deps()]
+            end
+
+            defp deps do
+              [
+                {:ash_dispatch, path: "../ash_dispatch"},
+                {:swoosh, "~> 1.16"}
+              ]
+            end
+          end
+          EOF
+          mix deps.get
+          mix compile

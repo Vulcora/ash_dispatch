@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-09-22
+
+### Fixed
+
+- **ash_dispatch compiles without `ash_typescript`** (#31). The dependency is
+  declared `optional: true`, but `AshDispatch.Resources.EmailEvent` and
+  `AshDispatch.Resources.ManualTrigger` named `AshTypescript.Resource`
+  unconditionally — and they are compiled as part of the library itself. An
+  app without ash_typescript therefore failed in `mix deps.compile`, on
+  `undefined function typescript/1`, and the installer's `--no-typescript`
+  could not help. It had been that way since the first version.
+
+  The TypeScript half of both resources now lives in a Spark fragment
+  (`…EmailEvent.Typescript`, `…ManualTrigger.Typescript`) that carries the
+  extension and `type_name` when ash_typescript is present and is empty when
+  it is not. `AshDispatch.Setup` picks its extension list on the same
+  condition, evaluated in the consuming app.
+
+  An app **with** ash_typescript sees no difference: the extensions and type
+  names (`"EmailEvent"`, `"ManualTrigger"`) are unchanged, so existing
+  `typescript_rpc` blocks keep working.
+
+  A new CI job, `compile-without-ash-typescript`, builds the library as a
+  dependency of an app without it, pinned to the library's own `mix.lock`.
+  It fails on `main` before this change and passes after it.
+
+### Note
+
+If you add ash_typescript to an app later, run
+`mix deps.compile ash_dispatch --force` once. Mix does not rebuild a
+dependency when an optional dependency appears, so the fragments would
+otherwise stay without the extension.
+
 ## [0.8.2] - 2026-09-21
 
 ### Added

@@ -1,3 +1,22 @@
+# TypeScript half of the resource, split out because `ash_typescript` is
+# optional — see the same fragment in `AshDispatch.Resources.EmailEvent` for
+# why it has to be a fragment (#31).
+if Code.ensure_loaded?(AshTypescript.Resource) do
+  defmodule AshDispatch.Resources.ManualTrigger.Typescript do
+    @moduledoc false
+    use Spark.Dsl.Fragment, of: Ash.Resource, extensions: [AshTypescript.Resource]
+
+    typescript do
+      type_name("ManualTrigger")
+    end
+  end
+else
+  defmodule AshDispatch.Resources.ManualTrigger.Typescript do
+    @moduledoc false
+    use Spark.Dsl.Fragment, of: Ash.Resource
+  end
+end
+
 defmodule AshDispatch.Resources.ManualTrigger do
   @moduledoc """
   > #### Deprecated — use `AshDispatch.Resources.ManualTrigger.Base` {: .warning}
@@ -53,7 +72,7 @@ defmodule AshDispatch.Resources.ManualTrigger do
   use Ash.Resource,
     domain: nil,
     data_layer: Ash.DataLayer.Simple,
-    extensions: [AshTypescript.Resource],
+    fragments: [AshDispatch.Resources.ManualTrigger.Typescript],
     validate_domain_inclusion?: false
 
   alias AshDispatch.{Config, Context, EventResolver}
@@ -62,10 +81,6 @@ defmodule AshDispatch.Resources.ManualTrigger do
     # This resource is used purely for structuring manual action results,
     # not for persistent data storage. Primary key not needed.
     require_primary_key? false
-  end
-
-  typescript do
-    type_name("ManualTrigger")
   end
 
   actions do
