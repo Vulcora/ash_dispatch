@@ -41,6 +41,16 @@ defmodule AshDispatch.Setup do
   end
 
   defp build_delivery_receipt_ast(repo, user_resource) do
+    # `ash_typescript` is optional, and this used to name `AshTypescript.Resource`
+    # unconditionally — so `use AshDispatch.Setup` failed to compile in any app
+    # without it, whatever `--no-typescript` said (#31). Checked here, at macro
+    # expansion in the consuming app, so the extension follows *that* app's
+    # deps. Apps that do have it keep a TypeScript-enabled receipt, as before.
+    extensions =
+      if Code.ensure_loaded?(AshTypescript.Resource),
+        do: [AshStateMachine, AshTypescript.Resource],
+        else: [AshStateMachine]
+
     quote do
       @moduledoc """
       Delivery receipt tracking resource.
@@ -52,10 +62,7 @@ defmodule AshDispatch.Setup do
       use Ash.Resource,
         data_layer: AshPostgres.DataLayer,
         authorizers: [Ash.Policy.Authorizer],
-        extensions: [
-          AshStateMachine,
-          AshTypescript.Resource
-        ]
+        extensions: unquote(extensions)
 
       postgres do
         table "delivery_receipts"

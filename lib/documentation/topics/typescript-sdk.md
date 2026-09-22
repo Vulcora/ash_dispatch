@@ -24,6 +24,22 @@ npm install zustand phoenix
 pnpm add zustand phoenix
 ```
 
+> #### Adding `ash_typescript` to an existing app {: .info}
+>
+> `ash_typescript` is optional. AshDispatch's built-in resources
+> (`AshDispatch.Resources.EmailEvent`, `AshDispatch.Resources.ManualTrigger`)
+> only become TypeScript resources if it is present when ash_dispatch is
+> compiled, and Mix does not rebuild ash_dispatch when you add a dependency
+> later. If ash_dispatch was already compiled, rebuild it once:
+>
+> ```bash
+> mix deps.compile ash_dispatch --force
+> ```
+>
+> Otherwise listing them under `typescript_rpc` fails with *"… has rpc
+> actions or typed queries, but is not using the AshTypescript.Resource
+> extension"*.
+
 Run the generator:
 
 ```bash

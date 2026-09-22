@@ -1,3 +1,26 @@
+# `ash_typescript` is an optional dependency, but this module is compiled as
+# part of ash_dispatch itself — so hardcoding `AshTypescript.Resource` made
+# the whole library uncompilable in an app without it (#31). Spark only
+# takes a literal extension list, and the `typescript` section macro does not
+# exist without the extension, so neither can be made conditional inside the
+# resource. The fragment can: it carries the extension and its section when
+# ash_typescript is loaded, and is empty when it is not.
+if Code.ensure_loaded?(AshTypescript.Resource) do
+  defmodule AshDispatch.Resources.EmailEvent.Typescript do
+    @moduledoc false
+    use Spark.Dsl.Fragment, of: Ash.Resource, extensions: [AshTypescript.Resource]
+
+    typescript do
+      type_name("EmailEvent")
+    end
+  end
+else
+  defmodule AshDispatch.Resources.EmailEvent.Typescript do
+    @moduledoc false
+    use Spark.Dsl.Fragment, of: Ash.Resource
+  end
+end
+
 defmodule AshDispatch.Resources.EmailEvent do
   @moduledoc """
   Read-only Ash resource exposing email event metadata via RPC.
@@ -42,11 +65,7 @@ defmodule AshDispatch.Resources.EmailEvent do
     domain: AshDispatch.Domain,
     data_layer: Ash.DataLayer.Ets,
     authorizers: [Ash.Policy.Authorizer],
-    extensions: [AshTypescript.Resource]
-
-  typescript do
-    type_name("EmailEvent")
-  end
+    fragments: [AshDispatch.Resources.EmailEvent.Typescript]
 
   ets do
     private? true
