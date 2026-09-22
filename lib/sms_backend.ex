@@ -1,26 +1,57 @@
 defmodule AshDispatch.SMSBackend do
   @moduledoc """
-  Behaviour that an SMS backend module implements. Configure a backend
-  in your app config:
+  The behaviour an SMS backend implements.
 
       config :ash_dispatch, :sms_backend, MyApp.SMS
 
-  The transport (`AshDispatch.Transports.SMS`) will call your backend's
-  `deliver/4` whenever an event channel with `transport: :sms` fires.
+  `AshDispatch.SMSBackend.Elks` ships with the library and covers 46elks; this
+  behaviour is for every other provider.
 
-  ## Implementation contract
+  ## Where it is called from
 
-  - Read `receipt.recipient` (phone number — your responsibility to
-    validate format) and `receipt.content[:body]`/`:message` for the
-    SMS body.
-  - Send the SMS via your provider's API.
-  - Update the receipt via Ash:
-    - On success: `for_update(:mark_sent, %{provider_id: provider_id})`
-    - On failure: `for_update(:mark_failed, %{error_message: reason})`
+  From `AshDispatch.Workers.SendSMS`, not from the transport. The transport
+  enqueues a job and marks the receipt `:scheduled`; the worker marks
+  `:sending` and calls `deliver/4`. A backend therefore does not have to worry
+  about holding a database transaction open — but it must not assume it runs
+  synchronously with the action that triggered the event either.
+
+  Requires an Oban queue named `:sms`.
+
+  The job carries only the receipt id, so the context the worker passes is
+  reconstructed from the receipt: `event_id` and `audience` are real, but
+  `data` and `variables` are empty. A backend that needs either should read
+  `receipt.content`, which was frozen when the receipt was created and
+  therefore survives a retry.
+
+  ## The contract
+
+  - Read `receipt.recipient` (the phone number) and the message body from
+    `receipt.content`. Use `AshDispatch.ContentMap.get_content/2`: the column
+    is JSONB, so a freshly built struct carries atom keys while one read back
+    from Postgres carries string keys. The dispatcher writes `:message`.
+  - Send through the provider's API.
+  - **Mark the receipt yourself.** The backend is what knows which failures are
+    permanent:
+    - delivered: `ReceiptStatus.mark_sent(receipt, %{"id" => provider_id})`
+    - worth retrying: `ReceiptStatus.mark_failed(receipt, reason)`
+    - never going to work: `ReceiptStatus.mark_failed_permanent(receipt, reason)`
   - Return `{:ok, updated_receipt}` or `{:error, reason}`.
 
-  Most backends are thin wrappers around HTTP clients (Twilio, Vonage,
-  Telavox SMS, etc.).
+  An `{:error, _}` makes the worker mark `:failed` and lets Oban retry. A
+  malformed phone number or bad credentials belong in `mark_failed_permanent`
+  — five retries will not fix them, and while they sit as `:failed` they only
+  delay telling the person who can.
+
+  ## The recipient field
+
+  Without an `:sms` entry in `recipient_fields`, **every** recipient raises
+  `"No identifier field configured for sms transport"`, and the error does not
+  say where to look:
+
+      config :ash_dispatch,
+        recipient_fields: [
+          sms: [identifier: :phone, name: [:display_name, :name]]
+        ]
   """
 
   @callback deliver(

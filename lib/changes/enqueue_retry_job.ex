@@ -7,8 +7,6 @@ defmodule AshDispatch.Changes.EnqueueRetryJob do
   """
   use Ash.Resource.Change
 
-  alias AshDispatch.Workers.SendEmail
-
   require Logger
 
   @impl true
@@ -39,28 +37,30 @@ defmodule AshDispatch.Changes.EnqueueRetryJob do
     end)
   end
 
-  defp enqueue_job(%{transport: :email} = receipt) do
-    # new_for_receipt/1 carries the original job's attachments forward —
-    # they only exist in job args, so a bare %{receipt_id: _} job would
-    # resend the mail without them.
-    receipt
-    |> SendEmail.new_for_receipt()
-    |> Oban.insert()
-  end
-
-  defp enqueue_job(%{transport: :in_app} = receipt) do
-    # In-app delivery is synchronous — retry directly
-    case AshDispatch.Transports.InApp.retry_from_receipt(receipt) do
-      :ok -> {:ok, %{id: :direct_retry}}
-      error -> error
-    end
-  end
-
+  # Which transports can be retried, and how, lives in
+  # AshDispatch.Transport.Retry — the same list the cron in
+  # Workers.RetryFailedDeliveries uses. Two copies of that list meant a
+  # transport could be retried by the cron but not by these actions.
   defp enqueue_job(%{transport: transport} = receipt) do
-    Logger.warning(
-      "EnqueueRetryJob: Retry not implemented for transport #{transport}, receipt_id=#{receipt.id}"
-    )
+    case AshDispatch.Transport.Retry.strategy(transport) do
+      {:worker, _} ->
+        AshDispatch.Transport.Retry.enqueue_worker(receipt)
 
-    {:error, :transport_not_supported}
+      {:direct, module} ->
+        # Synchronous delivery — retried inline. The action wants a "job" to
+        # report back, unlike the cron, which wants to know the receipt is
+        # already fully handled.
+        case module.retry_from_receipt(receipt) do
+          :ok -> {:ok, %{id: :direct_retry}}
+          error -> error
+        end
+
+      :unsupported ->
+        Logger.warning(
+          "EnqueueRetryJob: Retry not implemented for transport #{transport}, receipt_id=#{receipt.id}"
+        )
+
+        {:error, :transport_not_supported}
+    end
   end
 end

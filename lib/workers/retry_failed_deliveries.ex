@@ -65,7 +65,6 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
     max_attempts: 1
 
   alias AshDispatch.Config
-  alias AshDispatch.Workers.SendEmail
   alias AshDispatch.Workers.Stranded
 
   require Ash.Query
@@ -317,34 +316,34 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
     Application.get_env(:ash_dispatch, key, default)
   end
 
-  defp enqueue_worker(%{transport: :email} = receipt, _is_final_retry) do
-    # For email transport, use SendEmail worker with receipt_id.
-    # The worker fetches the receipt and uses its stored content;
-    # new_for_receipt/1 carries the original job's attachments forward
-    # (they exist only in job args, not on the receipt).
-    receipt
-    |> SendEmail.new_for_receipt()
-    |> Oban.insert()
-  end
-
-  defp enqueue_worker(%{transport: :in_app} = receipt, _is_final_retry) do
-    # In-app delivery is synchronous — retry directly instead of via Oban.
-    # retry_from_receipt handles the full lifecycle (create notification + mark_sent),
-    # so return :already_handled to skip the caller's receipt status update.
-    case AshDispatch.Transports.InApp.retry_from_receipt(receipt) do
-      :ok -> {:ok, :already_handled}
-      error -> error
-    end
-  end
-
+  # Which transports can be retried, and how, lives in
+  # AshDispatch.Transport.Retry — the same map the admin actions in
+  # Changes.EnqueueRetryJob use. It used to exist in two copies, so a transport
+  # could be retried by the cron but not from admin.
+  #
+  # `new_for_receipt/1` rather than a bare %{receipt_id: _}: the email variant
+  # carries the original job's attachments, which live only in the job args.
   defp enqueue_worker(%{transport: transport} = receipt, _is_final_retry) do
-    # For other transports, log and skip for now
-    # Future: Add Discord, Slack, SMS workers as they're implemented
-    Logger.warning(
-      "RetryFailedDeliveries: Retry not yet implemented for transport: #{transport}, receipt_id=#{receipt.id}"
-    )
+    case AshDispatch.Transport.Retry.strategy(transport) do
+      {:worker, _} ->
+        AshDispatch.Transport.Retry.enqueue_worker(receipt)
 
-    {:error, :transport_not_supported}
+      {:direct, module} ->
+        # Synchronous delivery — retried inline. retry_from_receipt/1 handles
+        # the whole lifecycle (creates the notification and marks :sent), so
+        # :already_handled tells the caller to skip its own status update.
+        case module.retry_from_receipt(receipt) do
+          :ok -> {:ok, :already_handled}
+          error -> error
+        end
+
+      :unsupported ->
+        Logger.warning(
+          "RetryFailedDeliveries: Retry not yet implemented for transport: #{transport}, receipt_id=#{receipt.id}"
+        )
+
+        {:error, :transport_not_supported}
+    end
   end
 
   defp mark_failed(receipt, error_message) do

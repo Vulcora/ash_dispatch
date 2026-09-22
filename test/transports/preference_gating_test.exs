@@ -20,6 +20,7 @@ defmodule AshDispatch.Transports.PreferenceGatingTest do
   alias AshDispatch.Test.TransportReceipt
   alias AshDispatch.Transports.Email
   alias AshDispatch.Transports.InApp
+  alias AshDispatch.Transports.SMS
 
   @opted_out_marketing_user_id "11111111-1111-1111-1111-111111111111"
   @subscribed_user_id "22222222-2222-2222-2222-222222222222"
@@ -121,6 +122,41 @@ defmodule AshDispatch.Transports.PreferenceGatingTest do
       _ = Email.deliver(receipt, ctx.context, channel, ctx.event_config)
 
       refute reload(receipt).status == :skipped
+    end
+  end
+
+  describe "sms transport" do
+    # SMS did NOT gate on preferences before 0.8.2 — the transport called the
+    # backend directly, so a recipient who had opted out got the message
+    # anyway.
+    test "one fan-out, two recipients: exactly one receipt is gated", ctx do
+      channel = %Channel{transport: :sms, audience: :user}
+
+      opted_out = receipt!(@opted_out_marketing_user_id, :sms, "+46701111111")
+      subscribed = receipt!(@subscribed_user_id, :sms, "+46702222222")
+
+      assert {:ok, gated} = SMS.deliver(opted_out, ctx.context, channel, ctx.event_config)
+      assert gated.status == :skipped
+      assert gated.error_message == "user_opted_out"
+
+      # The subscribed recipient reaches the delivery path. With no backend
+      # configured the receipt still ends up :skipped — but for a DIFFERENT
+      # reason, and the reason is what this test is about. Asserting merely
+      # "not :skipped" would stop telling a gated recipient apart from an
+      # unconfigured backend.
+      _ = SMS.deliver(subscribed, ctx.context, channel, ctx.event_config)
+
+      refute reload(subscribed).error_message == "user_opted_out"
+    end
+
+    test "a receipt without a user_id is never gated (external recipient)", ctx do
+      channel = %Channel{transport: :sms, audience: :user}
+
+      external = receipt!(nil, :sms, "+46703333333")
+
+      _ = SMS.deliver(external, ctx.context, channel, ctx.event_config)
+
+      refute reload(external).error_message == "user_opted_out"
     end
   end
 
