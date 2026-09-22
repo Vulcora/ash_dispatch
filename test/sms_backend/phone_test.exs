@@ -22,8 +22,9 @@ defmodule AshDispatch.SMSBackend.PhoneTest do
   end
 
   describe "det som ska avvisas" do
-    # De här väger tyngre än de positiva: ett nummer som släpps igenom fel
-    # blir ett SMS som tyst går till ingen, och kvittot säger :sent.
+    # These matter more than the positive cases: a number let through wrong
+    # becomes a message that quietly reaches nobody, while the receipt says
+    # :sent.
     for in_ <- [
           "123",
           "08-12",
@@ -44,7 +45,7 @@ defmodule AshDispatch.SMSBackend.PhoneTest do
       assert Phone.to_e164(nil) == :error
     end
 
-    test "annat än en sträng avvisas" do
+    test "anything that is not a string is rejected" do
       assert Phone.to_e164(46_701_234_567) == :error
     end
   end
@@ -57,7 +58,7 @@ defmodule AshDispatch.SMSBackend.PhoneTest do
       assert Phone.to_e164("0701234567") == {:ok, "+47701234567"}
     end
 
-    test "ett nummer som redan bär + rörs inte av landskoden" do
+    test "a number that already carries + is untouched by the country code" do
       Application.put_env(:ash_dispatch, :default_country_code, "47")
       on_exit(fn -> Application.delete_env(:ash_dispatch, :default_country_code) end)
 

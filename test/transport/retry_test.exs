@@ -1,50 +1,49 @@
 defmodule AshDispatch.Transport.RetryTest do
   @moduledoc """
-  Kartan över hur ett misslyckat kvitto görs om.
+  The map of how a failed receipt is retried.
 
-  Regressionen som gav modulen dess existens: `:sms` saknades i båda
-  retry-vägarna. Ett misslyckat SMS-kvitto gick ändå igenom `:retry` — vilket
-  räknar upp `retry_count` — och föll tillbaka till `:failed` när köandet
-  misslyckades. Fem cronvarv och 75 minuter senare stod det
-  `:failed_permanent`, utan att ha skickats om en enda gång. Och
-  `:retry`/`:reopen`/`:send_now` i admin avvisade det av samma skäl, så det
-  fanns ingen väg tillbaka alls.
+  The regression that gave the module its reason to exist: `:sms` was missing
+  from both retry paths. A failed SMS receipt still went through `:retry` —
+  which increments `retry_count` — and fell back to `:failed` when the enqueue
+  failed. Five cron passes and 75 minutes later it read `:failed_permanent`,
+  without having been resent even once. And `:retry`/`:reopen`/`:send_now` in
+  admin refused it for the same reason, so there was no way back at all.
   """
   use ExUnit.Case, async: true
 
   alias AshDispatch.Transport.Retry
 
   describe "strategy/1" do
-    test "e-post och sms köar ett jobb" do
+    test "email and sms enqueue a job" do
       assert {:worker, AshDispatch.Workers.SendEmail} = Retry.strategy(:email)
       assert {:worker, AshDispatch.Workers.SendSMS} = Retry.strategy(:sms)
     end
 
-    test "in-app görs om direkt, utan kö" do
+    test "in-app is retried inline, without a queue" do
       assert {:direct, AshDispatch.Transports.InApp} = Retry.strategy(:in_app)
     end
 
-    test "transporter utan väg tillbaka säger det" do
+    test "transports with no way back say so" do
       for t <- [:discord, :slack, :webhook, :push] do
-        assert Retry.strategy(t) == :unsupported, "#{t} borde vara :unsupported"
+        assert Retry.strategy(t) == :unsupported, "#{t} should be :unsupported"
       end
     end
 
-    test "en okänd transport är :unsupported, inte en krasch" do
-      assert Retry.strategy(:duvpost) == :unsupported
+    test "an unknown transport is :unsupported, not a crash" do
+      assert Retry.strategy(:carrier_pigeon) == :unsupported
     end
   end
 
   describe "retryable?/1" do
-    test "sms går att göra om" do
+    test "sms can be retried" do
       assert Retry.retryable?(:sms)
     end
 
-    test "listan innehåller bara kvitterade transporter" do
-      kvitterade = AshDispatch.Transport.Registry.receipted_atoms()
+    test "the list holds only transports that keep receipts" do
+      receipted = AshDispatch.Transport.Registry.receipted_atoms()
 
       for t <- Retry.retryable_transports() do
-        assert t in kvitterade
+        assert t in receipted
       end
 
       assert :sms in Retry.retryable_transports()
@@ -53,24 +52,24 @@ defmodule AshDispatch.Transport.RetryTest do
     end
   end
 
-  describe "workermodulerna håller sitt kontrakt" do
-    test "varje {:worker, _} har new_for_receipt/1" do
+  describe "the worker modules keep their contract" do
+    test "every {:worker, _} exports new_for_receipt/1" do
       for t <- Retry.retryable_transports(),
-          {:worker, modul} <- [Retry.strategy(t)] do
-        assert Code.ensure_loaded?(modul)
+          {:worker, module} <- [Retry.strategy(t)] do
+        assert Code.ensure_loaded?(module)
 
-        assert function_exported?(modul, :new_for_receipt, 1),
-               "#{inspect(modul)} saknar new_for_receipt/1"
+        assert function_exported?(module, :new_for_receipt, 1),
+               "#{inspect(module)} is missing new_for_receipt/1"
       end
     end
 
-    test "varje {:direct, _} har retry_from_receipt/1" do
+    test "every {:direct, _} exports retry_from_receipt/1" do
       for t <- Retry.retryable_transports(),
-          {:direct, modul} <- [Retry.strategy(t)] do
-        assert Code.ensure_loaded?(modul)
+          {:direct, module} <- [Retry.strategy(t)] do
+        assert Code.ensure_loaded?(module)
 
-        assert function_exported?(modul, :retry_from_receipt, 1),
-               "#{inspect(modul)} saknar retry_from_receipt/1"
+        assert function_exported?(module, :retry_from_receipt, 1),
+               "#{inspect(module)} is missing retry_from_receipt/1"
       end
     end
   end

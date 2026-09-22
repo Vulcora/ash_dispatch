@@ -2,50 +2,50 @@ defmodule AshDispatch.Transports.SMS do
   use AshDispatch.Transport, atom: :sms, skip_receipt?: false
 
   @moduledoc """
-  SMS-transport — köar ett jobb som anropar den konfigurerade backenden.
+  SMS transport — enqueues a job that calls the configured backend.
 
       config :ash_dispatch, :sms_backend, MyApp.SMS
 
-  Modulen ska implementera `AshDispatch.SMSBackend`. Saknas den markeras
-  kvittot `:skipped` med `error_message: "transport_not_implemented"`, precis
-  som förr.
+  The module must implement `AshDispatch.SMSBackend`. Without one the receipt
+  is marked `:skipped` with `error_message: "transport_not_implemented"`, as
+  before.
 
-  ## Vägen
+  ## The path
 
   ```
-  pending → scheduled (jobb köat)
-          ↘ skipped   (mottagaren har tackat nej)
+  pending → scheduled (job enqueued)
+          ↘ skipped   (recipient opted out)
 
-  senare, i AshDispatch.Workers.SendSMS:
+  later, in AshDispatch.Workers.SendSMS:
   scheduled → sending → sent
-                      ↘ failed  (görs om)
+                      ↘ failed  (retried)
   ```
 
-  ## Vad som ändrades
+  ## What changed
 
-  Transporten anropade tidigare `backend.deliver/4` **synkront**. Dispatchen
-  sker i en `after_action`-hook inuti actionens transaktion, så en långsam
-  leverantör höll transaktionen öppen, `time:` gick inte att använda, och ett
-  misslyckat SMS kunde inte göras om — `RetryFailedDeliveries` känner bara
-  igen transporter som har en worker.
+  The transport used to call `backend.deliver/4` **synchronously**. Dispatch
+  runs in an `after_action` hook inside the action's transaction, so a slow
+  provider held that transaction open, `time:` could not be used, and a failed
+  message could never be retried — `RetryFailedDeliveries` only recognises
+  transports that have a worker.
 
-  Nu gäller samma form som e-posten: samtycke, kö, `:scheduled`. En backend
-  som redan skickar synkront fungerar oförändrat — den anropas bara från
-  workern i stället för från transaktionen.
+  It now takes the same shape as email: consent, enqueue, `:scheduled`. A
+  backend that already sends synchronously keeps working unchanged — it is
+  simply called from the worker rather than from the transaction.
 
-  Kräver en Oban-kö vid namn `:sms`.
+  Requires an Oban queue named `:sms`.
 
-  ## Fördröjd leverans
+  ## Delayed delivery
 
-  Faller ut ur kön, precis som för e-post:
+  Falls out of the queue, exactly as it does for email:
 
       channel = %Channel{transport: :sms, time: {:in, 300}}
       channel = %Channel{transport: :sms, time: {:at, ~U[2026-09-21 06:00:00Z]}}
 
-  ## Mottagarfältet
+  ## The recipient field
 
-  `config :ash_dispatch, :recipient_fields` **måste** ha en `:sms`-post,
-  annars kastar varje mottagare `"No identifier field configured for sms
+  `config :ash_dispatch, :recipient_fields` **must** carry an `:sms` entry, or
+  every recipient raises `"No identifier field configured for sms
   transport"`:
 
       recipient_fields: [
@@ -60,13 +60,13 @@ defmodule AshDispatch.Transports.SMS do
 
   def deliver(receipt, context, channel, event_config) do
     Preferences.with_consent(receipt, context, channel, event_config, fn ->
-      leverera(receipt, context, channel)
+      do_deliver(receipt, context, channel)
     end)
   end
 
-  # Samtyckesgrinden sitter ovanför kön med flit: ett kvitto som mottagaren
-  # tackat nej till ska aldrig bli ett jobb.
-  defp leverera(receipt, context, channel) do
+  # The consent gate sits above the queue deliberately: a receipt the recipient
+  # opted out of should never become a job.
+  defp do_deliver(receipt, context, channel) do
     case AshDispatch.Config.sms_backend() do
       nil ->
         Logger.info("SMS transport not yet implemented (no :sms_backend configured), skipping")
@@ -92,9 +92,9 @@ defmodule AshDispatch.Transports.SMS do
   end
 
   defp enqueue(receipt, channel) do
-    # Bara kvitto-id:t. Texten och mottagaren står i kvittot, och det är
-    # meningen: en omkörning ska aldrig kunna skicka något annat än det som
-    # en gång frystes.
+    # The receipt id only. The body and the recipient live in the receipt, and
+    # that is the point: a retry must never be able to send anything other than
+    # what was frozen at creation.
     changeset =
       AshDispatch.Workers.SendSMS.new(%{"receipt_id" => receipt.id},
         schedule_in: Email.schedule_seconds(channel)
@@ -112,8 +112,8 @@ defmodule AshDispatch.Transports.SMS do
   end
 
   defp update_receipt_with_job(receipt, {:ok, job}) do
-    # Läs om: i Obans inline-läge har workern redan kört färdigt och kvittot
-    # är inte längre :pending.
+    # Re-read: under Oban's inline mode the worker has already finished and the
+    # receipt is no longer :pending.
     case Ash.get(receipt.__struct__, receipt.id, authorize?: false) do
       {:ok, %{status: :pending} = current} ->
         current

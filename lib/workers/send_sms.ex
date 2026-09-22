@@ -1,29 +1,29 @@
 defmodule AshDispatch.Workers.SendSMS do
   @moduledoc """
-  Skickar ett SMS-kvitto via den konfigurerade backenden.
+  Sends one SMS receipt through the configured backend.
 
-  Spegling av `AshDispatch.Workers.SendEmail`, av samma skäl: dispatchen sker i
-  en `after_action`-hook **inuti actionens transaktion**, och en utgående
-  HTTPS-rundresa per mottagare hör inte hemma där. Transporten köar, workern
-  skickar.
+  Mirrors `AshDispatch.Workers.SendEmail`, for the same reason: dispatch runs
+  in an `after_action` hook **inside the action's transaction**, and an
+  outbound HTTPS round trip per recipient does not belong there. The transport
+  enqueues, the worker sends.
 
-  Innan 0.6.11 anropade SMS-transporten backenden rakt av. Det betydde att en
-  långsam eller nere SMS-leverantör höll actionens transaktion öppen, att
-  `time:`-schemaläggning inte gick att använda, och att ett misslyckat utskick
-  inte kunde göras om — `RetryFailedDeliveries` känner bara igen transporter
-  som har en worker.
+  Before 0.8.2 the SMS transport called the backend directly. A slow or
+  unreachable provider held the action's transaction open, `time:` scheduling
+  could not be used, and a failed send could never be retried —
+  `RetryFailedDeliveries` only recognises transports that have a worker.
 
-  ## Jobbargument
+  ## Job arguments
 
-  - `receipt_id` — kvittots UUID. Allt annat läses ur kvittot, så en omkörning
-    aldrig kan skicka en annan text än den som en gång frystes.
+  - `receipt_id` — the receipt's UUID. Everything else is read from the
+    receipt, so a retry can never send different text than the one frozen at
+    creation.
   """
 
   use Oban.Worker,
     queue: :sms,
     max_attempts: 5,
-    # Ett jobb per kvitto. "Skicka nu" medan originalet ligger i kön ska inte
-    # kunna bli två SMS till samma telefon.
+    # One job per receipt. A "send now" while the original is still queued must
+    # not become two messages to the same phone.
     unique: [keys: [:receipt_id], states: [:available, :scheduled, :executing]]
 
   alias AshDispatch.Config
@@ -46,13 +46,13 @@ defmodule AshDispatch.Workers.SendSMS do
   end
 
   @doc false
-  # Bygger ett nytt jobb för ett kvitto. Används av retry-vägen, som inte har
-  # några andra argument att bära med sig — texten ligger i kvittot.
+  # Builds a fresh job for a receipt. Used by the retry path, which has no
+  # other arguments to carry — the text lives in the receipt.
   def new_for_receipt(receipt), do: new(%{receipt_id: receipt.id})
 
   defp process_sms(receipt) do
-    # Terminalt läge: ett dubblettjobb ska sluta som framgång, inte som ett
-    # andra SMS. Samma tidiga utträde som SendEmail.
+    # Terminal state: a duplicate job should finish as success, not as a second
+    # message. Same early exit as SendEmail.
     if receipt.status in [:sent, :skipped, :failed_permanent] do
       Logger.info(
         "Receipt #{receipt.id} already in terminal state #{receipt.status}, job completing as success"
@@ -77,8 +77,8 @@ defmodule AshDispatch.Workers.SendSMS do
         deliver(backend, receipt)
 
       {:error, %Ash.Error.Invalid{errors: errors}} ->
-        # Ett annat jobb hann före. Samma resonemang som i SendEmail: en
-        # kapplöpning om samma kvitto är inte ett fel, den är en dubblett.
+        # Another job got there first. Same reasoning as SendEmail: a race over
+        # one receipt is not an error, it is a duplicate.
         if Enum.any?(errors, &match?(%AshStateMachine.Errors.NoMatchingTransition{}, &1)) do
           Logger.info(
             "Receipt #{receipt.id} state transition conflict (likely duplicate job), completing as success"
@@ -96,9 +96,9 @@ defmodule AshDispatch.Workers.SendSMS do
     end
   end
 
-  # Backenden äger sitt eget kvitto: den vet vilka fel som är permanenta
-  # (ogiltigt nummer, fel inloggning) och vilka som är värda ett omförsök.
-  # Därför markerar den själv, och vi tolkar bara utfallet för Obans skull.
+  # The backend owns its own receipt: it knows which failures are permanent
+  # (malformed number, bad credentials) and which are worth retrying, so it
+  # marks the receipt itself. Here we only translate the outcome for Oban.
   defp deliver(backend, receipt) do
     case backend.deliver(receipt, context_for(receipt), channel_for(receipt), %{}) do
       {:ok, %{status: status} = updated} when status in [:sent, :skipped, :failed_permanent] ->
@@ -106,15 +106,15 @@ defmodule AshDispatch.Workers.SendSMS do
         :ok
 
       {:ok, %{status: :failed} = updated} ->
-        # Oban gör om; kvittot bär redan felet.
+        # Oban will retry; the receipt already carries the error.
         {:error, updated.error_message || "sms_failed"}
 
       {:ok, _other} ->
         :ok
 
       {:error, reason} ->
-        # Backenden hann inte markera — gör det åt den, annars strandar
-        # kvittot i :sending och fångas först av Stranded-cronen.
+        # The backend never got to mark it — do it here, or the receipt strands
+        # in :sending until the stranded-receipt cron picks it up.
         ReceiptStatus.mark_failed(receipt, reason)
         Logger.error("SMS failed for receipt #{receipt.id}: #{inspect(reason)}")
         {:error, reason}
@@ -126,12 +126,12 @@ defmodule AshDispatch.Workers.SendSMS do
       {:error, error}
   end
 
-  # Jobbet bär bara kvitto-id:t, så den ursprungliga kontexten finns inte kvar
-  # — den innehåller godtycklig data och överlever inte en JSONB-rundresa.
-  # Backenden får därför en rekonstruerad kontext med det som går att läsa ur
-  # kvittot. `data` och `variables` är TOMMA här; en backend som behöver dem
-  # ska läsa `receipt.content`, som är frusen vid skapandet och just därför
-  # överlever ett omförsök.
+  # The job carries only the receipt id, so the original context is gone — it
+  # holds arbitrary data and does not survive a JSONB round trip. The backend
+  # therefore gets a context reconstructed from what the receipt can answer.
+  # `data` and `variables` are EMPTY here; a backend that needs them should
+  # read `receipt.content`, which is frozen at creation and survives a retry
+  # for exactly that reason.
   defp context_for(receipt) do
     %AshDispatch.Context{event_id: receipt.event_id, data: %{}, variables: %{}}
   end

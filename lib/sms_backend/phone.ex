@@ -1,36 +1,37 @@
 defmodule AshDispatch.SMSBackend.Phone do
   @moduledoc """
-  Normaliserar ett telefonnummer till E.164.
+  Normalises a phone number to E.164.
 
-  Egen modul med egen testtabell, för det är den här funktionen som avgör om
-  ett SMS når en människa eller tyst går till ingenting. Ett nummer som skrivs
-  `070-123 45 67` i ett formulär, `0046701234567` i en import och
-  `+46701234567` i ett API ska bli samma sträng innan det lämnar huset.
+  Its own module with its own test table, because this function decides
+  whether a message reaches a person or goes quietly nowhere. A number typed
+  `070-123 45 67` in a form, `0046701234567` in an import and `+46701234567`
+  by an API has to become the same string before it leaves the app.
 
-  ## Reglerna
+  ## The rules
 
-      "070-123 45 67"    → "+46701234567"   # inledande 0 → landskod
+      "070-123 45 67"    → "+46701234567"   # leading 0 → country code
       "0046 70 1234567"  → "+46701234567"   # 00 → +
-      "+46701234567"     → "+46701234567"   # redan E.164
+      "+46701234567"     → "+46701234567"   # already E.164
       "0701234567"       → "+46701234567"
 
-      "123"              → :error           # för kort
+      "123"              → :error           # too short
       "08-12"            → :error
       nil                → :error
 
-  ## Landskoden
+  ## The country code
 
-  `:default_country_code` styr vad ett inledande `0` blir, och är `"46"` om
-  inget sägs:
+  `:default_country_code` decides what a leading `0` becomes. It defaults to
+  `"46"`:
 
       config :ash_dispatch, :default_country_code, "47"
 
-  Ett nummer som redan bär `+` eller `00` rörs inte — landskoden gäller bara
-  det nationella formatet, där nollan ÄR utlandsprefixet som ska bort.
+  A number that already carries `+` or `00` is left alone — the country code
+  applies only to the national format, where the zero IS the trunk prefix
+  being replaced.
   """
 
   @doc """
-  Returnerar `{:ok, e164}` eller `:error`.
+  Returns `{:ok, e164}` or `:error`.
   """
   @spec to_e164(String.t() | nil) :: {:ok, String.t()} | :error
   def to_e164(nil), do: :error
@@ -38,23 +39,23 @@ defmodule AshDispatch.SMSBackend.Phone do
   def to_e164(raw) when is_binary(raw) do
     raw
     |> String.replace(~r/[\s\-().]/u, "")
-    |> normalisera()
-    |> validera()
+    |> normalise()
+    |> validate()
   end
 
   def to_e164(_), do: :error
 
-  defp normalisera("+" <> rest), do: "+" <> rest
-  defp normalisera("00" <> rest), do: "+" <> rest
-  defp normalisera("0" <> rest), do: "+" <> landskod() <> rest
-  defp normalisera(other), do: other
+  defp normalise("+" <> rest), do: "+" <> rest
+  defp normalise("00" <> rest), do: "+" <> rest
+  defp normalise("0" <> rest), do: "+" <> country_code() <> rest
+  defp normalise(other), do: other
 
-  # E.164: plus, sedan 8–15 siffror, och den första får inte vara noll.
-  defp validera("+" <> siffror = nummer) do
-    if Regex.match?(~r/^[1-9]\d{7,14}$/, siffror), do: {:ok, nummer}, else: :error
+  # E.164: a plus, then 8–15 digits, and the first one may not be zero.
+  defp validate("+" <> digits = number) do
+    if Regex.match?(~r/^[1-9]\d{7,14}$/, digits), do: {:ok, number}, else: :error
   end
 
-  defp validera(_), do: :error
+  defp validate(_), do: :error
 
-  defp landskod, do: Application.get_env(:ash_dispatch, :default_country_code, "46")
+  defp country_code, do: Application.get_env(:ash_dispatch, :default_country_code, "46")
 end

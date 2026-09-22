@@ -1,32 +1,32 @@
 defmodule AshDispatch.Transport.Retry do
   @moduledoc """
-  Hur ett misslyckat kvitto görs om, per transport.
+  How a failed receipt is retried, per transport.
 
-  Finns för att svaret bodde på två ställen: `Workers.RetryFailedDeliveries`
-  (cronen) och `Changes.EnqueueRetryJob` (knapparna `:retry`, `:reopen` och
-  `:send_now`). Båda hade samma tre grenar, och en transport som lades till i
-  den ena men inte den andra fick ett omförsök från cronen men inte från
-  admin-gränssnittet — eller tvärtom. Nu finns listan en gång.
+  This exists because the answer used to live in two places:
+  `Workers.RetryFailedDeliveries` (the cron) and `Changes.EnqueueRetryJob`
+  (the `:retry`, `:reopen` and `:send_now` actions). Both carried the same
+  three branches, so a transport added to one but not the other would be
+  retried by the cron and not by the admin UI, or the other way round. The
+  list now exists once.
 
-  ## Strategierna
+  ## The strategies
 
-  - `{:worker, modul}` — köa ett Oban-jobb. Modulen ska ha
+  - `{:worker, module}` — enqueue an Oban job. The module must export
     `new_for_receipt/1`.
-  - `{:direct, modul}` — leveransen är synkron och görs om direkt. Modulen ska
-    ha `retry_from_receipt/1`.
-  - `:unsupported` — transporten har ingen väg tillbaka.
+  - `{:direct, module}` — delivery is synchronous and retried inline. The
+    module must export `retry_from_receipt/1`.
+  - `:unsupported` — the transport has no way back.
 
-  ## `:unsupported` är inte harmlöst
+  ## `:unsupported` is not harmless
 
-  Ett kvitto vars transport saknar strategi går ändå igenom `:retry`, vilket
-  räknar upp `retry_count`, och landar sedan i `:failed` igen när köandet
-  misslyckas. Fem cronvarv senare är det `:failed_permanent` — utan att ha
-  skickats om en enda gång. Det var exakt vad som hände `:sms` fram till
-  0.6.11.
+  A receipt whose transport has no strategy still goes through `:retry`, which
+  increments `retry_count`, and then lands back in `:failed` when the enqueue
+  fails. Five cron passes later it is `:failed_permanent` — without having been
+  resent even once. That is exactly what happened to `:sms` until 0.8.2.
   """
 
   @doc """
-  Strategin för en transport.
+  The strategy for a transport.
   """
   @spec strategy(atom()) :: {:worker, module()} | {:direct, module()} | :unsupported
   def strategy(:email), do: {:worker, AshDispatch.Workers.SendEmail}
@@ -35,14 +35,13 @@ defmodule AshDispatch.Transport.Retry do
   def strategy(_transport), do: :unsupported
 
   @doc """
-  Sant om transporten går att göra om.
+  True if the transport can be retried.
   """
   @spec retryable?(atom()) :: boolean()
   def retryable?(transport), do: strategy(transport) != :unsupported
 
   @doc """
-  Transporterna som går att göra om, sorterade. Främst för felmeddelanden och
-  tester.
+  The transports that can be retried. Mainly for error messages and tests.
   """
   @spec retryable_transports() :: [atom()]
   def retryable_transports do
@@ -51,12 +50,12 @@ defmodule AshDispatch.Transport.Retry do
   end
 
   @doc """
-  Kör om ett kvitto enligt sin transports strategi.
+  Retries a receipt according to its transport's strategy.
 
-  Bara för kö-vägen. Den direkta vägen (`{:direct, _}`) hanteras av
-  anroparen, eftersom cronen och knapparna behöver olika svar tillbaka:
-  cronen vill veta att kvittot redan är färdighanterat och hoppa över sin egen
-  statusuppdatering, knapparna vill ha ett jobb-id att spara.
+  For the worker path only. The direct path (`{:direct, _}`) is handled by the
+  caller, because the cron and the admin actions need different answers back:
+  the cron wants to know the receipt is already fully handled so it can skip
+  its own status update, the actions want a job id to store.
   """
   @spec enqueue_worker(struct()) :: {:ok, term()} | {:error, term()}
   def enqueue_worker(%{transport: transport} = receipt) do

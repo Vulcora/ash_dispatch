@@ -126,8 +126,9 @@ defmodule AshDispatch.Transports.PreferenceGatingTest do
   end
 
   describe "sms transport" do
-    # SMS gatade INTE på preferenser före 0.6.11 — transporten anropade
-    # backenden rakt av. En mottagare som tackat nej fick sitt SMS ändå.
+    # SMS did NOT gate on preferences before 0.8.2 — the transport called the
+    # backend directly, so a recipient who had opted out got the message
+    # anyway.
     test "one fan-out, two recipients: exactly one receipt is gated", ctx do
       channel = %Channel{transport: :sms, audience: :user}
 
@@ -138,10 +139,11 @@ defmodule AshDispatch.Transports.PreferenceGatingTest do
       assert gated.status == :skipped
       assert gated.error_message == "user_opted_out"
 
-      # Den prenumererande når leveransvägen. Utan konfigurerad backend blir
-      # kvittot ändå :skipped — men av ett ANNAT skäl, och det är skälet
-      # testet handlar om. Att bara kräva "inte :skipped" hade slutat skilja
-      # en gindad mottagare från en osatt konfiguration.
+      # The subscribed recipient reaches the delivery path. With no backend
+      # configured the receipt still ends up :skipped — but for a DIFFERENT
+      # reason, and the reason is what this test is about. Asserting merely
+      # "not :skipped" would stop telling a gated recipient apart from an
+      # unconfigured backend.
       _ = SMS.deliver(subscribed, ctx.context, channel, ctx.event_config)
 
       refute reload(subscribed).error_message == "user_opted_out"

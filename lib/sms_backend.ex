@@ -1,51 +1,52 @@
 defmodule AshDispatch.SMSBackend do
   @moduledoc """
-  Beteendet en SMS-backend implementerar.
+  The behaviour an SMS backend implements.
 
       config :ash_dispatch, :sms_backend, MyApp.SMS
 
-  `AshDispatch.SMSBackend.Elks` följer med biblioteket och räcker för 46elks;
-  det här beteendet är för alla andra leverantörer.
+  `AshDispatch.SMSBackend.Elks` ships with the library and covers 46elks; this
+  behaviour is for every other provider.
 
-  ## Var den anropas ifrån
+  ## Where it is called from
 
-  Från `AshDispatch.Workers.SendSMS`, inte från transporten. Transporten köar
-  ett jobb och sätter kvittot `:scheduled`; workern markerar `:sending` och
-  anropar `deliver/4`. Backenden behöver alltså inte oroa sig för att hålla
-  en databastransaktion öppen — men den ska inte heller anta att den körs
-  synkront med den action som utlöste eventet.
+  From `AshDispatch.Workers.SendSMS`, not from the transport. The transport
+  enqueues a job and marks the receipt `:scheduled`; the worker marks
+  `:sending` and calls `deliver/4`. A backend therefore does not have to worry
+  about holding a database transaction open — but it must not assume it runs
+  synchronously with the action that triggered the event either.
 
-  Kräver en Oban-kö vid namn `:sms`.
+  Requires an Oban queue named `:sms`.
 
-  Jobbet bär bara kvitto-id:t, så kontexten workern skickar är rekonstruerad
-  ur kvittot: `event_id` och `audience` stämmer, men `data` och `variables` är
-  tomma. Behöver backenden något av det ska det läsas ur `receipt.content`,
-  som frystes när kvittot skapades och därför överlever ett omförsök.
+  The job carries only the receipt id, so the context the worker passes is
+  reconstructed from the receipt: `event_id` and `audience` are real, but
+  `data` and `variables` are empty. A backend that needs either should read
+  `receipt.content`, which was frozen when the receipt was created and
+  therefore survives a retry.
 
-  ## Kontraktet
+  ## The contract
 
-  - Läs `receipt.recipient` (telefonnumret) och SMS-texten ur
-    `receipt.content`. Använd `AshDispatch.ContentMap.get_content/2`:
-    kolumnen är JSONB, så en färsk struct bär atomnycklar medan en som läst
-    tillbaka ur Postgres bär strängnycklar. Dispatchern skriver `:message`.
-  - Skicka via leverantörens API.
-  - **Markera kvittot själv.** Backenden vet vilka fel som är permanenta:
-    - klart: `ReceiptStatus.mark_sent(receipt, %{"id" => leverantörens_id})`
-    - går att göra om: `ReceiptStatus.mark_failed(receipt, orsak)`
-    - aldrig bättre: `ReceiptStatus.mark_failed_permanent(receipt, orsak)`
-  - Returnera `{:ok, uppdaterat_kvitto}` eller `{:error, orsak}`.
+  - Read `receipt.recipient` (the phone number) and the message body from
+    `receipt.content`. Use `AshDispatch.ContentMap.get_content/2`: the column
+    is JSONB, so a freshly built struct carries atom keys while one read back
+    from Postgres carries string keys. The dispatcher writes `:message`.
+  - Send through the provider's API.
+  - **Mark the receipt yourself.** The backend is what knows which failures are
+    permanent:
+    - delivered: `ReceiptStatus.mark_sent(receipt, %{"id" => provider_id})`
+    - worth retrying: `ReceiptStatus.mark_failed(receipt, reason)`
+    - never going to work: `ReceiptStatus.mark_failed_permanent(receipt, reason)`
+  - Return `{:ok, updated_receipt}` or `{:error, reason}`.
 
-  Ett `{:error, _}` får workern att markera `:failed` och låta Oban göra om.
-  Ett ogiltigt telefonnummer eller fel inloggningsuppgifter hör hemma i
-  `mark_failed_permanent` — de blir inte rätt av fem omförsök, och så länge de
-  ligger kvar som `:failed` fördröjer de bara beskedet till människan som ska
-  rätta dem.
+  An `{:error, _}` makes the worker mark `:failed` and lets Oban retry. A
+  malformed phone number or bad credentials belong in `mark_failed_permanent`
+  — five retries will not fix them, and while they sit as `:failed` they only
+  delay telling the person who can.
 
-  ## Mottagarfältet
+  ## The recipient field
 
-  Utan en `:sms`-post i `recipient_fields` kastar **varje** mottagare
-  `"No identifier field configured for sms transport"`, och felet säger inte
-  var man ska leta:
+  Without an `:sms` entry in `recipient_fields`, **every** recipient raises
+  `"No identifier field configured for sms transport"`, and the error does not
+  say where to look:
 
       config :ash_dispatch,
         recipient_fields: [

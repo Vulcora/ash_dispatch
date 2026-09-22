@@ -316,23 +316,23 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
     Application.get_env(:ash_dispatch, key, default)
   end
 
-  # Vilken transport som går att göra om, och hur, bor i
-  # AshDispatch.Transport.Retry — samma karta som knapparna i
-  # Changes.EnqueueRetryJob använder. Den låg tidigare i två exemplar, och en
-  # transport kunde därför få omförsök från cronen men inte från admin.
+  # Which transports can be retried, and how, lives in
+  # AshDispatch.Transport.Retry — the same map the admin actions in
+  # Changes.EnqueueRetryJob use. It used to exist in two copies, so a transport
+  # could be retried by the cron but not from admin.
   #
-  # `new_for_receipt/1` och inte ett naket %{receipt_id: _}: e-postens variant
-  # bär med sig originaljobbets bilagor, som bara finns i jobbargumenten.
+  # `new_for_receipt/1` rather than a bare %{receipt_id: _}: the email variant
+  # carries the original job's attachments, which live only in the job args.
   defp enqueue_worker(%{transport: transport} = receipt, _is_final_retry) do
     case AshDispatch.Transport.Retry.strategy(transport) do
       {:worker, _} ->
         AshDispatch.Transport.Retry.enqueue_worker(receipt)
 
-      {:direct, modul} ->
-        # Synkron leverans — görs om direkt. retry_from_receipt/1 sköter hela
-        # livscykeln (skapar notisen och markerar :sent), så :already_handled
-        # säger åt anroparen att hoppa över sin egen statusuppdatering.
-        case modul.retry_from_receipt(receipt) do
+      {:direct, module} ->
+        # Synchronous delivery — retried inline. retry_from_receipt/1 handles
+        # the whole lifecycle (creates the notification and marks :sent), so
+        # :already_handled tells the caller to skip its own status update.
+        case module.retry_from_receipt(receipt) do
           :ok -> {:ok, :already_handled}
           error -> error
         end

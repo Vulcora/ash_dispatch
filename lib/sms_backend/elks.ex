@@ -1,56 +1,56 @@
 defmodule AshDispatch.SMSBackend.Elks do
   @moduledoc """
-  SMS-backend för [46elks](https://46elks.se), den svenska SMS-leverantören.
+  SMS backend for [46elks](https://46elks.com), a Nordic SMS provider.
 
-  Paketerad som `AshDispatch.EmailBackend.Swoosh` är det: biblioteket äger
-  transporten, kvittot och omförsöken, och en konkret leverantör ligger bakom
-  en optionell dep. Här är depen `req`.
+  Packaged the way `AshDispatch.EmailBackend.Swoosh` is: the library owns the
+  transport, the receipt and the retries, and a concrete provider sits behind
+  an optional dependency. Here that dependency is `req`.
 
-  ## Konfiguration
+  ## Configuration
 
       config :ash_dispatch, :sms_backend, AshDispatch.SMSBackend.Elks
 
       config :ash_dispatch, AshDispatch.SMSBackend.Elks,
         username: System.get_env("ELKS_API_USERNAME"),
         password: System.get_env("ELKS_API_PASSWORD"),
-        from: System.get_env("ELKS_SMS_FROM") || "Notis",
+        from: System.get_env("ELKS_SMS_FROM") || "Notify",
         dryrun: false
 
-  Och mottagarfältet, som är lätt att glömma och vars felmeddelande inte säger
-  var man ska leta:
+  And the recipient field, which is easy to forget and whose error message
+  does not say where to look:
 
       config :ash_dispatch,
         recipient_fields: [
           sms: [identifier: :phone, name: [:display_name, :name]]
         ]
 
-  ## Testning
+  ## Testing
 
-  `:req_options` skickas rakt in i `Req.post/2`, så en stubb kan sättas utan
-  att backenden känner till testet:
+  `:req_options` is passed straight into `Req.post/2`, so a stub can be
+  installed without the backend knowing about the test:
 
       config :ash_dispatch, AshDispatch.SMSBackend.Elks,
         req_options: [plug: {Req.Test, MyApp.Elks}]
 
   ## `dryrun`
 
-  Sätt `dryrun: true` i dev och test. 46elks tar då emot anropet, validerar
-  det och svarar med ett id — men skickar ingenting och debiterar inget.
-  Kvittot markeras `:sent` med ett `provider_id` prefixat `dryrun:`, så spåret
-  blir komplett utan att någon får ett SMS.
+  Set `dryrun: true` in dev and test. 46elks then accepts the request,
+  validates it and answers with an id — but sends nothing and charges nothing.
+  The receipt is marked `:sent` with a `provider_id` prefixed `dryrun:`, so the
+  trail is complete without anyone receiving a message.
 
-  ## Avsändare
+  ## Sender
 
-  Ett alfanumeriskt avsändar-id får vara högst elva tecken och kan inte tas
-  emot svar på. Ett telefonnummer i E.164 kan det. 46elks registrerar
-  alfanumeriska avsändare per konto.
+  An alphanumeric sender id may be at most eleven characters and cannot be
+  replied to. A phone number in E.164 can. 46elks registers alphanumeric
+  senders per account.
 
-  ## Fel som inte är värda ett omförsök
+  ## Failures not worth retrying
 
-  `400`, `401` och `403` markeras `:failed_permanent` direkt. Ett feltypat
-  telefonnummer blir inte rätt av att skickas om fem gånger, och ett fel
-  lösenord blir inte rätt alls — att bränna omförsöken på dem fördröjer bara
-  beskedet till människan som ska rätta det.
+  `400`, `401` and `403` are marked `:failed_permanent` immediately. A
+  malformed phone number does not become valid by being sent five more times,
+  and a wrong password never does — burning the retries on them only delays
+  telling the person who can fix it.
   """
 
   @behaviour AshDispatch.SMSBackend
@@ -66,7 +66,7 @@ defmodule AshDispatch.SMSBackend.Elks do
   @impl AshDispatch.SMSBackend
   def deliver(receipt, _context, _channel, _event_config) do
     with {:ok, config} <- config(),
-         {:ok, to} <- nummer(receipt),
+         {:ok, to} <- number(receipt),
          {:ok, body} <- body(receipt) do
       post(receipt, config, to, body)
     else
@@ -78,12 +78,12 @@ defmodule AshDispatch.SMSBackend.Elks do
     end
   end
 
-  # Phone.to_e164/1 svarar bart :error. Ett nummer som inte går att tolka blir
-  # inte tolkbart av att skickas om, så det är permanent.
-  defp nummer(receipt) do
+  # Phone.to_e164/1 answers a bare :error. A number that cannot be parsed does
+  # not become parseable by being resent, so it is permanent.
+  defp number(receipt) do
     case Phone.to_e164(receipt.recipient) do
       {:ok, e164} -> {:ok, e164}
-      :error -> {:error, {:permanent, "oanvändbart telefonnummer: #{inspect(receipt.recipient)}"}}
+      :error -> {:error, {:permanent, "unusable phone number: #{inspect(receipt.recipient)}"}}
     end
   end
 
@@ -92,8 +92,8 @@ defmodule AshDispatch.SMSBackend.Elks do
       %{from: config[:from], to: to, message: body}
       |> maybe_dryrun(config)
 
-    # retry: false med flit. Kvittot äger omförsöken, och Reqs egna skulle
-    # kunna skicka ett andra SMS på en 500 som faktiskt gick fram.
+    # retry: false deliberately. The receipt owns the retries, and Req's own
+    # would happily send a second message on a 500 that actually went through.
     opts =
       [
         auth: {:basic, "#{config[:username]}:#{config[:password]}"},
@@ -112,11 +112,11 @@ defmodule AshDispatch.SMSBackend.Elks do
         {:ok,
          ReceiptStatus.mark_failed_permanent(
            receipt,
-           "46elks #{status}: #{felstext(resp)}"
+           "46elks #{status}: #{error_text(resp)}"
          )}
 
       {:ok, %{status: status, body: resp}} ->
-        {:ok, ReceiptStatus.mark_failed(receipt, "46elks #{status}: #{felstext(resp)}")}
+        {:ok, ReceiptStatus.mark_failed(receipt, "46elks #{status}: #{error_text(resp)}")}
 
       {:error, reason} ->
         {:ok, ReceiptStatus.mark_failed(receipt, "46elks: #{inspect(reason)}")}
@@ -134,22 +134,22 @@ defmodule AshDispatch.SMSBackend.Elks do
 
   defp provider_response(resp, _config), do: %{"raw" => to_string(resp)}
 
-  defp felstext(resp) when is_binary(resp), do: resp
-  defp felstext(resp) when is_map(resp), do: resp["message"] || inspect(resp)
-  defp felstext(resp), do: inspect(resp)
+  defp error_text(resp) when is_binary(resp), do: resp
+  defp error_text(resp) when is_map(resp), do: resp["message"] || inspect(resp)
+  defp error_text(resp), do: inspect(resp)
 
-  # Dispatchern skriver `:message` (dispatcher.ex, content-byggaren för
-  # non-email), men kvittot är en JSONB-kolumn och kommer tillbaka
-  # strängnycklad ur Postgres. ContentMap hanterar båda.
+  # The dispatcher writes `:message` (see the non-email content builder in
+  # dispatcher.ex), but the receipt's content is a JSONB column and comes back
+  # string-keyed from Postgres. ContentMap handles both.
   defp body(receipt) do
     case ContentMap.get_content(receipt.content, :message) ||
            ContentMap.get_content(receipt.content, :body) do
       text when is_binary(text) ->
         trimmed = String.trim(text)
-        if trimmed == "", do: {:error, {:permanent, "tom sms-text"}}, else: {:ok, trimmed}
+        if trimmed == "", do: {:error, {:permanent, "empty sms body"}}, else: {:ok, trimmed}
 
       _ ->
-        {:error, {:permanent, "kvittot saknar sms-text"}}
+        {:error, {:permanent, "receipt carries no sms body"}}
     end
   end
 
@@ -158,13 +158,13 @@ defmodule AshDispatch.SMSBackend.Elks do
 
     cond do
       not Code.ensure_loaded?(Req) ->
-        {:error, "req saknas — lägg till {:req, \"~> 0.5\"} för att använda Elks-backenden"}
+        {:error, "req is missing — add {:req, \"~> 0.5\"} to use the Elks backend"}
 
       blank?(config[:username]) or blank?(config[:password]) ->
-        {:error, "46elks är inte konfigurerad (username/password saknas)"}
+        {:error, "46elks is not configured (username/password missing)"}
 
       true ->
-        {:ok, Keyword.put_new(config, :from, "Notis")}
+        {:ok, Keyword.put_new(config, :from, "Notify")}
     end
   end
 

@@ -37,20 +37,20 @@ defmodule AshDispatch.Changes.EnqueueRetryJob do
     end)
   end
 
-  # Vilken transport som går att göra om, och hur, bor i
-  # AshDispatch.Transport.Retry — samma lista som cronen i
-  # Workers.RetryFailedDeliveries använder. Två kopior av den listan betydde
-  # att en transport kunde få omförsök från cronen men inte från knapparna.
+  # Which transports can be retried, and how, lives in
+  # AshDispatch.Transport.Retry — the same list the cron in
+  # Workers.RetryFailedDeliveries uses. Two copies of that list meant a
+  # transport could be retried by the cron but not by these actions.
   defp enqueue_job(%{transport: transport} = receipt) do
     case AshDispatch.Transport.Retry.strategy(transport) do
       {:worker, _} ->
         AshDispatch.Transport.Retry.enqueue_worker(receipt)
 
-      {:direct, modul} ->
-        # Synkron leverans — görs om direkt. Knappen vill ha ett "jobb" att
-        # rapportera, till skillnad från cronen som vill veta att kvittot
-        # redan är färdighanterat.
-        case modul.retry_from_receipt(receipt) do
+      {:direct, module} ->
+        # Synchronous delivery — retried inline. The action wants a "job" to
+        # report back, unlike the cron, which wants to know the receipt is
+        # already fully handled.
+        case module.retry_from_receipt(receipt) do
           :ok -> {:ok, %{id: :direct_retry}}
           error -> error
         end
