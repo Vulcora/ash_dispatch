@@ -12,11 +12,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 1.18, not the 1.15 floor in mix.exs: igniter pulls in ex_ast, which
+      # requires it. The library itself is held to the floor by
+      # compile-without-optional-deps below, which has no dev tooling in it.
       - name: Set up Elixir
         uses: erlef/setup-beam@v1
         with:
-          elixir-version: '1.15'
-          otp-version: '26'
+          elixir-version: '1.18'
+          otp-version: '27'
 
       - name: Restore dependencies cache
         uses: actions/cache@v3
@@ -39,7 +42,9 @@ jobs:
   # before 0.8.3 compiled without ash_typescript (#31), nor before 0.8.4
   # without swoosh. This builds ash_dispatch the way an app with none of them
   # does, warnings included. Pinned to our own mix.lock, so an upstream
-  # release cannot fail it.
+  # release cannot fail it. It also runs on the oldest Elixir mix.exs claims,
+  # so the floor is tested where it matters: the library and its required
+  # dependencies, without the dev tooling that needs a newer one.
   compile-without-optional-deps:
     runs-on: ubuntu-latest
     steps:
@@ -87,8 +92,8 @@ jobs:
       - name: Set up Elixir
         uses: erlef/setup-beam@v1
         with:
-          elixir-version: '1.15'
-          otp-version: '26'
+          elixir-version: '1.18'
+          otp-version: '27'
 
       - name: Install into a fresh app and compile the result
         run: |

@@ -87,8 +87,10 @@ defmodule AshDispatch.Naming do
   the last segment. Used by the broadcast transport (and any future
   transport that needs a Phoenix-channel-friendly event name).
 
-  Per-event override is available via `AshDispatch.Event.wire_event_name/0`
-  (defaults to this string transform). F15 — review-deep 2026-05-15.
+  There is no per-event override: the docs used to promise a
+  `wire_event_name/0` callback on `AshDispatch.Event`, which was never
+  implemented. Every transport routes here, so the convention is the same
+  everywhere.
 
   ## Examples
 
