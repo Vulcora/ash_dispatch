@@ -27,7 +27,7 @@ defmodule AshDispatch.UserPreference.LegacyProvider do
 
   Wiring this must not change what email already does, or the fix would
   trade one surprise for another. So the three edges are copied from
-  `AshDispatch.Workers.SendEmail.check_user_preferences/1`:
+  `AshDispatch.Workers.SendEmail`'s own preference check (private):
 
   - no provider configured ⇒ allow (there is no rule to apply)
   - `get_preferences/1` returns `{:error, _}` ⇒ **allow**. An unreachable

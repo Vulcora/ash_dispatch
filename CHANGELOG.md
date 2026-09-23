@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.5] - 2026-09-23
+
+### Documentation
+
+- **Four guides that existed but were never published.** `architecture.md`,
+  `delivery-receipts.md`, `localization.md` and `priority.md` sit in
+  `lib/documentation/topics/` and are linked from other pages, but were
+  missing from `extras` in `mix.exs` — so every link to them was dead on
+  HexDocs. They are published now.
+- **References to things that do not exist.** `AshDispatch.Naming` and the
+  broadcast transport both described a per-event `wire_event_name/0`
+  callback on `AshDispatch.Event`; there is no such callback and never was.
+  The text now says what actually happens: every transport routes through
+  `AshDispatch.Naming.wire_event_name/1`. Stale references to private and
+  renamed functions are corrected too, which takes `mix docs` from 15
+  warnings to 2 — both of them about a module hidden in ash_typescript's own
+  docs.
+
+### Internal
+
+Not part of the published package (`config/` and `mix.lock` are not shipped),
+but worth recording:
+
+- **Dependencies refreshed.** ash 3.9.0 → 3.33.9, ash_postgres 2.6 → 2.13,
+  spark 2.3 → 2.7, ash_typescript 0.7 → 0.18, igniter 0.7 → 0.8, plus oban,
+  swoosh, req and the rest. This clears 16 packages carrying published
+  advisories, several rated HIGH — and, more to the point, the suite had been
+  running against Ash 3.9 while `mix deps.get` in a fresh app resolves 3.33.
+  All 576 tests pass on both Elixir 1.17 and 1.18.
+- **`config :ash, :default_string_length_count`** is now set (`:codepoints`)
+  for this project's own builds: Ash 3.33 makes every application choose.
+  Consuming apps are unaffected and make their own choice — Ash skips the
+  check for resources compiled as a dependency.
+- **CI moves to Elixir 1.18 / OTP 27**, because igniter now pulls in `ex_ast`,
+  which requires 1.18. `compile-without-optional-deps` runs on 1.17 instead,
+  so the library is still held to a floor rather than to whatever is newest.
+  It cannot be 1.15: Ash 3.33 uses `Duration` and does not compile there,
+  although it declares `~> 1.11`. `mix.exs` keeps `~> 1.15`, which stays true
+  for an app that pins an older Ash — ash_dispatch's own code compiles there.
+
 ## [0.8.4] - 2026-09-22
 
 ### Fixed
@@ -62,7 +102,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- `AshDispatch.Transports.Webhook.hemlighet/1` is now `secret/1`. The Swedish
+- `AshDispatch.Transports.Webhook`'s `hemlighet/1` is now `secret/1`. The Swedish
   name remains as a deprecated alias.
 - The Swedish that 0.8.3's translation missed — written without å/ä/ö, so a
   search for those letters could not find it — is now English too: private
@@ -425,7 +465,7 @@ config :ash_dispatch,
         preference_provider: MyApp.PreferenceProvider,
         user_preference: AshDispatch.UserPreference.LegacyProvider
 
-  The semantics are copied from `SendEmail.check_user_preferences/1` —
+  The semantics are copied from `SendEmail`'s private preference check —
   including that an `{:error, _}` from the provider **lets the message
   through**. A preference database that is down must not become a mute button:
   a notification that never arrives is invisible to everyone, including the
@@ -1101,7 +1141,7 @@ plus inline-image email support.
   under a hardcoded `"notifications"` domain while the Dispatcher looks
   them up via the configurable `:gettext_domain` — for any app setting
   that config, every dispatch translation silently missed. The generator
-  now uses `Config.gettext_domain/0`.
+  now uses `AshDispatch.Config.gettext_domain/0`.
 
 ## [0.5.4] - 2026-08-11
 

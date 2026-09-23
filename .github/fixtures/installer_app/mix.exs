@@ -11,7 +11,7 @@ defmodule Demo.MixProject do
   defp deps do
     [
       {:ash_dispatch, path: System.get_env("ASH_DISPATCH_PATH", "../ash_dispatch")},
-      {:igniter, "~> 0.7", only: [:dev, :test]}
+      {:igniter, "~> 0.8", only: [:dev, :test]}
     ]
   end
 end
