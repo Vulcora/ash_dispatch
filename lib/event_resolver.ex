@@ -376,7 +376,7 @@ defmodule AshDispatch.EventResolver do
   end
 
   @doc """
-  Mejlets svarsadress, eller `nil`.
+  The email's reply-to address, or `nil`.
 
   Defaults to `nil` — no `Reply-To` header, exactly as before 0.8.1. Anything
   that is not a non-empty string is treated as `nil`: a module that happens to

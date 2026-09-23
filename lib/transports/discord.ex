@@ -92,11 +92,11 @@ defmodule AshDispatch.Transports.Discord do
   """
   def deliver(receipt, context, channel, event_config) do
     Preferences.with_consent(receipt, context, channel, event_config, fn ->
-      leverera(receipt, context, channel)
+      do_deliver(receipt, context, channel)
     end)
   end
 
-  defp leverera(receipt, context, channel) do
+  defp do_deliver(receipt, context, channel) do
     webhook_url = get_webhook_url(channel)
 
     if webhook_url do

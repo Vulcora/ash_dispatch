@@ -21,7 +21,7 @@ defmodule AshDispatch.UserPreference.LegacyProviderTest do
 
   @user "33333333-3333-3333-3333-333333333333"
 
-  defmodule InaktivaFarInget do
+  defmodule InactiveGetNothing do
     @moduledoc false
     @behaviour AshDispatch.Behaviours.PreferenceProvider
 
@@ -29,7 +29,7 @@ defmodule AshDispatch.UserPreference.LegacyProviderTest do
     def get_preferences("33333333-3333-3333-3333-333333333333"),
       do: {:ok, %{__inactive__: true}}
 
-    def get_preferences("nere"), do: {:error, :preference_store_unreachable}
+    def get_preferences("down"), do: {:error, :preference_store_unreachable}
     def get_preferences(_), do: {:ok, %{}}
 
     @impl true
@@ -37,36 +37,36 @@ defmodule AshDispatch.UserPreference.LegacyProviderTest do
   end
 
   setup do
-    tidigare_leverantor = Application.get_env(:ash_dispatch, :preference_provider)
-    tidigare_checker = Application.get_env(:ash_dispatch, :user_preference)
+    previous_provider = Application.get_env(:ash_dispatch, :preference_provider)
+    previous_checker = Application.get_env(:ash_dispatch, :user_preference)
 
     on_exit(fn ->
-      aterstall(:preference_provider, tidigare_leverantor)
-      aterstall(:user_preference, tidigare_checker)
+      restore(:preference_provider, previous_provider)
+      restore(:user_preference, previous_checker)
     end)
 
     :ok
   end
 
-  defp aterstall(nyckel, nil), do: Application.delete_env(:ash_dispatch, nyckel)
-  defp aterstall(nyckel, varde), do: Application.put_env(:ash_dispatch, nyckel, varde)
+  defp restore(key, nil), do: Application.delete_env(:ash_dispatch, key)
+  defp restore(key, value), do: Application.put_env(:ash_dispatch, key, value)
 
-  defp kanal(transport), do: %Channel{transport: transport, audience: :user}
-  defp sammanhang, do: %Context{event_id: "meeting.reminder", data: %{}, user: nil}
+  defp channel(transport), do: %Channel{transport: transport, audience: :user}
+  defp context, do: %Context{event_id: "meeting.reminder", data: %{}, user: nil}
 
   describe "the gap the bridge exists to close" do
     test "a provider alone does not reach the transport gate" do
-      # This is the finding, executable. `InaktivaFarInget` says this user
+      # This is the finding, executable. `InactiveGetNothing` says this user
       # receives nothing — and the gate says deliver, on every transport,
       # because it reads :user_preference and the provider is :preference_provider.
-      Application.put_env(:ash_dispatch, :preference_provider, InaktivaFarInget)
+      Application.put_env(:ash_dispatch, :preference_provider, InactiveGetNothing)
       Application.delete_env(:ash_dispatch, :user_preference)
 
       for transport <- [:email, :sms, :push, :in_app, :slack, :discord, :webhook] do
         assert UserPreference.allows_receipt?(
                  %{user_id: @user},
-                 sammanhang(),
-                 kanal(transport),
+                 context(),
+                 channel(transport),
                  []
                ),
                """
@@ -81,14 +81,14 @@ defmodule AshDispatch.UserPreference.LegacyProviderTest do
     end
 
     test "with the bridge wired, the same provider answers for every transport" do
-      Application.put_env(:ash_dispatch, :preference_provider, InaktivaFarInget)
+      Application.put_env(:ash_dispatch, :preference_provider, InactiveGetNothing)
       Application.put_env(:ash_dispatch, :user_preference, LegacyProvider)
 
       for transport <- [:email, :sms, :push, :in_app, :slack, :discord, :webhook] do
         refute UserPreference.allows_receipt?(
                  %{user_id: @user},
-                 sammanhang(),
-                 kanal(transport),
+                 context(),
+                 channel(transport),
                  []
                ),
                "#{transport} still delivers to a recipient the provider excludes"
@@ -106,9 +106,9 @@ defmodule AshDispatch.UserPreference.LegacyProviderTest do
       # SendEmail's own comment: better to send than to silently skip. A
       # store that is down must not become a mute button — the failure would
       # be invisible to everyone, including the recipient.
-      Application.put_env(:ash_dispatch, :preference_provider, InaktivaFarInget)
+      Application.put_env(:ash_dispatch, :preference_provider, InactiveGetNothing)
 
-      assert LegacyProvider.user_allows?("nere", "meeting.reminder", :sms, category: nil)
+      assert LegacyProvider.user_allows?("down", "meeting.reminder", :sms, category: nil)
     end
 
     test "no provider configured allows the send" do
@@ -118,13 +118,13 @@ defmodule AshDispatch.UserPreference.LegacyProviderTest do
     end
 
     test "a permitted recipient is allowed" do
-      Application.put_env(:ash_dispatch, :preference_provider, InaktivaFarInget)
+      Application.put_env(:ash_dispatch, :preference_provider, InactiveGetNothing)
 
-      assert LegacyProvider.user_allows?("nagon-annan", "meeting.reminder", :sms, category: nil)
+      assert LegacyProvider.user_allows?("someone-else", "meeting.reminder", :sms, category: nil)
     end
 
     test "the provider's own verdict decides" do
-      Application.put_env(:ash_dispatch, :preference_provider, InaktivaFarInget)
+      Application.put_env(:ash_dispatch, :preference_provider, InactiveGetNothing)
 
       refute LegacyProvider.user_allows?(@user, "meeting.reminder", :sms, category: nil)
     end
@@ -134,46 +134,46 @@ defmodule AshDispatch.UserPreference.LegacyProviderTest do
     setup do
       # The warning fires once per VM and other tests in this suite reach the
       # gate first, so the latch has to be cleared to observe it at all.
-      :persistent_term.erase({Preferences, :varnat})
-      on_exit(fn -> :persistent_term.put({Preferences, :varnat}, true) end)
+      :persistent_term.erase({Preferences, :warned})
+      on_exit(fn -> :persistent_term.put({Preferences, :warned}, true) end)
       :ok
     end
 
     test "it fires when a provider is configured and the gate is not" do
-      Application.put_env(:ash_dispatch, :preference_provider, InaktivaFarInget)
+      Application.put_env(:ash_dispatch, :preference_provider, InactiveGetNothing)
       Application.delete_env(:ash_dispatch, :user_preference)
 
-      logg =
+      log =
         capture_log(fn ->
-          Preferences.with_consent(%{user_id: nil}, sammanhang(), kanal(:sms), [], fn -> :ok end)
+          Preferences.with_consent(%{user_id: nil}, context(), channel(:sms), [], fn -> :ok end)
         end)
 
-      assert logg =~ ":preference_provider is configured but :user_preference is not"
-      assert logg =~ "AshDispatch.UserPreference.LegacyProvider"
+      assert log =~ ":preference_provider is configured but :user_preference is not"
+      assert log =~ "AshDispatch.UserPreference.LegacyProvider"
     end
 
     test "it stays quiet once the gate is configured" do
-      Application.put_env(:ash_dispatch, :preference_provider, InaktivaFarInget)
+      Application.put_env(:ash_dispatch, :preference_provider, InactiveGetNothing)
       Application.put_env(:ash_dispatch, :user_preference, LegacyProvider)
 
-      logg =
+      log =
         capture_log(fn ->
-          Preferences.with_consent(%{user_id: nil}, sammanhang(), kanal(:sms), [], fn -> :ok end)
+          Preferences.with_consent(%{user_id: nil}, context(), channel(:sms), [], fn -> :ok end)
         end)
 
-      refute logg =~ ":preference_provider is configured but"
+      refute log =~ ":preference_provider is configured but"
     end
 
     test "it stays quiet when no provider is configured" do
       Application.delete_env(:ash_dispatch, :preference_provider)
       Application.delete_env(:ash_dispatch, :user_preference)
 
-      logg =
+      log =
         capture_log(fn ->
-          Preferences.with_consent(%{user_id: nil}, sammanhang(), kanal(:sms), [], fn -> :ok end)
+          Preferences.with_consent(%{user_id: nil}, context(), channel(:sms), [], fn -> :ok end)
         end)
 
-      refute logg =~ ":preference_provider is configured but"
+      refute log =~ ":preference_provider is configured but"
     end
 
     test "a provider configured LATER still gets warned about" do
@@ -185,38 +185,38 @@ defmodule AshDispatch.UserPreference.LegacyProviderTest do
       Application.delete_env(:ash_dispatch, :preference_provider)
       Application.delete_env(:ash_dispatch, :user_preference)
 
-      forst =
+      first =
         capture_log(fn ->
-          Preferences.with_consent(%{user_id: nil}, sammanhang(), kanal(:sms), [], fn -> :ok end)
+          Preferences.with_consent(%{user_id: nil}, context(), channel(:sms), [], fn -> :ok end)
         end)
 
-      refute forst =~ ":preference_provider is configured but"
+      refute first =~ ":preference_provider is configured but"
 
-      Application.put_env(:ash_dispatch, :preference_provider, InaktivaFarInget)
+      Application.put_env(:ash_dispatch, :preference_provider, InactiveGetNothing)
 
-      sedan =
+      later =
         capture_log(fn ->
-          Preferences.with_consent(%{user_id: nil}, sammanhang(), kanal(:sms), [], fn -> :ok end)
+          Preferences.with_consent(%{user_id: nil}, context(), channel(:sms), [], fn -> :ok end)
         end)
 
-      assert sedan =~ ":preference_provider is configured but",
+      assert later =~ ":preference_provider is configured but",
              "the first delivery latched the warning off before there was anything to warn about"
     end
 
     test "it fires once, not on every delivery" do
       # A warning on every send is a warning nobody reads, and this one sits
       # on the path of every notification the app sends.
-      Application.put_env(:ash_dispatch, :preference_provider, InaktivaFarInget)
+      Application.put_env(:ash_dispatch, :preference_provider, InactiveGetNothing)
       Application.delete_env(:ash_dispatch, :user_preference)
 
-      skicka = fn ->
+      deliver = fn ->
         capture_log(fn ->
-          Preferences.with_consent(%{user_id: nil}, sammanhang(), kanal(:sms), [], fn -> :ok end)
+          Preferences.with_consent(%{user_id: nil}, context(), channel(:sms), [], fn -> :ok end)
         end)
       end
 
-      assert skicka.() =~ ":preference_provider is configured but"
-      refute skicka.() =~ ":preference_provider is configured but"
+      assert deliver.() =~ ":preference_provider is configured but"
+      refute deliver.() =~ ":preference_provider is configured but"
     end
   end
 end

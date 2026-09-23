@@ -71,6 +71,11 @@ defmodule AshDispatch.Event.CustomTopic do
   setup; when absent, behaviour is identical to pre-extension.
   """
 
+  # phoenix_pubsub is an optional dependency: a custom topic names a PubSub
+  # server, so any app that configures one has it. `do_broadcast/4` rescues
+  # regardless.
+  @compile {:no_warn_undefined, Phoenix.PubSub}
+
   @doc false
   def inject(opts) do
     pubsub = Keyword.fetch!(opts, :pubsub)

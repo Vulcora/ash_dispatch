@@ -189,7 +189,7 @@ maps with `:filename`, `:content_type` and the raw binary `:data`:
 def attachments(context, %Channel{transport: :email}) do
   [
     %{
-      filename: "faktura.pdf",
+      filename: "invoice.pdf",
       content_type: "application/pdf",
       data: MyApp.Invoices.render_pdf(context.data.order)
     }
@@ -230,7 +230,7 @@ defmodule MyApp.Orders.Events.Confirmed.Event do
       },
       # Regular attachment: offered as a download (the default)
       %{
-        filename: "faktura.pdf",
+        filename: "invoice.pdf",
         content_type: "application/pdf",
         data: MyApp.Invoices.render_pdf(context.data.order)
       }

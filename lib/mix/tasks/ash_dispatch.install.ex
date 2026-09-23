@@ -32,7 +32,9 @@ defmodule Mix.Tasks.AshDispatch.Install.Docs do
 
     * `--no-phoenix` - Skip Phoenix channel setup
     * `--no-email` - Skip email backend configuration
-    * `--no-typescript` - Skip TypeScript SDK generation (runs automatically if any domain uses AshTypescript.Rpc)
+    * `--no-typescript` - Generate plain resources and skip TypeScript SDK generation. Without
+      the flag, the resources get `AshTypescript.Resource` when ash_typescript is a dependency, and
+      the SDK is generated when a domain uses `AshTypescript.Rpc`.
     """
   end
 end
@@ -69,17 +71,33 @@ if Code.ensure_loaded?(Igniter) do
     def igniter(igniter) do
       opts = igniter.args.options
       otp_app = Igniter.Project.Application.app_name(igniter)
-      app_module = Igniter.Project.Module.module_name(igniter, "")
 
-      # Detect user resource (common patterns)
+      # `module_name_prefix/1`, not `module_name(igniter, "")`: concatenating
+      # an empty segment yields `MyApp.` with a trailing dot, which made every
+      # module this installer generated `MyApp..Notifications…`.
+      app_module = Igniter.Project.Module.module_name_prefix(igniter)
+
+      # Both resources are AshPostgres resources and need a repo. With none in
+      # the project the conventional name is used, and the notice says so.
+      {igniter, found_repo} =
+        Igniter.Libs.Ecto.select_repo(igniter, label: "Which repo should AshDispatch use?")
+
+      repo = found_repo || Module.concat(app_module, Repo)
+
       user_resource = detect_user_resource(igniter, app_module)
+
+      # `--no-typescript` used to skip only the SDK, while the library itself
+      # still required ash_typescript (#31). It now also keeps the generated
+      # resources plain — as does a project that doesn't have ash_typescript.
+      typescript? =
+        opts[:typescript] && Igniter.Project.Deps.has_dep?(igniter, :ash_typescript)
 
       igniter
       |> Igniter.Project.Formatter.import_dep(:ash_dispatch)
-      |> configure_ash_dispatch(otp_app)
+      |> configure_ash_dispatch(otp_app, app_module, repo)
       |> configure_test(otp_app)
-      |> create_notification_resource(otp_app, app_module, user_resource)
-      |> create_delivery_receipt_resource(otp_app, app_module)
+      |> create_notification_resource(app_module, repo, user_resource, typescript?)
+      |> create_delivery_receipt_resource(app_module, repo, user_resource, typescript?)
       |> create_notifications_domain(app_module)
       |> create_deliveries_domain(app_module)
       |> add_domains_to_config(otp_app, app_module)
@@ -88,21 +106,26 @@ if Code.ensure_loaded?(Igniter) do
       |> maybe_setup_phoenix(opts[:phoenix], otp_app, app_module)
       |> maybe_configure_email(opts[:email], otp_app, app_module)
       |> maybe_run_typescript(opts[:typescript])
-      |> add_final_notice(otp_app, app_module, user_resource)
+      |> add_final_notice(app_module, found_repo, user_resource)
     end
 
     # ============================================
     # Configuration
     # ============================================
 
-    defp configure_ash_dispatch(igniter, otp_app) do
-      igniter
-      |> Igniter.Project.Config.configure_new(
-        "config.exs",
-        :ash_dispatch,
-        [:otp_app],
-        otp_app
-      )
+    # The resource keys are how the runtime finds the resources generated
+    # below (`Config.notification_resource/0` and friends return `nil`
+    # otherwise), and `:repo` is read directly for Oban job lookups.
+    defp configure_ash_dispatch(igniter, otp_app, app_module, repo) do
+      [
+        otp_app: otp_app,
+        repo: repo,
+        notification_resource: Module.concat([app_module, Notifications, Notification]),
+        delivery_receipt_resource: Module.concat([app_module, Deliveries, DeliveryReceipt])
+      ]
+      |> Enum.reduce(igniter, fn {key, value}, igniter ->
+        Igniter.Project.Config.configure_new(igniter, "config.exs", :ash_dispatch, [key], value)
+      end)
     end
 
     defp configure_test(igniter, otp_app) do
@@ -120,53 +143,104 @@ if Code.ensure_loaded?(Igniter) do
     # Resource Generation
     # ============================================
 
-    defp create_notification_resource(igniter, otp_app, app_module, user_resource) do
+    # `create_module/3` wraps the contents in `defmodule` itself, so every
+    # generator below passes only the module body. Passing a whole
+    # `defmodule` — as this installer used to — nests a second module inside
+    # the first and leaves the outer one empty.
+    #
+    # The resources are built on the same Base modules the integration guide
+    # uses. They used to `use AshDispatch.Notification` and
+    # `use AshDispatch.DeliveryReceipt`, which have never existed.
+    defp create_notification_resource(igniter, app_module, repo, user_resource, typescript?) do
       module_name = Module.concat([app_module, Notifications, Notification])
 
-      user_resource_str =
+      # Base already defines `user_id`, so the relationship must not define
+      # it again.
+      relationships =
         if user_resource do
-          "user_resource: #{inspect(user_resource)},"
+          """
+          relationships do
+            belongs_to :user, #{inspect(user_resource)} do
+              source_attribute :user_id
+              destination_attribute :id
+              allow_nil? false
+              public? true
+              define_attribute? false
+            end
+          end
+          """
         else
-          "# user_resource: #{inspect(app_module)}.Accounts.User,  # Uncomment and update"
+          """
+          # No user resource was found. Add a relationship to yours:
+          #
+          #   relationships do
+          #     belongs_to :user, #{inspect(app_module)}.Accounts.User do
+          #       source_attribute :user_id
+          #       destination_attribute :id
+          #       allow_nil? false
+          #       public? true
+          #       define_attribute? false
+          #     end
+          #   end
+          """
         end
 
       content = """
-      defmodule #{inspect(module_name)} do
-        @moduledoc \"\"\"
-        In-app notification resource for storing user notifications.
+      @moduledoc \"\"\"
+      In-app notifications for users.
 
-        Generated by `mix ash_dispatch.install`.
-        \"\"\"
+      Generated by `mix ash_dispatch.install`.
+      \"\"\"
 
-        use AshDispatch.Notification,
-          domain: #{inspect(Module.concat(app_module, Notifications))},
-          #{user_resource_str}
-          otp_app: :#{otp_app}
-      end
+      use AshDispatch.Resources.Notification.Base,
+        repo: #{inspect(repo)},
+        domain: #{inspect(Module.concat(app_module, Notifications))}#{typescript_extension(typescript?)}
+
+      #{typescript_section(typescript?, "Notification")}
+      #{relationships}
       """
 
       Igniter.Project.Module.create_module(igniter, module_name, content)
     end
 
-    defp create_delivery_receipt_resource(igniter, otp_app, app_module) do
+    defp create_delivery_receipt_resource(igniter, app_module, repo, user_resource, typescript?) do
       module_name = Module.concat([app_module, Deliveries, DeliveryReceipt])
 
+      # Base builds the user relationship itself when given `user_resource`.
+      user_resource_opt =
+        if user_resource, do: ",\n  user_resource: #{inspect(user_resource)}", else: ""
+
       content = """
-      defmodule #{inspect(module_name)} do
-        @moduledoc \"\"\"
-        Delivery receipt resource for tracking all notification deliveries.
+      @moduledoc \"\"\"
+      Tracks every notification delivery (email, in-app, webhooks, ...).
 
-        Generated by `mix ash_dispatch.install`.
-        \"\"\"
+      Generated by `mix ash_dispatch.install`.
+      \"\"\"
 
-        use AshDispatch.DeliveryReceipt,
-          domain: #{inspect(Module.concat(app_module, Deliveries))},
-          otp_app: :#{otp_app}
-      end
+      use AshDispatch.Resources.DeliveryReceipt.Base,
+        repo: #{inspect(repo)},
+        domain: #{inspect(Module.concat(app_module, Deliveries))},
+        notification_resource: #{inspect(Module.concat([app_module, Notifications, Notification]))}#{user_resource_opt}#{typescript_extension(typescript?)}
+
+      #{typescript_section(typescript?, "DeliveryReceipt")}
       """
 
       Igniter.Project.Module.create_module(igniter, module_name, content)
     end
+
+    defp typescript_extension(true), do: ",\n  extensions: [AshTypescript.Resource]"
+    defp typescript_extension(_typescript?), do: ""
+
+    # `type_name` is required once the extension is present.
+    defp typescript_section(true, type_name) do
+      """
+      typescript do
+        type_name "#{type_name}"
+      end
+      """
+    end
+
+    defp typescript_section(_typescript?, _type_name), do: ""
 
     # ============================================
     # Domain Generation
@@ -177,18 +251,16 @@ if Code.ensure_loaded?(Igniter) do
       resource_name = Module.concat([app_module, Notifications, Notification])
 
       content = """
-      defmodule #{inspect(module_name)} do
-        @moduledoc \"\"\"
-        Domain for in-app notifications.
+      @moduledoc \"\"\"
+      Domain for in-app notifications.
 
-        Generated by `mix ash_dispatch.install`.
-        \"\"\"
+      Generated by `mix ash_dispatch.install`.
+      \"\"\"
 
-        use Ash.Domain
+      use Ash.Domain
 
-        resources do
-          resource #{inspect(resource_name)}
-        end
+      resources do
+        resource #{inspect(resource_name)}
       end
       """
 
@@ -200,18 +272,16 @@ if Code.ensure_loaded?(Igniter) do
       resource_name = Module.concat([app_module, Deliveries, DeliveryReceipt])
 
       content = """
-      defmodule #{inspect(module_name)} do
-        @moduledoc \"\"\"
-        Domain for delivery receipts and tracking.
+      @moduledoc \"\"\"
+      Domain for delivery receipts and tracking.
 
-        Generated by `mix ash_dispatch.install`.
-        \"\"\"
+      Generated by `mix ash_dispatch.install`.
+      \"\"\"
 
-        use Ash.Domain
+      use Ash.Domain
 
-        resources do
-          resource #{inspect(resource_name)}
-        end
+      resources do
+        resource #{inspect(resource_name)}
       end
       """
 
@@ -243,9 +313,15 @@ if Code.ensure_loaded?(Igniter) do
     # Recipient Resolver
     # ============================================
 
+    # `use AshDispatch.RecipientResolver` requires a user resource, and
+    # `to_recipient/1` matches on its struct, which only compiles if the
+    # module exists. Without one there is nothing valid to generate yet; the
+    # final notice explains how to add it later.
+    defp create_recipient_resolver(igniter, _app_module, nil), do: igniter
+
     defp create_recipient_resolver(igniter, app_module, user_resource) do
       resolver_module = Module.concat(app_module, RecipientResolver)
-      user_resource_str = inspect(user_resource || Module.concat(app_module, Accounts.User))
+      user_resource_str = inspect(user_resource)
 
       content = """
       @moduledoc \"\"\"
@@ -492,69 +568,90 @@ if Code.ensure_loaded?(Igniter) do
           ⚠️  Phoenix web module not detected. Skipping channel setup.
 
           You can manually create a UserChannel for real-time notifications.
-          See: https://ash-dispatch-docs.pages.dev/phoenix-integration
+          See: https://hexdocs.pm/ash_dispatch/phoenix-integration.html
           """
         )
       end
     end
 
+    # The documented reference channel (phoenix-integration.md). The one this
+    # installer used to write defined `broadcast_counter/3` and pushed
+    # "counter_update", but `CounterHandler` calls the configured function
+    # with four arguments and the SDK listens for "counter_updated" — so no
+    # counter update ever arrived.
     defp create_user_channel(igniter, web_module) do
       channel_module = Module.concat(web_module, UserChannel)
-      web_module_str = inspect(web_module) |> String.replace_prefix("Elixir.", "")
+      endpoint = inspect(Module.concat(web_module, Endpoint))
 
       content = """
-      defmodule #{inspect(channel_module)} do
-        @moduledoc \"\"\"
-        Phoenix channel for real-time user notifications and counter updates.
+      @moduledoc \"\"\"
+      Phoenix channel for real-time user notifications and counter updates.
 
-        Generated by `mix ash_dispatch.install`.
-        \"\"\"
+      Expects the socket to assign `:user_id` (and `:current_user`, which is
+      the actor for marking notifications as read).
 
-        use Phoenix.Channel
-        alias AshDispatch.Helpers.ChannelState
+      Generated by `mix ash_dispatch.install`.
+      \"\"\"
 
-        @doc \"\"\"
-        Join the user's personal channel.
-        \"\"\"
-        def join("user:" <> user_id, _params, socket) do
-          if authorized?(socket, user_id) do
-            send(self(), :after_join)
-            {:ok, socket}
-          else
-            {:error, %{reason: "unauthorized"}}
-          end
+      use Phoenix.Channel
+
+      alias AshDispatch.Helpers.{ChannelState, CounterLoader, NotificationLoader}
+
+      @impl true
+      def join("user:" <> user_id, _payload, socket) do
+        if socket.assigns[:user_id] == user_id do
+          send(self(), :after_join)
+          {:ok, socket}
+        else
+          {:error, %{reason: "unauthorized"}}
         end
+      end
 
-        @doc \"\"\"
-        Send initial state after joining.
-        \"\"\"
-        def handle_info(:after_join, socket) do
-          user_id = socket.assigns.user_id
+      @impl true
+      def handle_info(:after_join, socket) do
+        push(socket, "initial_state", ChannelState.build(socket.assigns.user_id))
+        {:noreply, socket}
+      end
 
-          # Load all counters and recent notifications
-          initial_state = ChannelState.build(user_id)
+      @impl true
+      def handle_in("refresh_counters", _payload, socket) do
+        counters = CounterLoader.load_counters_for_user(socket.assigns.user_id)
+        {:reply, {:ok, %{counters: counters}}, socket}
+      end
 
-          push(socket, "initial_state", initial_state)
-          {:noreply, socket}
+      def handle_in("mark_notification_read", %{"id" => id}, socket) do
+        case NotificationLoader.mark_as_read(id, actor: socket.assigns[:current_user]) do
+          {:ok, _} -> {:reply, :ok, socket}
+          {:error, %Ash.Error.Forbidden{}} -> {:reply, {:error, %{reason: "unauthorized"}}, socket}
+          {:error, error} -> {:reply, {:error, %{reason: inspect(error)}}, socket}
         end
+      end
 
-        @doc \"\"\"
-        Broadcast a counter update to the user's channel.
+      def handle_in("mark_all_notifications_read", _payload, socket) do
+        user_id = socket.assigns.user_id
 
-        Called by AshDispatch when counters change.
-        \"\"\"
-        def broadcast_counter(user_id, counter_name, value) do
-          #{web_module_str}.Endpoint.broadcast(
-            "user:\#{user_id}",
-            "counter_update",
-            %{counter: counter_name, value: value}
-          )
+        case NotificationLoader.mark_all_as_read(user_id, actor: socket.assigns[:current_user]) do
+          {:ok, _} ->
+            #{endpoint}.broadcast("user:\#{user_id}", "all_notifications_read", %{})
+            broadcast_counter(user_id, :unread_notifications, 0)
+            {:reply, :ok, socket}
+
+          {:error, reason} ->
+            {:reply, {:error, %{reason: "failed", details: inspect(reason)}}, socket}
         end
+      end
 
-        defp authorized?(socket, user_id) do
-          # Verify the user can access this channel
-          socket.assigns[:user_id] == user_id
-        end
+      @doc \"\"\"
+      Broadcasts a counter update to the user's channel.
+
+      Called by AshDispatch through `config :ash_dispatch, counter_broadcast_fn:`.
+      \"\"\"
+      def broadcast_counter(user_id, counter_name, value, opts \\\\ []) do
+        #{endpoint}.broadcast("user:\#{user_id}", "counter_updated", %{
+          counter: counter_name,
+          value: value,
+          metadata: Keyword.get(opts, :metadata, %{})
+        })
       end
       """
 
@@ -563,34 +660,33 @@ if Code.ensure_loaded?(Igniter) do
 
     defp create_inbox_controller(igniter, web_module, _otp_app) do
       controller_module = Module.concat(web_module, InboxApiController)
-      web_module_str = inspect(web_module) |> String.replace_prefix("Elixir.", "")
+      web_module_str = inspect(web_module)
 
       content = """
-      defmodule #{inspect(controller_module)} do
-        @moduledoc \"\"\"
-        API controller for inbox-related endpoints.
+      @moduledoc \"\"\"
+      API controller for inbox-related endpoints.
 
-        Generated by `mix ash_dispatch.install`.
-        \"\"\"
+      Generated by `mix ash_dispatch.install`.
+      \"\"\"
 
-        use #{web_module_str}, :controller
+      use #{web_module_str}, :controller
 
-        @doc \"\"\"
-        Generate a socket token for the current user.
+      @doc \"\"\"
+      Generate a socket token for the current user.
 
-        Used by the frontend to authenticate Phoenix channel connections.
-        \"\"\"
-        def socket_token(conn, _params) do
-          user = conn.assigns[:current_user]
+      Used by the frontend to authenticate Phoenix channel connections. Verify
+      it in your socket's `connect/3` with the same salt, `"user socket"`.
+      \"\"\"
+      def socket_token(conn, _params) do
+        user = conn.assigns[:current_user]
 
-          if user do
-            token = Phoenix.Token.sign(#{web_module_str}.Endpoint, "user socket", user.id)
-            json(conn, %{success: true, data: %{token: token}})
-          else
-            conn
-            |> put_status(:unauthorized)
-            |> json(%{success: false, error: "Not authenticated"})
-          end
+        if user do
+          token = Phoenix.Token.sign(#{web_module_str}.Endpoint, "user socket", user.id)
+          json(conn, %{success: true, data: %{token: token}})
+        else
+          conn
+          |> put_status(:unauthorized)
+          |> json(%{success: false, error: "Not authenticated"})
         end
       end
       """
@@ -755,20 +851,39 @@ if Code.ensure_loaded?(Igniter) do
     # Final Notice
     # ============================================
 
-    defp add_final_notice(igniter, _otp_app, app_module, user_resource) do
+    defp add_final_notice(igniter, app_module, found_repo, user_resource) do
+      repo_notice =
+        if found_repo do
+          ""
+        else
+          """
+
+          ⚠️  No Ecto repo found. The resources use #{inspect(Module.concat(app_module, Repo))}
+          — create it (e.g. `mix igniter.install ash_postgres`) or change their `repo:` option.
+          """
+        end
+
       user_notice =
         if user_resource do
           ""
         else
           """
 
-          ⚠️  User resource not detected. Update your Notification resource:
+          ⚠️  No user resource found, so no RecipientResolver was generated, and the
+          Notification resource's user relationship is left as a comment to fill in.
+          Once you have one:
 
-              use AshDispatch.Notification,
-                user_resource: YourApp.Accounts.User,
-                ...
+              mix ash_dispatch.gen.recipient_resolver #{inspect(app_module)}.RecipientResolver \\
+                --user-resource #{inspect(app_module)}.Accounts.User
+
+              config :ash_dispatch, recipient_resolver: #{inspect(app_module)}.RecipientResolver
           """
         end
+
+      resolver_line =
+        if user_resource,
+          do: "\n  - #{inspect(Module.concat(app_module, RecipientResolver))}",
+          else: ""
 
       notice = """
       🎉 AshDispatch has been installed!
@@ -777,10 +892,10 @@ if Code.ensure_loaded?(Igniter) do
         - #{inspect(Module.concat([app_module, Notifications, Notification]))}
         - #{inspect(Module.concat(app_module, Notifications))} (domain)
         - #{inspect(Module.concat([app_module, Deliveries, DeliveryReceipt]))}
-        - #{inspect(Module.concat(app_module, Deliveries))} (domain)
+        - #{inspect(Module.concat(app_module, Deliveries))} (domain)#{resolver_line}
         - priv/ash_dispatch/layouts/email.html.heex
         - priv/ash_dispatch/layouts/email.text.eex
-      #{user_notice}
+      #{repo_notice}#{user_notice}
       Next Steps:
 
       1. Run migrations:
@@ -812,7 +927,7 @@ if Code.ensure_loaded?(Igniter) do
       4. (Optional) Generate TypeScript SDK:
          mix ash_dispatch.gen
 
-      📚 Documentation: https://ash-dispatch-docs.pages.dev
+      📚 Documentation: https://hexdocs.pm/ash_dispatch
       """
 
       Igniter.add_notice(igniter, notice)

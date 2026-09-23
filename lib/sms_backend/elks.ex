@@ -55,6 +55,9 @@ defmodule AshDispatch.SMSBackend.Elks do
 
   @behaviour AshDispatch.SMSBackend
 
+  # req is optional; `config/0` returns an error when it is missing.
+  @compile {:no_warn_undefined, Req}
+
   alias AshDispatch.ContentMap
   alias AshDispatch.ReceiptStatus
   alias AshDispatch.SMSBackend.Phone

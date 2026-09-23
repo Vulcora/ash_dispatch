@@ -14,7 +14,7 @@ defmodule AshDispatch.Transports.WebhookTest do
   alias AshDispatch.Transports.Webhook
 
   describe "transport-metadata" do
-    test "registrerar sig som :webhook och skapar kvitton" do
+    test "registers as :webhook and creates receipts" do
       assert Webhook.transport_atom() == :webhook
       assert Webhook.skip_receipt?() == false
     end
@@ -69,7 +69,7 @@ defmodule AshDispatch.Transports.WebhookTest do
                "POST\n/d\nx=a~b%2Ac\n"
     end
 
-    test "dubbletter i query kollapsar sist-vinner" do
+    test "duplicate query keys collapse, last one wins" do
       assert Webhook.canonical_string("POST", "https://x.test/d?a=1&a=2", "") ==
                "POST\n/d\na=2\n"
     end
@@ -96,7 +96,7 @@ defmodule AshDispatch.Transports.WebhookTest do
     @body ~s({"event_id":"x"})
 
     test "signs when metadata carries atom keys" do
-      h = Webhook.request_headers(@url, @body, %{secret: "hemlig"})
+      h = Webhook.request_headers(@url, @body, %{secret: "top-secret"})
       assert %{"x-webhook-signature" => "sha256=" <> hex} = h
       assert hex =~ ~r/^[0-9a-f]{64}$/
     end
@@ -106,14 +106,14 @@ defmodule AshDispatch.Transports.WebhookTest do
     # the body without ever having signed it — the call goes out unsigned, and
     # nothing says a word.
     test "signs when metadata carries string keys too" do
-      h = Webhook.request_headers(@url, @body, %{"secret" => "hemlig"})
+      h = Webhook.request_headers(@url, @body, %{"secret" => "top-secret"})
 
       assert %{"x-webhook-signature" => sig} = h,
              "a string-keyed secret must sign — otherwise the call goes out unsigned, silently"
 
       assert sig ==
                Map.fetch!(
-                 Webhook.request_headers(@url, @body, %{secret: "hemlig"}),
+                 Webhook.request_headers(@url, @body, %{secret: "top-secret"}),
                  "x-webhook-signature"
                )
     end
@@ -139,7 +139,7 @@ defmodule AshDispatch.Transports.WebhookTest do
       end
     end
 
-    test "utan secret finns ingen signaturheader alls" do
+    test "without a secret there is no signature header at all" do
       h = Webhook.request_headers(@url, @body, %{})
       refute Enum.any?(Map.keys(h), &String.contains?(&1, "signature"))
       assert %{"Content-Type" => "application/json"} = h
@@ -153,88 +153,87 @@ defmodule AshDispatch.Transports.WebhookTest do
     end
   end
 
-  describe "hemlighet/1 — secret_env" do
+  describe "secret/1 — secret_env" do
     setup do
-      on_exit(fn -> System.delete_env("PROV_WEBHOOK_SECRET") end)
+      on_exit(fn -> System.delete_env("TEST_WEBHOOK_SECRET") end)
       :ok
     end
 
     test "reads the value from the environment when the name is given" do
-      System.put_env("PROV_WEBHOOK_SECRET", "ur-miljon")
-      assert Webhook.hemlighet(%{secret_env: "PROV_WEBHOOK_SECRET"}) == "ur-miljon"
+      System.put_env("TEST_WEBHOOK_SECRET", "from-env")
+      assert Webhook.secret(%{secret_env: "TEST_WEBHOOK_SECRET"}) == "from-env"
     end
 
     test "works with string keys too" do
-      System.put_env("PROV_WEBHOOK_SECRET", "ur-miljon")
-      assert Webhook.hemlighet(%{"secret_env" => "PROV_WEBHOOK_SECRET"}) == "ur-miljon"
+      System.put_env("TEST_WEBHOOK_SECRET", "from-env")
+      assert Webhook.secret(%{"secret_env" => "TEST_WEBHOOK_SECRET"}) == "from-env"
     end
 
-    # En explicit secret ska kunna overrida miljon i ett prov.
+    # An explicit secret must be able to override the environment in a test.
     test "an explicit secret wins over secret_env" do
-      System.put_env("PROV_WEBHOOK_SECRET", "ur-miljon")
+      System.put_env("TEST_WEBHOOK_SECRET", "from-env")
 
-      assert Webhook.hemlighet(%{secret: "explicit", secret_env: "PROV_WEBHOOK_SECRET"}) ==
+      assert Webhook.secret(%{secret: "explicit", secret_env: "TEST_WEBHOOK_SECRET"}) ==
                "explicit"
     end
 
     # THE WHOLE POINT: the name is read at compile time, the VALUE at send
     # time. Bake the value in and a key rotation does not take effect until
     # someone recompiles — and nothing says a word.
-    test "en osatt variabel ger nil, inte namnet" do
-      System.delete_env("PROV_WEBHOOK_SECRET")
-      assert Webhook.hemlighet(%{secret_env: "PROV_WEBHOOK_SECRET"}) == nil
+    test "an unset variable gives nil, not the name" do
+      System.delete_env("TEST_WEBHOOK_SECRET")
+      assert Webhook.secret(%{secret_env: "TEST_WEBHOOK_SECRET"}) == nil
     end
 
-    test "utan vare sig secret eller secret_env: nil" do
-      assert Webhook.hemlighet(%{}) == nil
-      assert Webhook.hemlighet(%{secret: ""}) == nil
-      assert Webhook.hemlighet(nil) == nil
+    test "with neither secret nor secret_env: nil" do
+      assert Webhook.secret(%{}) == nil
+      assert Webhook.secret(%{secret: ""}) == nil
+      assert Webhook.secret(nil) == nil
     end
 
     test "the channel is signed when the secret comes from the environment" do
-      System.put_env("PROV_WEBHOOK_SECRET", "ur-miljon")
-      h = Webhook.request_headers(@url, @body, %{secret_env: "PROV_WEBHOOK_SECRET"})
+      System.put_env("TEST_WEBHOOK_SECRET", "from-env")
+      h = Webhook.request_headers(@url, @body, %{secret_env: "TEST_WEBHOOK_SECRET"})
       assert %{"x-webhook-signature" => "sha256=" <> hex} = h
       assert hex =~ ~r/^[0-9a-f]{64}$/
     end
 
-    # secret_env avslojar inget varde, men den ar KONFIGURATION och hor inte
-    # hemma i handelsedatan. Samma regel som for secret.
-    # En mottagare som ska kunna ERBJUDA en atgard maste veta vilket objekt
-    # handelsen galler. Utan source_id vet den bara att nagot hande, och till vem.
-    # En URL som bakas in vid kompilering foljer med till STAGING, och staging
-    # postar da till produktionens mottagare. Meddelandet kommer fram — bara pa
-    # fel stalle, vilket inte syns som ett fel.
+    # A URL baked in at compile time travels with the build to STAGING, and
+    # staging then posts to production's receiver. The message arrives — just
+    # in the wrong place, which never shows up as an error.
     test "webhook_url_env is read from the environment" do
-      System.put_env("PROV_WEBHOOK_URL", "https://staging.test/dispatch")
-      on_exit(fn -> System.delete_env("PROV_WEBHOOK_URL") end)
+      System.put_env("TEST_WEBHOOK_URL", "https://staging.test/dispatch")
+      on_exit(fn -> System.delete_env("TEST_WEBHOOK_URL") end)
 
-      kanal = %AshDispatch.Channel{
+      channel = %AshDispatch.Channel{
         transport: :webhook,
         audience: :user,
-        metadata: %{webhook_url_env: "PROV_WEBHOOK_URL"}
+        metadata: %{webhook_url_env: "TEST_WEBHOOK_URL"}
       }
 
-      # Vi kommer at den privata vagen via envelope-byggarens systerfunktion:
-      # om URL:en inte lostes hade `deliver/4` skippat, sa provet nedan racker
-      # som kontrakt for att namnet las.
+      # We reach the private path through the envelope builder's sibling: had
+      # the URL not resolved, `deliver/4` would have skipped, so the check below
+      # is enough of a contract that the name is read.
       assert Webhook.request_headers("https://staging.test/dispatch", "{}", %{}) |> is_map()
-      assert kanal.metadata[:webhook_url_env] == "PROV_WEBHOOK_URL"
+      assert channel.metadata[:webhook_url_env] == "TEST_WEBHOOK_URL"
     end
 
-    test "webhook_url_env stryks ur envelopeet" do
+    test "webhook_url_env is stripped from the envelope" do
       envelope =
         Webhook.envelope(
           %{id: "r1", user_id: nil, recipient: "x", content: %{}},
           %{event_id: "e"},
           %AshDispatch.Channel{transport: :webhook, audience: :user},
-          %{webhook_url_env: "PROV_WEBHOOK_URL", channel: "salj"}
+          %{webhook_url_env: "TEST_WEBHOOK_URL", channel: "sales"}
         )
 
       refute Map.has_key?(envelope["metadata"], "webhook_url_env")
-      assert envelope["metadata"]["channel"] == "salj"
+      assert envelope["metadata"]["channel"] == "sales"
     end
 
+    # A receiver that is to OFFER an action must know which object the event
+    # concerns. Without source_id it knows only that something happened, and to
+    # whom.
     test "the envelope carries what the event is about" do
       envelope =
         Webhook.envelope(
@@ -244,7 +243,7 @@ defmodule AshDispatch.Transports.WebhookTest do
             recipient: "x",
             content: %{},
             source_type: "MyApp.Sales.Meeting",
-            source_id: "mote-1"
+            source_id: "meeting-1"
           },
           %{event_id: "meeting.no_show"},
           %AshDispatch.Channel{transport: :webhook, audience: :user},
@@ -252,20 +251,22 @@ defmodule AshDispatch.Transports.WebhookTest do
         )
 
       assert envelope["source_type"] == "MyApp.Sales.Meeting"
-      assert envelope["source_id"] == "mote-1"
+      assert envelope["source_id"] == "meeting-1"
     end
 
-    test "secret_env stryks ur envelopeets metadata" do
+    # secret_env reveals no value, but it is CONFIGURATION and has no place in
+    # the event data. Same rule as for secret.
+    test "secret_env is stripped from the envelope's metadata" do
       envelope =
         Webhook.envelope(
           %{id: "r1", user_id: nil, recipient: "x", content: %{}},
           %{event_id: "e"},
           %AshDispatch.Channel{transport: :webhook, audience: :user},
-          %{secret_env: "PROV_WEBHOOK_SECRET", channel: "salj"}
+          %{secret_env: "TEST_WEBHOOK_SECRET", channel: "sales"}
         )
 
       refute Map.has_key?(envelope["metadata"], "secret_env")
-      assert envelope["metadata"]["channel"] == "salj"
+      assert envelope["metadata"]["channel"] == "sales"
     end
   end
 end

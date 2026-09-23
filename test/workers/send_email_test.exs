@@ -37,21 +37,21 @@ defmodule AshDispatch.Workers.SendEmailTest do
   describe "reply_to_for/2 — the reply path survives a retry" do
     test "the job's args win when they carry an address" do
       assert SendEmail.reply_to_for(
-               %{"reply_to" => "ur-jobbet@example.com"},
-               %{content: %{reply_to: "ur-kvittot@example.com"}}
-             ) == "ur-jobbet@example.com"
+               %{"reply_to" => "from-job@example.com"},
+               %{content: %{reply_to: "from-receipt@example.com"}}
+             ) == "from-job@example.com"
     end
 
     # The load-bearing test. `new_for_receipt/1` carries no content args, so
     # without the fallback every retry and every "send now" would have gone out
     # WITHOUT a reply path — silently, and only on the retry.
     test "without args the receipt is read — and that is what a retry has" do
-      assert SendEmail.reply_to_for(%{}, %{content: %{reply_to: "saljaren@example.com"}}) ==
-               "saljaren@example.com"
+      assert SendEmail.reply_to_for(%{}, %{content: %{reply_to: "sales-rep@example.com"}}) ==
+               "sales-rep@example.com"
 
       # The same when the content has been through JSONB and the key is a string.
-      assert SendEmail.reply_to_for(%{}, %{content: %{"reply_to" => "saljaren@example.com"}}) ==
-               "saljaren@example.com"
+      assert SendEmail.reply_to_for(%{}, %{content: %{"reply_to" => "sales-rep@example.com"}}) ==
+               "sales-rep@example.com"
     end
 
     test "a job from before 0.8.1 gives nil — i.e. today's behaviour" do
@@ -96,7 +96,7 @@ defmodule AshDispatch.Workers.SendEmailTest do
       # A plain attachment serializes exactly as before inline support: no
       # "type"/"cid" keys at all.
       assert invoice == %{
-               "filename" => "faktura.pdf",
+               "filename" => "invoice.pdf",
                "content_type" => "application/pdf",
                "data" => Base.encode64("%PDF-1.4")
              }
@@ -125,7 +125,7 @@ defmodule AshDispatch.Workers.SendEmailTest do
       assert [invoice, logo] = SendEmail.decode_attachments(decoded_args)
 
       assert invoice == %{
-               filename: "faktura.pdf",
+               filename: "invoice.pdf",
                content_type: "application/pdf",
                data: "%PDF-1.4",
                type: :attachment,
@@ -151,7 +151,7 @@ defmodule AshDispatch.Workers.SendEmailTest do
     test "args without type/cid decode as a regular attachment (in-flight jobs)" do
       args = [
         %{
-          "filename" => "faktura.pdf",
+          "filename" => "invoice.pdf",
           "content_type" => "application/pdf",
           "data" => Base.encode64("%PDF-1.4")
         }
@@ -159,7 +159,7 @@ defmodule AshDispatch.Workers.SendEmailTest do
 
       assert [
                %{
-                 filename: "faktura.pdf",
+                 filename: "invoice.pdf",
                  content_type: "application/pdf",
                  data: "%PDF-1.4",
                  type: :attachment,

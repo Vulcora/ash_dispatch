@@ -43,47 +43,48 @@ defmodule AshDispatch.EventResolverTest do
   end
 
   describe "reply_to/3" do
-    test "returnerar modulens adress" do
-      defmodule MedSvarsvag do
-        def reply_to(_context, _channel), do: "saljaren@example.com"
+    test "returns the module's address" do
+      defmodule WithReplyTo do
+        def reply_to(_context, _channel), do: "sales-rep@example.com"
       end
 
-      assert EventResolver.reply_to(MedSvarsvag, ctx(), kanal()) == "saljaren@example.com"
+      assert EventResolver.reply_to(WithReplyTo, ctx(), customer_channel()) ==
+               "sales-rep@example.com"
     end
 
     test "a module without the callback gives nil — the behaviour before 0.8.1" do
-      defmodule UtanSvarsvag do
+      defmodule WithoutReplyTo do
       end
 
-      assert EventResolver.reply_to(UtanSvarsvag, ctx(), kanal()) == nil
+      assert EventResolver.reply_to(WithoutReplyTo, ctx(), customer_channel()) == nil
     end
 
     # This is the load-bearing half: an email that never leaves costs more than
-    # ett mejl utan svarshuvud.
+    # an email without a reply header.
     test "junk is treated as nil rather than bringing the send down" do
-      defmodule SkrapSvarsvag do
-        def reply_to(_context, _channel), do: {"Namn", "a@b.se"}
+      defmodule JunkReplyTo do
+        def reply_to(_context, _channel), do: {"Name", "a@b.se"}
       end
 
-      defmodule TomSvarsvag do
+      defmodule EmptyReplyTo do
         def reply_to(_context, _channel), do: ""
       end
 
-      assert EventResolver.reply_to(SkrapSvarsvag, ctx(), kanal()) == nil
-      assert EventResolver.reply_to(TomSvarsvag, ctx(), kanal()) == nil
+      assert EventResolver.reply_to(JunkReplyTo, ctx(), customer_channel()) == nil
+      assert EventResolver.reply_to(EmptyReplyTo, ctx(), customer_channel()) == nil
     end
 
     @tag :capture_log
-    test "en callback som kastar ger nil, inte ett kraschat utskick" do
-      defmodule KastandeSvarsvag do
+    test "a callback that raises gives nil, not a crashed send" do
+      defmodule RaisingReplyTo do
         def reply_to(_context, _channel), do: raise("boom")
       end
 
-      assert EventResolver.reply_to(KastandeSvarsvag, ctx(), kanal()) == nil
+      assert EventResolver.reply_to(RaisingReplyTo, ctx(), customer_channel()) == nil
     end
 
     defp ctx, do: %Context{event_id: "test", data: %{}, metadata: %{}}
-    defp kanal, do: %Channel{transport: :email, audience: :customer}
+    defp customer_channel, do: %Channel{transport: :email, audience: :customer}
   end
 
   describe "exports?/3" do

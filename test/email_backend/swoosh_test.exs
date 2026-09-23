@@ -28,17 +28,17 @@ defmodule AshDispatch.EmailBackend.SwooshTest do
       capture_log(fn ->
         assert {:ok, _} =
                  SwooshBackend.send_email(%{
-                   to: "kund@example.com",
+                   to: "customer@example.com",
                    from: {"Acme", "noreply@example.com"},
-                   reply_to: "saljaren@example.com",
+                   reply_to: "sales-rep@example.com",
                    subject: "The meeting has moved",
-                   html_body: "<p>Ny tid</p>",
-                   text_body: "Ny tid"
+                   html_body: "<p>New time</p>",
+                   text_body: "New time"
                  })
       end)
 
       assert_email_sent(fn email ->
-        assert email.reply_to == {"", "saljaren@example.com"}
+        assert email.reply_to == {"", "sales-rep@example.com"}
       end)
     end
 
@@ -46,7 +46,7 @@ defmodule AshDispatch.EmailBackend.SwooshTest do
       capture_log(fn ->
         assert {:ok, _} =
                  SwooshBackend.send_email(%{
-                   to: "kund@example.com",
+                   to: "customer@example.com",
                    from: "noreply@example.com",
                    subject: "No reply path",
                    html_body: "<p>x</p>",
@@ -58,14 +58,14 @@ defmodule AshDispatch.EmailBackend.SwooshTest do
     end
 
     test "nil and an empty string behave the same: no header" do
-      for varde <- [nil, ""] do
+      for value <- [nil, ""] do
         capture_log(fn ->
           assert {:ok, _} =
                    SwooshBackend.send_email(%{
-                     to: "kund@example.com",
+                     to: "customer@example.com",
                      from: "noreply@example.com",
-                     reply_to: varde,
-                     subject: "Tomt",
+                     reply_to: value,
+                     subject: "Empty",
                      html_body: "<p>x</p>",
                      text_body: "x"
                    })
@@ -156,7 +156,7 @@ defmodule AshDispatch.EmailBackend.SwooshTest do
             text_body: "Invite",
             attachments: [
               %{
-                filename: "mote.ics",
+                filename: "meeting.ics",
                 content_type: "text/calendar",
                 data: "BEGIN:VCALENDAR\nEND:VCALENDAR"
               }
@@ -167,7 +167,7 @@ defmodule AshDispatch.EmailBackend.SwooshTest do
       end)
 
       assert_email_sent(fn email ->
-        assert [%Swoosh.Attachment{filename: "mote.ics", content_type: "text/calendar"}] =
+        assert [%Swoosh.Attachment{filename: "meeting.ics", content_type: "text/calendar"}] =
                  email.attachments
       end)
     end
@@ -185,7 +185,7 @@ defmodule AshDispatch.EmailBackend.SwooshTest do
                    text_body: "Invoice",
                    attachments: [
                      %{
-                       filename: "faktura.pdf",
+                       filename: "invoice.pdf",
                        content_type: "application/pdf",
                        data: "%PDF-1.4"
                      }
@@ -195,7 +195,7 @@ defmodule AshDispatch.EmailBackend.SwooshTest do
 
       assert_email_sent(fn email ->
         assert [attachment] = email.attachments
-        assert attachment.filename == "faktura.pdf"
+        assert attachment.filename == "invoice.pdf"
         assert attachment.type == :attachment
         assert attachment.cid == nil
       end)
@@ -272,7 +272,7 @@ defmodule AshDispatch.EmailBackend.SwooshTest do
                    text_body: "Invoice",
                    attachments: [
                      %{
-                       filename: "faktura.pdf",
+                       filename: "invoice.pdf",
                        content_type: "application/pdf",
                        data: "%PDF-1.4",
                        type: :attachment,
@@ -305,7 +305,7 @@ defmodule AshDispatch.EmailBackend.SwooshTest do
                        cid: nil
                      },
                      %{
-                       filename: "faktura.pdf",
+                       filename: "invoice.pdf",
                        content_type: "application/pdf",
                        data: "%PDF-1.4",
                        type: :attachment,
@@ -317,7 +317,7 @@ defmodule AshDispatch.EmailBackend.SwooshTest do
 
       assert_email_sent(fn email ->
         # Swoosh prepends, so the list comes back in reverse order.
-        assert [%Swoosh.Attachment{filename: "faktura.pdf", type: :attachment, cid: nil}, inline] =
+        assert [%Swoosh.Attachment{filename: "invoice.pdf", type: :attachment, cid: nil}, inline] =
                  email.attachments
 
         assert %Swoosh.Attachment{filename: "logo.png", type: :inline, cid: "logo.png"} = inline

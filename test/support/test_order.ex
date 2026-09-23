@@ -68,7 +68,7 @@ defmodule AshDispatch.Test.Events.OrderCreated do
   def attachments(_context, %AshDispatch.Channel{transport: :email}) do
     [
       %{
-        filename: "faktura.pdf",
+        filename: "invoice.pdf",
         content_type: "application/pdf",
         data: "%PDF-1.4"
       },

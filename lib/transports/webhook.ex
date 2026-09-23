@@ -217,7 +217,7 @@ defmodule AshDispatch.Transports.Webhook do
       |> stringify_keys()
       |> Map.put("Content-Type", "application/json")
 
-    case hemlighet(metadata) do
+    case secret(metadata) do
       secret when is_binary(secret) and secret != "" ->
         header = meta_get(metadata, :signature_header, @default_signature_header)
         Map.put(base, to_string(header), "sha256=" <> signature(secret, url, body))
@@ -244,21 +244,26 @@ defmodule AshDispatch.Transports.Webhook do
   `secret` wins when both are given, so an explicit value can override the
   environment in a test.
   """
-  @spec hemlighet(map()) :: String.t() | nil
-  def hemlighet(metadata) when is_map(metadata) do
+  @spec secret(map()) :: String.t() | nil
+  def secret(metadata) when is_map(metadata) do
     case meta_get(metadata, :secret) do
       s when is_binary(s) and s != "" ->
         s
 
       _ ->
         case meta_get(metadata, :secret_env) do
-          namn when is_binary(namn) and namn != "" -> System.get_env(namn)
+          name when is_binary(name) and name != "" -> System.get_env(name)
           _ -> nil
         end
     end
   end
 
-  def hemlighet(_), do: nil
+  def secret(_), do: nil
+
+  # The Swedish name this had until 0.8.4. Public, so kept for callers.
+  @doc false
+  @deprecated "Use AshDispatch.Transports.Webhook.secret/1"
+  def hemlighet(metadata), do: secret(metadata)
 
   # Metadata reaches us with atom keys from the DSL, and can reach us with
   # string keys from a map built at runtime. Reading only the atom would be
@@ -313,8 +318,8 @@ defmodule AshDispatch.Transports.Webhook do
   # like one — the message arrives, just in the wrong place.
   defp webhook_url(%Channel{metadata: metadata} = channel) when is_map(metadata) do
     case meta_get(metadata, :webhook_url_env) do
-      namn when is_binary(namn) and namn != "" ->
-        case System.get_env(namn) do
+      name when is_binary(name) and name != "" ->
+        case System.get_env(name) do
           url when is_binary(url) and url != "" -> url
           _ -> nil
         end

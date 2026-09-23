@@ -10,11 +10,11 @@ defmodule AshDispatch.Transports.PushTest do
   alias AshDispatch.Transports.Push
 
   setup do
-    tidigare = Application.get_env(:ash_dispatch, :push_backend)
+    previous = Application.get_env(:ash_dispatch, :push_backend)
 
     on_exit(fn ->
-      if tidigare do
-        Application.put_env(:ash_dispatch, :push_backend, tidigare)
+      if previous do
+        Application.put_env(:ash_dispatch, :push_backend, previous)
       else
         Application.delete_env(:ash_dispatch, :push_backend)
       end
@@ -100,11 +100,11 @@ defmodule AshDispatch.Transports.PushTest do
   end
 
   describe "the dispatcher's content builder" do
-    # Regressionen 0.6.0 introducerade: `build_inline_content/4` hade ett
+    # The regression 0.6.0 introduced: `build_inline_content/4` had a
     # `case channel.transport` WITHOUT a catch-all, so a newly registered
-    # transport kraschade HELA dispatchen med CaseClauseError — inte bara
+    # transport crashed THE WHOLE dispatch with CaseClauseError — not just
     # its own channel. That contradicts what `AshDispatch.Transport` promises:
-    # "en ny fil + en rad i registret".
+    # "one new file + one entry in the registry".
     #
     # Dispatch has no lightweight test harness here (it is tested from the
     # consumer applications), and exposing a private function purely for tests
@@ -118,7 +118,7 @@ defmodule AshDispatch.Transports.PushTest do
 
       assert body =~ ~r/^\s+_ ->/m,
              """
-             `build_inline_content/4` saknar catch-all i sitt
+             `build_inline_content/4` has no catch-all in its
              transport case. Without it the whole dispatch crashes as soon as
              someone registers a transport without adding a branch — contrary
              to what AshDispatch.Transport promises.

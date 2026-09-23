@@ -1,6 +1,6 @@
 defmodule AshDispatch.Workers.SendWebhookTest do
   @moduledoc """
-  Kroppsvalet i webhook-workern.
+  How the webhook worker chooses the body.
 
   The rule exists for signed webhooks: the signature is computed over the body
   BEFORE it is sent, so what is sent must be the same bytes. Let the HTTP
@@ -12,9 +12,9 @@ defmodule AshDispatch.Workers.SendWebhookTest do
 
   alias AshDispatch.Workers.SendWebhook
 
-  test "raw_body skickas verbatim" do
-    kropp = ~s({"b":2,"a":1})
-    assert SendWebhook.body_option(%{"raw_body" => kropp}) == [body: kropp]
+  test "raw_body is sent verbatim" do
+    body = ~s({"b":2,"a":1})
+    assert SendWebhook.body_option(%{"raw_body" => body}) == [body: body]
   end
 
   test "raw_body wins over payload — otherwise we sign different bytes than we send" do
@@ -24,7 +24,7 @@ defmodule AshDispatch.Workers.SendWebhookTest do
 
   # Backwards compatibility: the Discord and Slack transports send no raw_body
   # and must behave exactly as before.
-  test "utan raw_body kodas payload som JSON, som tidigare" do
+  test "without raw_body the payload is encoded as JSON, as before" do
     assert SendWebhook.body_option(%{"payload" => %{"a" => 1}}) == [json: %{"a" => 1}]
     assert SendWebhook.body_option(%{}) == [json: nil]
   end
@@ -37,7 +37,7 @@ defmodule AshDispatch.Workers.SendWebhookTest do
   describe "permanent?/1 — what is worth resending" do
     test "4xx is permanent: the same request gives the same answer" do
       for status <- [400, 401, 403, 404, 410, 422] do
-        assert SendWebhook.permanent?(%{status: status}), "#{status} borde vara permanent"
+        assert SendWebhook.permanent?(%{status: status}), "#{status} should be permanent"
       end
     end
 

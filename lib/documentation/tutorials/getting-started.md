@@ -23,10 +23,11 @@ This will automatically:
 - Create `Notification` and `DeliveryReceipt` resources
 - Create `Notifications` and `Deliveries` domains
 - Add domains to your `:ash_domains` configuration
-- Create a `RecipientResolver` module for declarative audience resolution
+- Create a `RecipientResolver` module for declarative audience resolution (when a user resource is found)
 - Set up email layout templates
 - Configure Phoenix channels for real-time updates (if Phoenix detected)
 - Configure Oban for async delivery
+- Make the resources TypeScript resources (if `ash_typescript` is a dependency)
 - Generate TypeScript SDK (if any domain uses `AshTypescript.Rpc` extension)
 
 After installation, run migrations and you're ready to add events:
@@ -47,7 +48,7 @@ mix igniter.install ash_dispatch --no-phoenix
 # Skip email backend configuration
 mix igniter.install ash_dispatch --no-email
 
-# Skip TypeScript SDK generation (runs automatically if any domain uses AshTypescript.Rpc)
+# Plain resources and no TypeScript SDK, even if ash_typescript is a dependency
 mix igniter.install ash_dispatch --no-typescript
 ```
 
@@ -63,7 +64,7 @@ If you prefer manual setup or need more control, follow the steps below.
 # mix.exs
 def deps do
   [
-    {:ash_dispatch, "~> 0.5.0"},
+    {:ash_dispatch, "~> 0.8"},
     {:oban, "~> 2.17"},  # Required for async delivery
     {:swoosh, "~> 1.16"} # Required for email transport
   ]

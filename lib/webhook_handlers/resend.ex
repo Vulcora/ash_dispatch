@@ -50,6 +50,10 @@ defmodule AshDispatch.WebhookHandlers.Resend do
 
   require Logger
 
+  # plug_crypto is an optional dependency. Webhooks arrive through Plug, which
+  # depends on it, so any app that can receive one has it.
+  @compile {:no_warn_undefined, Plug.Crypto}
+
   @default_tolerance_s 300
 
   @doc """

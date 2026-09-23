@@ -1,263 +1,106 @@
 defmodule AshDispatch.Setup do
   @moduledoc """
-  Automatically sets up DeliveryReceipt resource in your consuming app.
+  Defines a DeliveryReceipt resource inside your Deliveries domain.
 
-  Similar to ash_paper_trail, this creates the necessary resources for you with
-  zero manual module creation needed.
+  A shortcut for `AshDispatch.Resources.DeliveryReceipt.Base`: instead of
+  writing a resource file, `use` this in the domain module and it creates
+  `<Domain>.DeliveryReceipt` there — built on the same Base, with the domain
+  set to the module you are in.
 
   ## Usage
-
-  In your Deliveries domain module:
 
       defmodule MyApp.Deliveries do
         use AshDispatch.Setup,
           repo: MyApp.Repo,
+          notification_resource: MyApp.Notifications.Notification,
           user_resource: MyApp.Accounts.User
 
-        # Your domain definition continues here...
         use Ash.Domain
-        # ... rest of domain config
+
+        resources do
+          resource MyApp.Deliveries.DeliveryReceipt
+        end
       end
 
-  This will automatically create `MyApp.Deliveries.DeliveryReceipt` with the
-  user relationship - completely frictionless!
+  Then point AshDispatch at it:
+
+      config :ash_dispatch,
+        delivery_receipt_resource: MyApp.Deliveries.DeliveryReceipt
+
+  ## Options
+
+  - `:repo` - (required) Ecto repo module
+  - `:notification_resource` - (required) your Notification resource
+  - `:user_resource` - adds a `belongs_to :user` relationship
+  - `:table`, `:notifiers` - as for `AshDispatch.Resources.DeliveryReceipt.Base`
+  - `:extensions` - Ash extensions to add. Defaults to `[AshTypescript.Resource]`
+    when ash_typescript is installed and `[]` otherwise. With
+    `AshTypescript.Resource` the receipt's TypeScript type is `"DeliveryReceipt"`.
+
+  For anything the options don't cover — your own policies, actions or
+  relationships — write the resource yourself on
+  `AshDispatch.Resources.DeliveryReceipt.Base`.
   """
 
   defmacro __using__(opts) do
-    repo = Keyword.fetch!(opts, :repo)
-    user_resource = Keyword.fetch!(opts, :user_resource)
+    domain = __CALLER__.module
 
-    # Build the complete resource module AST
-    delivery_receipt_ast = build_delivery_receipt_ast(repo, user_resource)
+    # The receipt is compiled as a module of its own, which does not see the
+    # aliases in scope here — so aliases in the options are resolved now,
+    # where they were written.
+    opts = Macro.prewalk(opts, &expand_alias(&1, __CALLER__))
 
+    for key <- [:repo, :notification_resource], not Keyword.has_key?(opts, key) do
+      raise ArgumentError,
+            "use AshDispatch.Setup requires #{inspect(key)} " <>
+              "(see the AshDispatch.Setup docs for an example)"
+    end
+
+    extensions = Keyword.get_lazy(opts, :extensions, &default_extensions/0)
+    base_opts = Keyword.merge(opts, domain: domain, extensions: extensions)
+    doc = "Delivery receipt resource, defined by `AshDispatch.Setup` in `#{inspect(domain)}`."
+
+    body =
+      quote do
+        @moduledoc unquote(doc)
+        use AshDispatch.Resources.DeliveryReceipt.Base, unquote(base_opts)
+        unquote(typescript_section(extensions))
+      end
+
+    # `Module.create/3` takes the module body as quoted code, so it must be
+    # escaped. Before 0.8.4 it was not: the body was spliced in as code and
+    # ran inside the *domain* module instead, so `use Ash.Domain` right after
+    # failed with "can be called only one time", and this macro had never
+    # produced a receipt.
     quote do
-      # Get the calling module to namespace the DeliveryReceipt
-      caller_module = __MODULE__
-      receipt_module = Module.concat(caller_module, DeliveryReceipt)
-
-      # Dynamically create the DeliveryReceipt resource
-      Module.create(receipt_module, unquote(delivery_receipt_ast), Macro.Env.location(__ENV__))
+      Module.create(
+        unquote(Module.concat(domain, DeliveryReceipt)),
+        unquote(Macro.escape(body)),
+        Macro.Env.location(__ENV__)
+      )
     end
   end
 
-  defp build_delivery_receipt_ast(repo, user_resource) do
-    # `ash_typescript` is optional, and this used to name `AshTypescript.Resource`
-    # unconditionally — so `use AshDispatch.Setup` failed to compile in any app
-    # without it, whatever `--no-typescript` said (#31). Checked here, at macro
-    # expansion in the consuming app, so the extension follows *that* app's
-    # deps. Apps that do have it keep a TypeScript-enabled receipt, as before.
-    extensions =
-      if Code.ensure_loaded?(AshTypescript.Resource),
-        do: [AshStateMachine, AshTypescript.Resource],
-        else: [AshStateMachine]
+  # `ash_typescript` is optional (#31): the receipt is a TypeScript resource
+  # only in apps that have it. Evaluated at macro expansion, so it follows the
+  # consuming app's deps rather than ash_dispatch's.
+  defp default_extensions do
+    if Code.ensure_loaded?(AshTypescript.Resource), do: [AshTypescript.Resource], else: []
+  end
 
-    quote do
-      @moduledoc """
-      Delivery receipt tracking resource.
-
-      Auto-generated by AshDispatch.Setup - tracks all message deliveries
-      (email, in-app, Discord, SMS, etc.) with full audit trail.
-      """
-
-      use Ash.Resource,
-        data_layer: AshPostgres.DataLayer,
-        authorizers: [Ash.Policy.Authorizer],
-        extensions: unquote(extensions)
-
-      postgres do
-        table "delivery_receipts"
-        repo(unquote(repo))
-
-        references do
-          reference(:notification, on_delete: :nilify)
-          reference(:user, on_delete: :nilify)
+  # `type_name` is required once the extension is present — ash_typescript's
+  # unique-type-name verifier calls `typescript_type_name!/1` on every
+  # TypeScript resource — and a generated module leaves nowhere else to set it.
+  defp typescript_section(extensions) do
+    if AshTypescript.Resource in extensions do
+      quote do
+        typescript do
+          type_name("DeliveryReceipt")
         end
-      end
-
-      state_machine do
-        initial_states([:pending])
-        default_initial_state(:pending)
-        state_attribute(:status)
-        extra_states([:sending, :sent, :failed_permanent, :skipped, :scheduled, :failed])
-
-        transitions do
-          transition(:schedule, from: :pending, to: :scheduled)
-          transition(:mark_sending, from: [:scheduled, :pending], to: :sending)
-          transition(:mark_sent, from: [:sending, :scheduled, :pending], to: :sent)
-          transition(:mark_failed, from: [:sending, :scheduled, :pending], to: :failed)
-
-          transition(:mark_failed_permanent,
-            from: [:sending, :scheduled, :failed],
-            to: :failed_permanent
-          )
-
-          transition(:skip, from: [:pending, :scheduled, :sending], to: :skipped)
-          transition(:retry, from: :failed, to: :scheduled)
-        end
-      end
-
-      relationships do
-        belongs_to :notification, AshDispatch.Resources.Notification do
-          source_attribute :notification_id
-          destination_attribute :id
-          allow_nil? true
-          public? true
-          define_attribute? false
-        end
-
-        # User relationship - works because we're compiling in the consuming app!
-        belongs_to :user, unquote(user_resource) do
-          source_attribute :user_id
-          destination_attribute :id
-          allow_nil? true
-          public? true
-          define_attribute? false
-        end
-      end
-
-      attributes do
-        uuid_primary_key :id
-
-        attribute :event_id, :string, allow_nil?: false, public?: true
-
-        # Derived from the transport registry rather than hardcoded: this list
-        # and the one in DeliveryReceipt.Base had already drifted apart (this
-        # one was missing `:slack`), so a new transport could produce receipts
-        # the resource refused to accept.
-        attribute :transport, :atom,
-          allow_nil?: false,
-          public?: true,
-          constraints: [one_of: AshDispatch.Transport.Registry.receipted_atoms()]
-
-        attribute :user_id, :uuid, allow_nil?: true, public?: true
-        attribute :notification_id, :uuid, allow_nil?: true, public?: true
-
-        attribute :audience, :atom,
-          allow_nil?: false,
-          public?: true,
-          constraints: [one_of: [:user, :admin, :system]]
-
-        attribute :status, :atom,
-          default: :pending,
-          allow_nil?: false,
-          public?: true,
-          constraints: [
-            one_of: [:pending, :scheduled, :sending, :sent, :failed, :failed_permanent, :skipped]
-          ]
-
-        attribute :recipient, :string, allow_nil?: false, public?: true
-        attribute :provider_id, :string, allow_nil?: true, public?: true
-        attribute :provider_response, :map, default: %{}, allow_nil?: false, public?: true
-        attribute :subject, :string, allow_nil?: true, public?: true
-        attribute :body_text, :string, allow_nil?: true, public?: true
-        attribute :body_html, :string, allow_nil?: true, public?: true
-        attribute :content, :map, default: %{}, allow_nil?: false, public?: true
-        attribute :oban_job_id, :integer, allow_nil?: true, public?: true
-        attribute :error_message, :string, allow_nil?: true, public?: true
-        attribute :retry_count, :integer, default: 0, allow_nil?: false, public?: true
-        attribute :last_retry_at, :utc_datetime_usec, allow_nil?: true, public?: true
-        attribute :sent_at, :utc_datetime_usec, allow_nil?: true, public?: true
-        attribute :delivered_at, :utc_datetime_usec, allow_nil?: true, public?: true
-        attribute :delivery_delayed_at, :utc_datetime_usec, allow_nil?: true, public?: true
-        attribute :failed_at, :utc_datetime_usec, allow_nil?: true, public?: true
-        attribute :opened_at, :utc_datetime_usec, allow_nil?: true, public?: true
-        attribute :clicked_at, :utc_datetime_usec, allow_nil?: true, public?: true
-        attribute :bounced_at, :utc_datetime_usec, allow_nil?: true, public?: true
-        attribute :complained_at, :utc_datetime_usec, allow_nil?: true, public?: true
-
-        create_timestamp :inserted_at
-        update_timestamp :updated_at
-      end
-
-      calculations do
-        calculate :oban_job, :map, {AshDispatch.Calculations.ObanJob, []} do
-          public? true
-        end
-      end
-
-      actions do
-        default_accept :*
-        defaults [:read, :destroy]
-
-        create :create do
-          accept [
-            :event_id,
-            :transport,
-            :user_id,
-            :notification_id,
-            :audience,
-            :recipient,
-            :subject,
-            :body_text,
-            :body_html,
-            :content,
-            :oban_job_id,
-            :provider_id,
-            :provider_response
-          ]
-        end
-
-        read :list_all do
-          pagination offset?: true, keyset?: true, required?: false
-        end
-
-        read :list_for_user do
-          argument :user_id, :uuid, allow_nil?: false
-          filter expr(user_id == ^arg(:user_id))
-          pagination offset?: true, keyset?: true, required?: false
-        end
-
-        read :get do
-          argument :id, :uuid, allow_nil?: false
-          get? true
-          filter expr(id == ^arg(:id))
-        end
-
-        update :schedule do
-          accept [:oban_job_id]
-          change transition_state(:scheduled)
-        end
-
-        update :mark_sending do
-          change transition_state(:sending)
-        end
-
-        update :mark_sent do
-          accept [:sent_at]
-          change transition_state(:sent)
-        end
-
-        update :mark_failed do
-          accept [:error_message]
-          change transition_state(:failed)
-          change increment(:retry_count, amount: 1)
-        end
-
-        update :mark_failed_permanent do
-          accept [:error_message]
-          change transition_state(:failed_permanent)
-        end
-
-        update :skip do
-          change transition_state(:skipped)
-        end
-
-        update :retry do
-          accept [:oban_job_id]
-          change transition_state(:scheduled)
-        end
-      end
-
-      policies do
-        policy always() do
-          authorize_if always()
-        end
-      end
-
-      identities do
-        identity :oban_job, [:oban_job_id]
-        identity :notification, [:notification_id]
       end
     end
   end
+
+  defp expand_alias({:__aliases__, _, _} = alias, env), do: Macro.expand(alias, env)
+  defp expand_alias(other, _env), do: other
 end

@@ -63,6 +63,10 @@ defmodule AshDispatch.EmailBackend.Swoosh do
 
   require Logger
 
+  # swoosh is optional; without it this backend returns an error instead of
+  # sending, so the missing module is expected rather than a mistake.
+  @compile {:no_warn_undefined, [Swoosh.Email, Swoosh.Attachment]}
+
   @doc """
   Sends an email via Swoosh.
 
@@ -97,11 +101,20 @@ defmodule AshDispatch.EmailBackend.Swoosh do
       {:ok, %{id: "msg_123", provider: :swoosh}}
   """
   @spec send_email(map()) :: {:ok, map()} | {:error, any()}
-  def send_email(
-        %{to: to, from: from, subject: subject, html_body: html, text_body: text} = params
-      ) do
-    import Swoosh.Email
+  def send_email(%{to: _, from: _, subject: _, html_body: _, text_body: _} = params) do
+    # swoosh is an optional dependency, so it is checked here rather than
+    # assumed — the same shape as the Elks backend's check for req.
+    if Code.ensure_loaded?(Swoosh.Email) do
+      deliver(params)
+    else
+      {:error, "swoosh is missing — add {:swoosh, \"~> 1.16\"} to use the Swoosh backend"}
+    end
+  end
 
+  # Every Swoosh call below is fully qualified. An `import Swoosh.Email` needs
+  # the module at compile time, and it alone kept ash_dispatch from compiling
+  # in an app without swoosh.
+  defp deliver(%{to: to, from: from, subject: subject, html_body: html, text_body: text} = params) do
     # Get configured mailer module
     mailer = get_mailer()
 
@@ -115,16 +128,16 @@ defmodule AshDispatch.EmailBackend.Swoosh do
 
     # Build Swoosh email
     email =
-      new()
-      |> to(to)
-      |> from(from)
-      |> subject(subject)
-      |> html_body(html)
-      |> text_body(text)
+      Swoosh.Email.new()
+      |> Swoosh.Email.to(to)
+      |> Swoosh.Email.from(from)
+      |> Swoosh.Email.subject(subject)
+      |> Swoosh.Email.html_body(html)
+      |> Swoosh.Email.text_body(text)
       |> then(fn built ->
         # `nil` (or an empty string) means no header at all, as before 0.8.1.
         case params[:reply_to] do
-          value when is_binary(value) and value != "" -> reply_to(built, value)
+          value when is_binary(value) and value != "" -> Swoosh.Email.reply_to(built, value)
           _ -> built
         end
       end)

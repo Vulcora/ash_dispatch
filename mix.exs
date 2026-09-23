@@ -1,7 +1,7 @@
 defmodule AshDispatch.MixProject do
   use Mix.Project
 
-  @version "0.8.3"
+  @version "0.8.4"
   @description "Event-driven notification system for Ash Framework with multiple transport types"
   @source_url "https://github.com/Vulcora/ash_dispatch"
 
@@ -50,6 +50,11 @@ defmodule AshDispatch.MixProject do
       {:hackney, "~> 1.9 or ~> 4.0", optional: true},
       {:req, "~> 0.5", optional: true},
       {:ash_typescript, "~> 0.2", optional: true},
+      # Called when present, never required: Resend webhook verification runs
+      # behind Plug (which brings plug_crypto), and a custom topic names a
+      # PubSub server. Declared so Hex can hold them to compatible versions.
+      {:plug_crypto, "~> 1.2 or ~> 2.0", optional: true},
+      {:phoenix_pubsub, "~> 2.0", optional: true},
 
       # Igniter for code generation/installation
       {:igniter, "~> 0.5", optional: true},
