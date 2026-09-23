@@ -41,9 +41,11 @@ but worth recording:
   Consuming apps are unaffected and make their own choice — Ash skips the
   check for resources compiled as a dependency.
 - **CI moves to Elixir 1.18 / OTP 27**, because igniter now pulls in `ex_ast`,
-  which requires 1.18. `compile-without-optional-deps` stays on 1.15, so the
-  floor `mix.exs` claims keeps being tested where it counts: the library and
-  its required dependencies, without dev tooling.
+  which requires 1.18. `compile-without-optional-deps` runs on 1.17 instead,
+  so the library is still held to a floor rather than to whatever is newest.
+  It cannot be 1.15: Ash 3.33 uses `Duration` and does not compile there,
+  although it declares `~> 1.11`. `mix.exs` keeps `~> 1.15`, which stays true
+  for an app that pins an older Ash — ash_dispatch's own code compiles there.
 
 ## [0.8.4] - 2026-09-22
 
