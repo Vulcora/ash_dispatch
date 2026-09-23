@@ -134,3 +134,21 @@ bug fixed in `fix/gettext-domain-catalog`:
 - The integration point for any such tool is Ash's generic
   `Spark.Dsl.Extension.codegen/1` callback — ash_typescript has no codegen
   hooks, so "an ash_typescript extension" is not actually possible today.
+
+## 9. Raise the declared Elixir floor — planned for 0.9.0
+
+`mix.exs` says `elixir: "~> 1.15"`. That is true of ash_dispatch's own code,
+and of an app that pins an older Ash — but **Ash 3.33 does not compile on
+1.15**: it uses `Duration` (Elixir 1.17) while declaring `~> 1.11`. So a
+default install today needs 1.17, and the declared floor no longer describes
+what `mix deps.get` produces. CI's `compile-without-optional-deps` already
+runs on 1.17 for that reason (0.8.5).
+
+Deliberately deferred: raising it shuts out the 1.15-with-older-Ash
+combination, so it belongs with a broader dependency round rather than a
+patch. Planned for **0.9.0**, together with a full library update pass;
+0.8.6–0.8.9 stay available for feature work in between.
+
+When it happens: `elixir: "~> 1.17"` in `mix.exs`, move the floor CI job to
+whatever the new floor is, and say so in the CHANGELOG under a heading that
+a consumer on an old Elixir will notice.
