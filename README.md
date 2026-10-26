@@ -4,7 +4,7 @@
 [![Hexdocs](https://img.shields.io/badge/hex-docs-purple.svg)](https://hexdocs.pm/ash_dispatch)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-> ⚠️ **Experimental — `v0.5`, public launch.** AshDispatch was just open-sourced and is **very early / experimental**. It already powers notifications in a production application (this is the extracted, generalized engine), but the public API is still settling and **may change between minor versions**. Pin an exact version, expect rough edges, and please [open issues](https://github.com/Vulcora/ash_dispatch/issues) — feedback now directly shapes 1.0.
+> **Pre-1.0.** AshDispatch runs notifications in production, but its public API is still settling on the way to 1.0 and **may change between minor versions** — every change, and what to do about it, is in the [CHANGELOG](CHANGELOG.md). Pin the minor version you use (`~> 0.x.y`, not `~> 0.x`) and please [open issues](https://github.com/Vulcora/ash_dispatch/issues).
 
 ---
 
@@ -352,13 +352,11 @@ Channel resolution, event discovery, and naming all use centralized modules to e
 
 ## Project Status
 
-**`v0.5` — public launch, experimental.** AshDispatch is published on [Hex](https://hex.pm/packages/ash_dispatch) and open for use, but it's early days:
+**Pre-1.0.** AshDispatch is published on [Hex](https://hex.pm/packages/ash_dispatch) and runs in production:
 
-- ✅ **Working today:** the resource DSL, runtime dispatcher, delivery receipts, in-app / email / SMS / webhook / Discord / Slack / broadcast / `:oban` / `:custom_topic` transports, Oban-backed async delivery and retries, real-time counters, localization, and the generated TypeScript SDK.
-- 🧪 **Experimental:** the public API is still settling and may change between minor versions before `1.0`. Some transports and helpers are less battle-tested than others.
+- ✅ **Working today:** the resource DSL, runtime dispatcher, delivery receipts, in-app / email / SMS / push / webhook / Discord / Slack / broadcast / `:oban` / `:custom_topic` transports, Oban-backed async delivery and retries, real-time counters, localization, and the generated TypeScript SDK.
+- 🧪 **Still settling:** the public API may change between minor versions before `1.0`; the [CHANGELOG](CHANGELOG.md) says what changed and what to do. Some transports and helpers are less battle-tested than others.
 - 🗺️ **Toward 1.0:** API stabilization, broader transport coverage, and more docs/examples.
-
-It's extracted from a production application, so the core paths are proven — but treat the public package as experimental and pin an exact version.
 
 ## Contributing
 
