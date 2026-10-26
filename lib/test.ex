@@ -153,10 +153,11 @@ defmodule AshDispatch.Test do
   end
 
   defp envelope_problems(%{transport: :email} = rendered) do
+    no_body? = blank?(rendered.html_body) and blank?(rendered.text_body)
+
     [
       blank?(rendered.subject) && "empty subject",
-      blank?(rendered.html_body) and blank?(rendered.text_body) &&
-        "neither an HTML nor a text body"
+      no_body? && "neither an HTML nor a text body"
     ]
     |> Enum.filter(&is_binary/1)
   end
