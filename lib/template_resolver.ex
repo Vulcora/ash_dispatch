@@ -302,14 +302,23 @@ defmodule AshDispatch.TemplateResolver do
     candidates = build_template_candidates(transport, variant, locale, format)
 
     case Enum.find_value(candidates, fn
-           nil -> nil
-           filename -> Map.get(templates, filename)
+           nil ->
+             nil
+
+           filename ->
+             case Map.get(templates, filename) do
+               nil -> nil
+               content -> {filename, content}
+             end
          end) do
       nil ->
         {:error, :template_not_found}
 
-      template_content ->
-        render_template_content(template_content, assigns, format, locale: locale)
+      {filename, template_content} ->
+        render_template_content(template_content, assigns, format,
+          locale: locale,
+          source: "#{inspect(event_module)}/#{filename}"
+        )
     end
   end
 
@@ -325,7 +334,8 @@ defmodule AshDispatch.TemplateResolver do
       render_template_content(template_content, assigns, format,
         otp_app: otp_app,
         transport: transport,
-        locale: locale
+        locale: locale,
+        source: Path.join("priv/ash_dispatch/templates", dest_filename)
       )
     else
       _ -> {:error, :template_not_found}
@@ -399,7 +409,8 @@ defmodule AshDispatch.TemplateResolver do
         render_template_content(template_content, assigns, format,
           otp_app: otp_app,
           transport: transport,
-          locale: locale
+          locale: locale,
+          source: Path.relative_to_cwd(path)
         )
 
       :error ->
@@ -476,6 +487,26 @@ defmodule AshDispatch.TemplateResolver do
   end
 
   defp render_template_content(template_content, assigns, format, opts) do
+    with :ok <- check_strict(template_content, Keyword.get(opts, :source)) do
+      do_render_template_content(template_content, assigns, format, opts)
+    end
+  end
+
+  # `config :ash_dispatch, strict_templates: true` — refuse a template whose
+  # expressions would reach the recipient as raw text, before rendering it.
+  # The compiler refuses the same templates at build time; this catches a
+  # template edited in dev and rendered from `lib/` without a recompile.
+  defp check_strict(_content, nil), do: :ok
+
+  defp check_strict(content, source) do
+    if AshDispatch.StrictTemplates.enabled?() do
+      AshDispatch.StrictTemplates.validate(content, source)
+    else
+      :ok
+    end
+  end
+
+  defp do_render_template_content(template_content, assigns, format, opts) do
     # Preprocess HEEx-style attribute syntax to EEx syntax. For :html
     # format the preprocessor wraps `{@var}` expansions in
     # `AshDispatch.SafeRender.escape/1` so user-controlled assigns can't
@@ -532,19 +563,10 @@ defmodule AshDispatch.TemplateResolver do
   # layout_subdir is an optional subdirectory (e.g., "urgent" -> layouts/urgent/email.html.heex)
   defp wrap_in_layout(content, otp_app, transport, format, assigns, layout_subdir) do
     case load_layout(otp_app, transport, format, layout_subdir) do
-      {:ok, layout_content} ->
-        # Add rendered content to assigns as @inner_content
-        # Also ensure subject has a default to avoid template errors
-        layout_assigns =
-          assigns
-          |> Map.put(:inner_content, content)
-          |> Map.put_new(:subject, "")
-
-        # Preprocess and render layout (locale already set by render_template_content)
-        preprocessed = preprocess_heex_attributes(layout_content, format)
-        rendered = EEx.eval_string(preprocessed, assigns: layout_assigns)
-
-        {:ok, rendered}
+      {:ok, layout_content, layout_path} ->
+        with :ok <- check_strict(layout_content, layout_path) do
+          render_layout(layout_content, content, format, assigns)
+        end
 
       {:error, :layout_not_found} ->
         # No layout, return content as-is
@@ -553,6 +575,21 @@ defmodule AshDispatch.TemplateResolver do
   rescue
     error ->
       {:error, error}
+  end
+
+  defp render_layout(layout_content, content, format, assigns) do
+    # Add rendered content to assigns as @inner_content
+    # Also ensure subject has a default to avoid template errors
+    layout_assigns =
+      assigns
+      |> Map.put(:inner_content, content)
+      |> Map.put_new(:subject, "")
+
+    # Preprocess and render layout (locale already set by render_template_content)
+    preprocessed = preprocess_heex_attributes(layout_content, format)
+    rendered = EEx.eval_string(preprocessed, assigns: layout_assigns)
+
+    {:ok, rendered}
   end
 
   # Load layout from priv/ash_dispatch/layouts/
@@ -584,7 +621,7 @@ defmodule AshDispatch.TemplateResolver do
         # Try each path in order
         Enum.find_value(layout_paths, {:error, :layout_not_found}, fn path ->
           case File.read(path) do
-            {:ok, content} -> {:ok, content}
+            {:ok, content} -> {:ok, content, Path.relative_to_cwd(path)}
             {:error, _} -> nil
           end
         end)
