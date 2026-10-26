@@ -36,6 +36,11 @@ defmodule AshDispatch.Test.TransportReceipt do
     attribute :provider_response, :map, public?: true
     attribute :retry_count, :integer, default: 0, public?: true
     attribute :notification_id, :uuid, public?: true
+    # What the dispatcher writes on create, so a full `Dispatcher.dispatch/3`
+    # can run against this resource (the preview parity test does).
+    attribute :source_type, :string, public?: true
+    attribute :source_id, :string, public?: true
+    attribute :locale, :string, public?: true
 
     create_timestamp :inserted_at
     update_timestamp :updated_at
@@ -55,7 +60,11 @@ defmodule AshDispatch.Test.TransportReceipt do
         :subject,
         :body_html,
         :body_text,
-        :content
+        :content,
+        :source_type,
+        :source_id,
+        :locale,
+        :notification_id
       ]
     end
 

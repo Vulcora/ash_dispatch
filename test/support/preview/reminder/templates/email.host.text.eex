@@ -1,0 +1,1 @@
+Your guest has been reminded of <%= @reference %>.

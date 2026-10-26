@@ -71,8 +71,13 @@ defmodule AshDispatch.Workers.SendEmail do
     queue: :emails,
     max_attempts: 5,
     # Prevent duplicate jobs for the same receipt (e.g., from "send now" while original is queued)
-    # Only one job per receipt_id can be in available/scheduled/executing state
-    unique: [keys: [:receipt_id], states: [:available, :scheduled, :executing]]
+    # Only one job per receipt_id can be in available/scheduled/executing/retryable state.
+    #
+    # `:retryable` matters: a failed send leaves its job retryable (Oban's own
+    # backoff) and its receipt `:failed` — which is exactly what the
+    # RetryFailedDeliveries cron picks up. Without the state here the cron
+    # enqueued a second job beside the one already waiting, and the two raced.
+    unique: [keys: [:receipt_id], states: [:available, :scheduled, :executing, :retryable]]
 
   alias AshDispatch.Config
   alias AshDispatch.ContentMap
@@ -231,13 +236,18 @@ defmodule AshDispatch.Workers.SendEmail do
     end
   end
 
-  defp send_email(receipt, args) do
+  @doc false
+  # The params the email backend is called with. Public-but-undocumented
+  # because `AshDispatch.Preview` calls it with the args the transport would
+  # have enqueued: a preview's envelope is then the backend's envelope, by
+  # construction.
+  def email_params(receipt, args) do
     # Extract 'from' - handle both map format and string format
     # Fallback to receipt.content.from or default
-    from = parse_from_field(args["from"] || get_in(receipt.content, [:from]))
+    from = parse_from_field(args["from"] || ContentMap.get_content(receipt.content, :from))
 
     # Build email params, falling back to receipt fields if args are missing
-    email_params = %{
+    %{
       to: args["recipient_email"] || receipt.recipient,
       from: from,
       subject: args["subject"] || receipt.subject,
@@ -246,6 +256,33 @@ defmodule AshDispatch.Workers.SendEmail do
       text_body: args["text_body"] || receipt.body_text,
       attachments: decode_attachments(args["attachments"])
     }
+    |> put_headers(headers_for(args, receipt))
+  end
+
+  @doc false
+  # Extra headers for this send: the job's args first, then the receipt — the
+  # same reasoning as `reply_to_for/2`, since a retry carries no content args.
+  def headers_for(args, receipt) do
+    case args["headers"] do
+      headers when is_map(headers) and map_size(headers) > 0 ->
+        headers
+
+      _ ->
+        case ContentMap.get_content(Map.get(receipt, :content), :headers) do
+          headers when is_map(headers) -> headers
+          _ -> %{}
+        end
+    end
+    |> Map.new(fn {name, value} -> {to_string(name), value} end)
+  end
+
+  # Only when there are any, so a backend written before 0.9.0 is called with
+  # exactly the params it always was.
+  defp put_headers(params, headers) when map_size(headers) == 0, do: params
+  defp put_headers(params, headers), do: Map.put(params, :headers, headers)
+
+  defp send_email(receipt, args) do
+    email_params = email_params(receipt, args)
 
     # Check for configured email backend
     case Config.email_backend() do
@@ -385,6 +422,11 @@ defmodule AshDispatch.Workers.SendEmail do
       is_nil(preference_provider) ->
         :send
 
+      # A manual trigger asked for the opt-out to be bypassed, and the receipt
+      # records that it did (`Dispatcher.dispatch/4`, `:skip_preferences`).
+      skip_preferences?(receipt) ->
+        :send
+
       # No user_id on receipt - always send
       is_nil(receipt.user_id) ->
         :send
@@ -406,6 +448,16 @@ defmodule AshDispatch.Workers.SendEmail do
             # (better to send than to silently skip)
             :send
         end
+    end
+  end
+
+  defp skip_preferences?(receipt) do
+    case ContentMap.get_content(Map.get(receipt, :content), :manual_override) do
+      override when is_map(override) ->
+        ContentMap.get_content(override, :skip_preferences) == true
+
+      _ ->
+        false
     end
   end
 

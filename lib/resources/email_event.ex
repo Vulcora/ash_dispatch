@@ -212,10 +212,19 @@ defmodule AshDispatch.Resources.EmailEvent do
     # Use centralized ChannelResolver for consistent priority logic
     all_channels = AshDispatch.ChannelResolver.resolve(event_id, event_module, sample_context)
 
+    # The previews come from AshDispatch.Preview — the send path's own
+    # renderer — rather than from a template render of our own: the HTML an
+    # admin reads here is the HTML the recipient gets.
+    rendered =
+      case AshDispatch.Preview.render(event_id, :sample, transport: :email, seed: 0) do
+        {:ok, rendered} -> rendered
+        {:error, _} -> []
+      end
+
     email_channels =
       all_channels
       |> Enum.filter(&(&1.transport == :email))
-      |> Enum.map(&serialize_channel(&1, event_module, sample_context))
+      |> Enum.map(&serialize_channel(&1, event_module, sample_context, rendered))
 
     # Use EventResolver for all callback lookups (handles function_exported? and error handling)
     domain = EventResolver.domain(event_module)
@@ -238,59 +247,23 @@ defmodule AshDispatch.Resources.EmailEvent do
     }
   end
 
-  defp serialize_channel(%AshDispatch.Channel{} = channel, event_module, context) do
+  defp serialize_channel(%AshDispatch.Channel{} = channel, event_module, context, rendered) do
     # Use EventResolver for all callback lookups (handles function_exported? and error handling)
     # Prefer channel.variant (from DSL) over EventResolver callback
     variant = channel.variant || EventResolver.template_variant(event_module, context, channel)
-    additional_assigns = EventResolver.prepare_template_assigns(event_module, context, channel)
-    subject = EventResolver.subject(event_module, context, channel)
 
-    # Add subject to assigns for template rendering
-    assigns_with_subject = Map.merge(additional_assigns, %{subject: subject})
-    enhanced_context = %{context | data: Map.merge(context.data, assigns_with_subject)}
+    letter =
+      Enum.find(rendered, fn letter ->
+        letter.audience == channel.audience and to_string(letter.variant) == to_string(variant)
+      end)
 
-    # Render template previews
-    # In dev: uses file-based templates from lib/ via event_dir
-    # In prod: uses priv manifest (event_dir will be nil, triggering fallback)
-    # Wrapped in try/rescue to handle incomplete sample data gracefully
-    {html_preview, text_preview} =
-      try do
-        # Get event_dir from module source location for template resolution
-        # In production, this returns nil (source not available), triggering priv manifest fallback
-        event_dir = get_event_dir(event_module)
-        otp_app = AshDispatch.Config.otp_app()
+    {subject, html_preview, text_preview} =
+      case letter do
+        %{error: nil} ->
+          {letter.subject, letter.html_body, letter.text_body}
 
-        html =
-          case AshDispatch.TemplateResolver.render(
-                 event_module: event_module,
-                 event_dir: event_dir,
-                 otp_app: otp_app,
-                 format: :html,
-                 transport: channel.transport,
-                 variant: variant,
-                 assigns: enhanced_context.data
-               ) do
-            {:ok, html} -> html
-            {:error, _} -> nil
-          end
-
-        text =
-          case AshDispatch.TemplateResolver.render(
-                 event_module: event_module,
-                 event_dir: event_dir,
-                 otp_app: otp_app,
-                 format: :text,
-                 transport: channel.transport,
-                 variant: variant,
-                 assigns: enhanced_context.data
-               ) do
-            {:ok, text} -> text
-            {:error, _} -> nil
-          end
-
-        {html, text}
-      rescue
-        _ -> {nil, nil}
+        _ ->
+          {EventResolver.subject(event_module, context, channel), nil, nil}
       end
 
     %{
@@ -318,15 +291,5 @@ defmodule AshDispatch.Resources.EmailEvent do
   defp to_ash_struct(map) do
     struct(__MODULE__, map)
     |> Ash.Resource.set_metadata(%{})
-  end
-
-  # Get the directory containing the event module's source file
-  defp get_event_dir(event_module) do
-    case event_module.__info__(:compile)[:source] do
-      nil -> nil
-      source -> source |> to_string() |> Path.dirname()
-    end
-  rescue
-    _ -> nil
   end
 end

@@ -67,10 +67,49 @@ defmodule AshDispatch.Notifier.DispatchHandler do
   # ── Mode 1: DSL-based event dispatch (preserved verbatim) ───────
 
   defp dispatch_dsl_event(changeset, record, opts, ash_context, event_config) do
-    event_id = Map.fetch!(opts, :event_id)
-    load = Map.get(opts, :load, [])
+    {:ok, prepared} =
+      prepare(record, opts, event_config,
+        changeset: changeset,
+        actor: Map.get(ash_context, :actor),
+        action: changeset.action
+      )
+
+    Enum.each(prepared.channels, fn channel ->
+      Dispatcher.dispatch_channel(prepared.context, channel, prepared.event_config)
+    end)
+
+    :ok
+  end
+
+  @doc false
+  # Everything the action-triggered send path does before it dispatches a
+  # channel — the module, the relationships loaded, the context, the
+  # prepared data, the send variables and the channels — as one function,
+  # because `AshDispatch.Preview` renders a record the same way. Two copies of
+  # this would be two answers to "what would this record's mail say".
+  #
+  # `config` is the per-action config `InjectDispatchChanges` persisted
+  # (`:event_id`, `:load`, `:event_config`).
+  #
+  # Options:
+  #
+  # - `:changeset` - the action's changeset; `nil` in a preview, where
+  #   `prepare_data/2` is called with a bare `Ash.Changeset.new(record)`
+  # - `:actor` - the actor
+  # - `:action` - the action (`%{name:, type:}`) for the context's metadata
+  # - `:sample` - extra data that stands in for the prepared data. When given,
+  #   nothing is loaded and `prepare_data/2` is not called: sample data is
+  #   already the data an event sees, and its records are not in any database
+  @spec prepare(struct(), map(), map(), keyword()) ::
+          {:ok,
+           %{module: module() | nil, context: Context.t(), event_config: map(), channels: list()}}
+  def prepare(record, config, event_config, opts \\ []) do
+    event_id = Map.fetch!(config, :event_id)
+    load = Map.get(config, :load, [])
     data_key = Map.get(event_config, :data_key)
     include_actor_as = Map.get(event_config, :include_actor_as)
+    changeset = Keyword.get(opts, :changeset)
+    sample = Keyword.get(opts, :sample)
 
     # Always resolve module at runtime via EventResolver
     # Compile-time resolution is unreliable due to module compilation order
@@ -88,20 +127,26 @@ defmodule AshDispatch.Notifier.DispatchHandler do
           nil
       end
 
-    record = maybe_load_relationships(record, load, changeset)
+    record = if sample, do: record, else: maybe_load_relationships(record, load, changeset)
 
     context =
       build_context(
         event_id,
         record,
-        changeset,
-        ash_context,
+        Keyword.get(opts, :action),
+        Keyword.get(opts, :actor),
         data_key,
         include_actor_as,
         event_config
       )
 
-    context = maybe_enrich_context_with_prepare_data(context, changeset, record, event_module)
+    context =
+      if sample do
+        %{context | data: Map.merge(context.data, sample)}
+      else
+        prepare_changeset = changeset || Ash.Changeset.new(record)
+        maybe_enrich_context_with_prepare_data(context, prepare_changeset, record, event_module)
+      end
 
     context =
       if event_module do
@@ -126,11 +171,8 @@ defmodule AshDispatch.Notifier.DispatchHandler do
 
     channels = resolve_channels(context, event_config, event_module)
 
-    Enum.each(channels, fn channel ->
-      Dispatcher.dispatch_channel(context, channel, event_config)
-    end)
-
-    :ok
+    {:ok,
+     %{module: event_module, context: context, event_config: event_config, channels: channels}}
   end
 
   # ── Mode 2: Standalone event dispatch (preserved verbatim) ──────
@@ -199,14 +241,13 @@ defmodule AshDispatch.Notifier.DispatchHandler do
   defp build_context(
          event_id,
          record,
-         changeset,
-         ash_context,
+         action,
+         actor,
          data_key,
          include_actor_as,
          event_config
        ) do
     resource_key = data_key || record.__struct__.__schema__(:source)
-    actor = Map.get(ash_context, :actor)
 
     data =
       %{resource_key => record, :actor => actor}
@@ -227,8 +268,8 @@ defmodule AshDispatch.Notifier.DispatchHandler do
       base_url: get_base_url(),
       now: DateTime.utc_now(),
       metadata: %{
-        action: changeset.action.name,
-        action_type: changeset.action.type
+        action: action && action.name,
+        action_type: action && action.type
       }
     }
   end

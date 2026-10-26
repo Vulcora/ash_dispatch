@@ -156,6 +156,25 @@ defmodule AshDispatch.EventResolver do
   end
 
   @doc """
+  Get seeded sample data from an event module.
+
+  Calls `sample_data/1` with `opts` (`seed: integer`) when the module exports
+  it, and falls back on `sample_data/0` when it does not. Anything that is not
+  a map counts as no sample data.
+  """
+  @spec sample_data(module(), keyword()) :: map()
+  def sample_data(module, opts) do
+    result =
+      if exports?(module, :sample_data, 1) do
+        call_if_exported(module, :sample_data, [opts], default: %{})
+      else
+        sample_data(module)
+      end
+
+    if is_map(result), do: result, else: %{}
+  end
+
+  @doc """
   Get the domain from an event module.
   """
   @spec domain(module()) :: atom() | nil
@@ -389,6 +408,47 @@ defmodule AshDispatch.EventResolver do
       value when is_binary(value) and value != "" -> value
       _ -> nil
     end
+  end
+
+  @doc """
+  Extra email headers for a channel via the optional `headers/2` callback.
+
+  Returns a map of header name to value, both strings. Anything else is
+  dropped rather than raised on: a malformed header must cost the header, not
+  the email. Names that would let an event rewrite the envelope (`To`, `From`,
+  `Subject`, `Reply-To`, …) are dropped too — those have callbacks of their
+  own, and a second way to set them would be a second truth.
+  """
+  @spec headers(module(), Context.t(), AshDispatch.Channel.t()) :: %{String.t() => String.t()}
+  def headers(module, context, channel) do
+    case call_if_exported(module, :headers, [context, channel], default: %{}) do
+      headers when is_map(headers) or is_list(headers) ->
+        headers
+        |> Enum.flat_map(fn
+          {name, value} when (is_binary(name) or is_atom(name)) and is_binary(value) ->
+            name = to_string(name)
+
+            if valid_header?(name, value), do: [{name, value}], else: []
+
+          _ ->
+            []
+        end)
+        |> Map.new()
+
+      _ ->
+        %{}
+    end
+  end
+
+  @reserved_headers ~w(to from cc bcc subject reply-to sender date message-id content-type
+                       content-transfer-encoding mime-version)
+
+  # A header name is a token without spaces or colons, and neither part may
+  # carry a line break — that is the whole of header injection.
+  defp valid_header?(name, value) do
+    String.match?(name, ~r/\A[!-9;-~]+\z/) and
+      String.downcase(name) not in @reserved_headers and
+      not String.contains?(value, ["\r", "\n"])
   end
 
   @doc """

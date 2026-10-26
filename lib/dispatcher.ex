@@ -48,6 +48,18 @@ defmodule AshDispatch.Dispatcher do
   - `event_id` - The event identifier (e.g., "requests.new_reseller_request")
   - `data` - Map of domain data (resources, users, etc.)
   - `variables` - Map of template variables (tokens, simple values, etc.) - defaults to %{}
+  - `opts` - dispatch options, for manual sends (the ManualTrigger `:trigger`
+    action passes them):
+    - `:channels` - only dispatch channels matching one of these filter maps,
+      e.g. `[%{transport: :email, audience: :user}]`
+    - `:recipient_email` - send to this address instead of the resolved
+      recipient. Only email channels are dispatched; each renders for its
+      first resolved recipient and creates one receipt, to this address and
+      without a `user_id`, with `content.manual_override` recording the
+      address, the recipient it replaced and the actor
+    - `:skip_preferences` - bypass the recipients' opt-out for this dispatch
+      (recorded the same way)
+    - `:actor` - who asked, for the record above
 
   ## Returns
 
@@ -90,8 +102,8 @@ defmodule AshDispatch.Dispatcher do
         %{order: order, user: user}
       )
   """
-  # Function head with default parameter
-  def dispatch(event_id, data, variables \\ %{})
+  # Function head with default parameters
+  def dispatch(event_id, data, variables \\ %{}, opts \\ [])
 
   # Module-typed overload — resolve event_id via EventRegistry reverse-lookup.
   # Eliminates hand-typed event_id strings at call sites (typo risk). Forge.Binding
@@ -103,11 +115,11 @@ defmodule AshDispatch.Dispatcher do
   #     AshDispatch.Dispatcher.dispatch(MyApp.Events.OrderCreated, %{...}, %{...})
   # Equivalent to:
   #     AshDispatch.Dispatcher.dispatch(MyApp.Events.OrderCreated.id() or registry-id, ...)
-  def dispatch(module, data, variables)
-      when is_atom(module) and is_map(data) and is_map(variables) do
+  def dispatch(module, data, variables, opts)
+      when is_atom(module) and is_map(data) and is_map(variables) and is_list(opts) do
     case resolve_event_id_for_module(module) do
       {:ok, event_id} ->
-        dispatch(event_id, data, variables)
+        dispatch(event_id, data, variables, opts)
 
       :error ->
         {:error,
@@ -117,8 +129,40 @@ defmodule AshDispatch.Dispatcher do
     end
   end
 
-  def dispatch(event_id, data, variables)
-      when is_binary(event_id) and is_map(data) and is_map(variables) do
+  def dispatch(event_id, data, variables, opts)
+      when is_binary(event_id) and is_map(data) and is_map(variables) and is_list(opts) do
+    with {:ok, override} <- build_override(opts),
+         {:ok, prepared} <- prepare(event_id, data, variables) do
+      context = put_override(prepared.context, override)
+      channels = filter_channels(prepared.channels, Keyword.get(opts, :channels), override)
+
+      # Dispatch to all channels
+      # Deduplication is opt-in via deduplicate_in_app: true in event config
+      results = dispatch_all_channels(channels, context, prepared.event_config)
+
+      # Return success if any dispatch succeeded
+      if Enum.any?(results, fn
+           {:ok, _} -> true
+           _ -> false
+         end) do
+        {:ok, results}
+      else
+        {:error, :all_dispatches_failed}
+      end
+    end
+  end
+
+  @doc false
+  # The opening of the send path — the event's module, the context after
+  # `generate_send_variables/2`, the event config and the channels — as one
+  # function, because `AshDispatch.Preview` must open the same way. A preview
+  # that resolved these itself would be a second implementation of the send
+  # path, and a preview that drifts from the send is worse than none: it is
+  # believed.
+  @spec prepare(String.t(), map(), map()) ::
+          {:ok, %{module: module(), context: Context.t(), event_config: map(), channels: list()}}
+          | {:error, term()}
+  def prepare(event_id, data, variables) do
     # Use centralized EventResolver for consistent event lookup
     case EventResolver.find_module(event_id) do
       {:ok, event_module} ->
@@ -133,10 +177,7 @@ defmodule AshDispatch.Dispatcher do
         # Generate real variables using EventResolver (handles function_exported? and error handling)
         # This allows events to provide real data (tokens, etc.) for actual sending
         # while using sample_data() for previews
-        enhanced_vars_result =
-          EventResolver.generate_send_variables(event_module, initial_context, variables)
-
-        case enhanced_vars_result do
+        case EventResolver.generate_send_variables(event_module, initial_context, variables) do
           {:ok, enhanced_variables} ->
             # Update context with enhanced variables
             context = %{initial_context | variables: enhanced_variables}
@@ -144,40 +185,13 @@ defmodule AshDispatch.Dispatcher do
             # Use centralized ChannelResolver for consistent priority logic
             channels = ChannelResolver.resolve(event_id, event_module, context)
 
-            # Build event config — pull the inline event's :metadata +
-            # :content into event_config so transports that depend on
-            # them (e.g. AshDispatch.Transports.Oban needs
-            # event_config[:metadata][:oban_worker]) read the substrate
-            # the DSL declared. Pre-fix, event_config only carried
-            # :module, so :oban transport always logged
-            # "missing oban_worker in metadata" and silently skipped
-            # the enqueue. ω.13.swarm-2c103-test-bugs.
-            event_config =
-              case AshDispatch.EventRegistry.find_event(event_id) do
-                {:ok, event_info} ->
-                  %{
-                    module: event_module,
-                    metadata: event_info[:metadata] || [],
-                    content: event_info[:content] || []
-                  }
-
-                {:error, _} ->
-                  %{module: event_module}
-              end
-
-            # Dispatch to all channels
-            # Deduplication is opt-in via deduplicate_in_app: true in event config
-            results = dispatch_all_channels(channels, context, event_config)
-
-            # Return success if any dispatch succeeded
-            if Enum.any?(results, fn
-                 {:ok, _} -> true
-                 _ -> false
-               end) do
-              {:ok, results}
-            else
-              {:error, :all_dispatches_failed}
-            end
+            {:ok,
+             %{
+               module: event_module,
+               context: context,
+               event_config: registry_event_config(event_id, event_module),
+               channels: channels
+             }}
 
           {:error, reason} ->
             Logger.error("generate_send_variables failed for #{event_id}: #{inspect(reason)}")
@@ -187,6 +201,115 @@ defmodule AshDispatch.Dispatcher do
       {:error, :not_found} ->
         Logger.error("Event module not found for event_id: #{event_id}")
         {:error, :event_not_found}
+    end
+  end
+
+  # Build event config — pull the inline event's :metadata +
+  # :content into event_config so transports that depend on
+  # them (e.g. AshDispatch.Transports.Oban needs
+  # event_config[:metadata][:oban_worker]) read the substrate
+  # the DSL declared. Pre-fix, event_config only carried
+  # :module, so :oban transport always logged
+  # "missing oban_worker in metadata" and silently skipped
+  # the enqueue. ω.13.swarm-2c103-test-bugs.
+  defp registry_event_config(event_id, event_module) do
+    case AshDispatch.EventRegistry.find_event(event_id) do
+      {:ok, event_info} ->
+        %{
+          module: event_module,
+          metadata: event_info[:metadata] || [],
+          content: event_info[:content] || []
+        }
+
+      {:error, _} ->
+        %{module: event_module}
+    end
+  end
+
+  # ── Manual overrides (the `dispatch/4` options) ─────────────────────
+  #
+  # `:recipient_email` replaces the resolved recipient. It exists for "send a
+  # test to myself", where the one thing that must never happen is that the
+  # REAL recipient gets the letter — so the override is total:
+  #
+  # - only `:email` channels are dispatched: an in-app notification or an SMS
+  #   cannot be redirected to an address, and would reach the real person;
+  # - each channel renders for its first resolved recipient, so the letter
+  #   reads exactly like theirs, and creates ONE receipt — to the override
+  #   address and without a `user_id`, so the real user's preferences,
+  #   notifications and counters are never touched;
+  # - the receipt says so: `content.manual_override` records the address, the
+  #   recipient it replaced and who asked for it.
+  #
+  # `:skip_preferences` bypasses the opt-out gate for this dispatch and is
+  # recorded the same way.
+  defp build_override(opts) do
+    recipient_email =
+      case Keyword.get(opts, :recipient_email) do
+        nil -> nil
+        email -> email |> to_string() |> String.trim()
+      end
+
+    skip_preferences = Keyword.get(opts, :skip_preferences, false) == true
+
+    cond do
+      recipient_email == "" ->
+        {:error, :invalid_recipient_email}
+
+      is_nil(recipient_email) and not skip_preferences ->
+        {:ok, nil}
+
+      true ->
+        {:ok,
+         %{
+           recipient_email: recipient_email,
+           skip_preferences: skip_preferences,
+           actor_id: extract_user_id_from_recipient(Keyword.get(opts, :actor))
+         }}
+    end
+  end
+
+  defp put_override(context, nil), do: context
+
+  defp put_override(context, override) do
+    Context.merge_metadata(context, %{ash_dispatch_override: override})
+  end
+
+  @doc false
+  # The override `dispatch/4` put on the context, or `nil`. Read by the
+  # transports' opt-out gate and when the receipt is built.
+  def override(%{metadata: %{ash_dispatch_override: override}}), do: override
+  def override(_context), do: nil
+
+  defp filter_channels(channels, filters, override) do
+    channels =
+      case filters do
+        [_ | _] ->
+          Enum.filter(channels, fn channel ->
+            Enum.any?(filters, fn filter ->
+              Enum.all?(filter, fn {key, value} -> Map.get(channel, key) == value end)
+            end)
+          end)
+
+        _ ->
+          channels
+      end
+
+    case override do
+      %{recipient_email: email} when is_binary(email) ->
+        {email_channels, other} = Enum.split_with(channels, &(&1.transport == :email))
+
+        Enum.each(other, fn channel ->
+          Logger.info(
+            "Recipient override: #{channel.transport}/#{channel.audience} not dispatched " <>
+              "(only email can be redirected to #{email})"
+          )
+        end)
+
+        email_channels
+
+      _ ->
+        channels
     end
   end
 
@@ -245,14 +368,7 @@ defmodule AshDispatch.Dispatcher do
   end
 
   defp do_dispatch_channel(context, channel, event_config) do
-    # Apply channel-level load (additional to event-level load)
-    context = apply_channel_load(context, channel)
-
-    # Resolve recipients for this channel
-    recipients = resolve_recipients_for_channel(context, channel, event_config)
-
-    # Filter out actor if exclude_actor is set
-    recipients = filter_out_actor(recipients, context, channel)
+    {context, recipients} = recipients_for(context, channel, event_config)
 
     # Create one receipt per recipient
     results =
@@ -271,6 +387,40 @@ defmodule AshDispatch.Dispatcher do
       {:ok, Enum.map(successful, fn {:ok, receipt} -> receipt end)}
     else
       {:error, :all_dispatches_failed}
+    end
+  end
+
+  @doc false
+  # Who one channel goes to, and the context it is rendered in: the
+  # channel-level load applied, the recipients resolved, the actor filtered
+  # out when the channel says so. Shared with `AshDispatch.Preview`, which
+  # renders for the first of these recipients — the same person the send
+  # would have written to first.
+  #
+  # Under a recipient override (`dispatch/4`) a channel goes to exactly ONE
+  # recipient: the first resolved one, whose letter is rendered and then
+  # addressed to the override. Without anyone resolved there is still a letter
+  # to test, so the override address stands in for the recipient too.
+  @spec recipients_for(Context.t(), AshDispatch.Channel.t(), map()) :: {Context.t(), list()}
+  def recipients_for(context, channel, event_config) do
+    # Apply channel-level load (additional to event-level load)
+    context = apply_channel_load(context, channel)
+
+    # Resolve recipients for this channel
+    recipients = resolve_recipients_for_channel(context, channel, event_config)
+
+    # Filter out actor if exclude_actor is set
+    recipients = filter_out_actor(recipients, context, channel)
+
+    case override(context) do
+      %{recipient_email: email} when is_binary(email) ->
+        case recipients do
+          [first | _] -> {context, [first]}
+          [] -> {context, [%{email: email}]}
+        end
+
+      _ ->
+        {context, recipients}
     end
   end
 
@@ -325,11 +475,7 @@ defmodule AshDispatch.Dispatcher do
     # Collect all recipients from all channels with their channel info
     recipients_with_channels =
       Enum.flat_map(channels, fn channel ->
-        channel_context = apply_channel_load(context, channel)
-        recipients = resolve_recipients_for_channel(channel_context, channel, event_config)
-
-        # Filter out actor if exclude_actor is set for this channel
-        recipients = filter_out_actor(recipients, channel_context, channel)
+        {_channel_context, recipients} = recipients_for(context, channel, event_config)
 
         Enum.map(recipients, fn recipient ->
           {recipient, channel}
@@ -531,6 +677,54 @@ defmodule AshDispatch.Dispatcher do
   end
 
   defp create_receipt(context, channel, event_config, recipient) do
+    case build_receipt(context, channel, event_config, recipient) do
+      # `:skip` is the soft-fail return when `channel.optional: true` and
+      # the identifier can't be extracted — propagate up so the caller
+      # skips this channel without crashing the whole dispatch.
+      {:skip, _attrs} ->
+        {:ok, :skipped_optional}
+
+      # This recipient could not be reached. An error for THIS row, not for
+      # the channel — `do_dispatch_channel/3` already counts "at least one
+      # succeeded", so the remaining recipients still go through.
+      {:unreachable, _attrs} ->
+        {:error, :recipient_unreachable}
+
+      {:ok, attrs} ->
+        # Always link email receipts to in-app notifications for the same user/event
+        # This enables skip_if_read policy and provides useful linking for analytics
+        notification_id =
+          if channel.transport == :email and attrs.user_id do
+            find_in_app_notification_id(context.event_id, attrs.user_id)
+          else
+            nil
+          end
+
+        # Create DeliveryReceipt
+        # Use authorize?: false and skip_unknown_inputs to work within transaction context
+        Config.delivery_receipt_resource()
+        |> Ash.Changeset.for_create(:create, Map.put(attrs, :notification_id, notification_id))
+        |> Ash.create(authorize?: false, skip_unknown_inputs: [:notification_id])
+    end
+  end
+
+  @doc false
+  # Everything a receipt is created from — the rendered content included —
+  # without creating it. This is the seam `AshDispatch.Preview` renders
+  # through: the receipt's subject, bodies and content come out of exactly
+  # this function on both paths, so a preview cannot say one thing while the
+  # send says another.
+  #
+  # Returns `{:ok, attrs}`, or `{:skip, attrs}` / `{:unreachable, attrs}` when
+  # no recipient identifier could be extracted (`attrs.recipient` is then
+  # `nil`). The content is rendered either way — a preview of an unreachable
+  # recipient is still worth reading.
+  #
+  # The in-app `notification_id` link is NOT part of it: that is a database
+  # read about what was already delivered, not part of the letter.
+  @spec build_receipt(Context.t(), AshDispatch.Channel.t(), map(), term()) ::
+          {:ok | :skip | :unreachable, map()}
+  def build_receipt(context, channel, event_config, recipient) do
     # Build full content for the receipt. Recipient is threaded in so
     # per-recipient locale resolution (recipient.locale) can flip the
     # rendered subject/body/text per recipient — multi-recipient channels
@@ -539,43 +733,14 @@ defmodule AshDispatch.Dispatcher do
     content = build_receipt_content(context, channel, event_config, recipient)
 
     # Extract recipient identifier and name using configured fields.
-    # `:skip` is the soft-fail return when `channel.optional: true` and
-    # the identifier can't be extracted — propagate up so the caller
-    # skips this channel without crashing the whole dispatch.
-    case extract_recipient_identifier(recipient, channel, event_config) do
-      :skip ->
-        {:ok, :skipped_optional}
-
-      # This recipient could not be reached. An error for THIS row, not for
-      # the channel — `do_dispatch_channel/3` already counts "at least one
-      # succeeded", so the remaining recipients still go through.
-      :unreachable ->
-        {:error, :recipient_unreachable}
-
-      recipient_identifier ->
-        do_create_receipt(
-          context,
-          channel,
-          event_config,
-          recipient,
-          content,
-          recipient_identifier
-        )
-    end
-  end
-
-  defp do_create_receipt(context, channel, event_config, recipient, content, recipient_identifier) do
-    recipient_name = extract_recipient_name(recipient, channel, event_config)
-    recipient_user_id = get_user_id(recipient)
-
-    # Always link email receipts to in-app notifications for the same user/event
-    # This enables skip_if_read policy and provides useful linking for analytics
-    notification_id =
-      if channel.transport == :email and recipient_user_id do
-        find_in_app_notification_id(context.event_id, recipient_user_id)
-      else
-        nil
+    {status, recipient_identifier} =
+      case extract_recipient_identifier(recipient, channel, event_config) do
+        :skip -> {:skip, nil}
+        :unreachable -> {:unreachable, nil}
+        identifier -> {:ok, identifier}
       end
+
+    recipient_name = extract_recipient_name(recipient, channel, event_config)
 
     # Extract source resource info for linking (e.g., link receipt to order)
     {source_type, source_id} = extract_source_info(context, event_config)
@@ -592,8 +757,7 @@ defmodule AshDispatch.Dispatcher do
       transport: channel.transport,
       audience: channel.audience,
       recipient: recipient_identifier,
-      user_id: recipient_user_id,
-      notification_id: notification_id,
+      user_id: get_user_id(recipient),
       source_type: source_type,
       source_id: source_id,
       locale: locale
@@ -623,11 +787,32 @@ defmodule AshDispatch.Dispatcher do
           Map.put(attrs, :content, content)
       end
 
-    # Create DeliveryReceipt
-    # Use authorize?: false and skip_unknown_inputs to work within transaction context
-    Config.delivery_receipt_resource()
-    |> Ash.Changeset.for_create(:create, attrs)
-    |> Ash.create(authorize?: false, skip_unknown_inputs: [:notification_id])
+    apply_override(status, attrs, override(context))
+  end
+
+  # A recipient override readdresses the receipt AFTER the letter was rendered
+  # for the real recipient, and drops the user link: the real user's
+  # preferences and notifications are not this receipt's business. The audit
+  # trail goes into the content, which every receipt resource already stores.
+  defp apply_override(status, attrs, nil), do: {status, attrs}
+
+  defp apply_override(status, attrs, override) do
+    audit = %{
+      recipient_email: override.recipient_email,
+      original_recipient: attrs.recipient,
+      skip_preferences: override.skip_preferences,
+      actor_id: override.actor_id
+    }
+
+    attrs = Map.update!(attrs, :content, &Map.put(&1, :manual_override, audit))
+
+    case override.recipient_email do
+      nil ->
+        {status, attrs}
+
+      email ->
+        {:ok, %{attrs | recipient: email, user_id: nil}}
+    end
   end
 
   # Extract recipient identifier using RecipientExtractor with cascading config.
@@ -1187,6 +1372,9 @@ defmodule AshDispatch.Dispatcher do
         {:error, :template_not_found} ->
           nil
 
+        {:error, %AshDispatch.TemplateError{} = error} ->
+          raise error
+
         {:error, error} ->
           Logger.warning("Failed to render HTML template for #{event_id}: #{inspect(error)}")
           nil
@@ -1213,6 +1401,9 @@ defmodule AshDispatch.Dispatcher do
 
         {:error, :template_not_found} ->
           nil
+
+        {:error, %AshDispatch.TemplateError{} = error} ->
+          raise error
 
         {:error, error} ->
           Logger.warning("Failed to render text template for #{event_id}: #{inspect(error)}")
@@ -1377,6 +1568,8 @@ defmodule AshDispatch.Dispatcher do
                      ) do
                   {:ok, rendered} -> rendered
                   {:error, :template_not_found} -> nil
+                  # strict_templates: a refused template is not "no HTML"
+                  {:error, %AshDispatch.TemplateError{} = error} -> raise error
                   _ -> nil
                 end
 
@@ -1393,6 +1586,8 @@ defmodule AshDispatch.Dispatcher do
                      ) do
                   {:ok, rendered} -> rendered
                   {:error, :template_not_found} -> nil
+                  # strict_templates: a refused template is not "no HTML"
+                  {:error, %AshDispatch.TemplateError{} = error} -> raise error
                   _ -> nil
                 end
 
@@ -1413,6 +1608,16 @@ defmodule AshDispatch.Dispatcher do
             html_body: html_body,
             text_body: text_body
           }
+          # Extra headers live in the content, like the reply address, so a
+          # retry (which rebuilds its job from the receipt) keeps them. Only
+          # written when there are any: a receipt of an event without
+          # `headers/2` stays exactly what it was before 0.9.0.
+          |> then(fn content ->
+            case EventResolver.headers(module, context, channel) do
+              headers when map_size(headers) > 0 -> Map.put(content, :headers, headers)
+              _ -> content
+            end
+          end)
 
         :in_app ->
           %{
