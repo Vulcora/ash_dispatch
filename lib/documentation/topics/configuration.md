@@ -565,6 +565,26 @@ config :ash_dispatch,
 - Integrate with existing audit/logging systems
 - Custom policies or validations
 
+### Strict Templates
+
+Refuse `.heex` templates whose expressions would reach the recipient as raw
+text — `{if ...}`, `{for ...}`, `{case ...}` (and `unless`, `cond`, `with`)
+or `#{...}` in body position:
+
+```elixir
+config :ash_dispatch,
+  strict_templates: true
+```
+
+**Default:** `false` in 0.9.
+
+When on, the `:ash_dispatch` compiler fails the build with the file and line
+of each violation, and `AshDispatch.TemplateResolver` refuses to render such a
+template (`{:error, %AshDispatch.TemplateError{}}`, raised by the send path).
+Attribute expressions (`href={"mailto:#{@email}"}`), EEx tags, `<style>`
+blocks and HTML comments are exempt. See `AshDispatch.StrictTemplates` and the
+[Previews and testing](previews-and-testing.md) guide.
+
 ### Send Now Authorizer
 
 Configure authorization for the `send_now` action on delivery receipts. This action allows manually triggering email delivery for scheduled receipts from an admin UI.

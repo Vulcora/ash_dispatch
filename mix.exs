@@ -1,7 +1,7 @@
 defmodule AshDispatch.MixProject do
   use Mix.Project
 
-  @version "0.8.5"
+  @version "0.9.0"
   @description "Event-driven notification system for Ash Framework with multiple transport types"
   @source_url "https://github.com/Vulcora/ash_dispatch"
 
@@ -9,7 +9,7 @@ defmodule AshDispatch.MixProject do
     [
       app: :ash_dispatch,
       version: @version,
-      elixir: "~> 1.15",
+      elixir: "~> 1.17",
       elixirc_paths: elixirc_paths(Mix.env()),
       compilers: Mix.compilers() ++ [:ash_dispatch],
       start_permanent: Mix.env() == :prod,
@@ -107,6 +107,7 @@ defmodule AshDispatch.MixProject do
         "lib/documentation/topics/recipient-extractor.md",
         "lib/documentation/topics/user-preferences.md",
         "lib/documentation/topics/oban-configuration.md",
+        "lib/documentation/topics/previews-and-testing.md",
         # DSL Reference
         "lib/documentation/dsls/DSL-AshDispatch-Resource.md"
       ],
@@ -123,6 +124,13 @@ defmodule AshDispatch.MixProject do
           AshDispatch.Dispatcher,
           AshDispatch.Context,
           AshDispatch.Channel
+        ],
+        "Previews & Templates": [
+          AshDispatch.Preview,
+          AshDispatch.Preview.Rendered,
+          AshDispatch.TemplateResolver,
+          AshDispatch.StrictTemplates,
+          AshDispatch.TemplateError
         ],
         Transports: [
           AshDispatch.Transports,
@@ -157,7 +165,7 @@ defmodule AshDispatch.MixProject do
           AshDispatch.Dsl.Sections
         ],
         Testing: [
-          AshDispatch.Test.UserPreference
+          AshDispatch.Test
         ]
       ],
       before_closing_head_tag: &before_closing_head_tag/1,
