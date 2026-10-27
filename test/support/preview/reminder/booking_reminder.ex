@@ -36,6 +36,18 @@ defmodule AshDispatch.Test.Preview.BookingReminder do
   def notification_message(%{data: %{booking: booking}}, _channel),
     do: "Reminder for #{booking.reference}"
 
+  # Where a real event would mint a token. Reports to the test process, so a
+  # test can tell whether it ran — a preview must never run it.
+  @impl true
+  def generate_send_variables(_context, variables) do
+    case Application.get_env(:ash_dispatch, :capture_pid) do
+      pid when is_pid(pid) -> send(pid, {:minted, id()})
+      _ -> :ok
+    end
+
+    {:ok, Map.put(variables, :token, "minted")}
+  end
+
   @impl true
   def prepare_template_assigns(%{data: %{booking: booking}}, _channel) do
     %{reference: booking.reference}

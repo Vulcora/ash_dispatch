@@ -42,7 +42,9 @@ defmodule AshDispatch.HeadersTest do
     end
 
     test "anything that is not a string value is dropped, not raised on" do
-      assert headers(%{"X-Count" => 1, "X-Ok" => "yes"}) == %{"X-Ok" => "yes"}
+      # An integer id is what the docs' own example would often pass.
+      assert headers(%{"X-Count" => 1, "X-Ok" => "yes"}) == %{"X-Count" => "1", "X-Ok" => "yes"}
+      assert headers(%{"X-Float" => 1.5, "X-Nil" => nil}) == %{}
       assert headers(:not_a_map) == %{}
     end
 

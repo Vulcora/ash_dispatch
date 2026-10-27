@@ -44,6 +44,13 @@ with the email transport's job args and the `SendEmail` worker's backend
 params. The library's own parity test sends a letter for real and compares it
 with its preview field by field.
 
+What it leaves out is everything with a side effect: no receipt, no job, and
+never `generate_send_variables/2` — that is where events mint reset tokens
+and invitation links, and a preview must not create any. A template that
+prints such a variable renders the one you pass in `variables:`. For a page
+that must not touch the database at all, pass `read_records?: false` and
+`resolve_recipients?: false`.
+
 What a preview cannot show is what is only decided at send time: whether
 `should_send?/2` lets it through, the recipient's preferences, and the
 `skip_if_read` policy.
@@ -129,7 +136,7 @@ config :ash_dispatch, strict_templates: true
 
 With it, the `:ash_dispatch` compiler fails the build on such a template, with
 the file and line, and `TemplateResolver` refuses to render one. Off by
-default in 0.9. Write `<%= if @x, do: "a", else: "b" %>`, or compute the value
+default. Write `<%= if @x, do: "a", else: "b" %>`, or compute the value
 in `prepare_template_assigns/2` and print it with `{@value}`.
 
 ## Extra headers

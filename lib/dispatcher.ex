@@ -159,10 +159,10 @@ defmodule AshDispatch.Dispatcher do
   # that resolved these itself would be a second implementation of the send
   # path, and a preview that drifts from the send is worse than none: it is
   # believed.
-  @spec prepare(String.t(), map(), map()) ::
+  @spec prepare(String.t(), map(), map(), keyword()) ::
           {:ok, %{module: module(), context: Context.t(), event_config: map(), channels: list()}}
           | {:error, term()}
-  def prepare(event_id, data, variables) do
+  def prepare(event_id, data, variables, opts \\ []) do
     # Use centralized EventResolver for consistent event lookup
     case EventResolver.find_module(event_id) do
       {:ok, event_module} ->
@@ -176,8 +176,20 @@ defmodule AshDispatch.Dispatcher do
 
         # Generate real variables using EventResolver (handles function_exported? and error handling)
         # This allows events to provide real data (tokens, etc.) for actual sending
-        # while using sample_data() for previews
-        case EventResolver.generate_send_variables(event_module, initial_context, variables) do
+        # while using sample_data() for previews.
+        #
+        # `send_variables?: false` is the preview: generate_send_variables/2 is
+        # where events MINT things — reset tokens, invitation JWTs, rows in the
+        # database — and a preview must never do that. It renders with the
+        # variables it was given.
+        generated =
+          if Keyword.get(opts, :send_variables?, true) do
+            EventResolver.generate_send_variables(event_module, initial_context, variables)
+          else
+            {:ok, variables}
+          end
+
+        case generated do
           {:ok, enhanced_variables} ->
             # Update context with enhanced variables
             context = %{initial_context | variables: enhanced_variables}
@@ -740,7 +752,10 @@ defmodule AshDispatch.Dispatcher do
         identifier -> {:ok, identifier}
       end
 
-    recipient_name = extract_recipient_name(recipient, channel, event_config)
+    # Only for a reachable recipient, as before — a name lookup on a recipient
+    # without an address only adds warnings to the log.
+    recipient_name =
+      if status == :ok, do: extract_recipient_name(recipient, channel, event_config)
 
     # Extract source resource info for linking (e.g., link receipt to order)
     {source_type, source_id} = extract_source_info(context, event_config)
@@ -1611,7 +1626,7 @@ defmodule AshDispatch.Dispatcher do
           # Extra headers live in the content, like the reply address, so a
           # retry (which rebuilds its job from the receipt) keeps them. Only
           # written when there are any: a receipt of an event without
-          # `headers/2` stays exactly what it was before 0.9.0.
+          # `headers/2` stays exactly what it was before 0.8.6.
           |> then(fn content ->
             case EventResolver.headers(module, context, channel) do
               headers when map_size(headers) > 0 -> Map.put(content, :headers, headers)

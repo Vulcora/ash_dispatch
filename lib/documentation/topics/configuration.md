@@ -576,7 +576,7 @@ config :ash_dispatch,
   strict_templates: true
 ```
 
-**Default:** `false` in 0.9.
+**Default:** `false`.
 
 When on, the `:ash_dispatch` compiler fails the build with the file and line
 of each violation, and `AshDispatch.TemplateResolver` refuses to render such a

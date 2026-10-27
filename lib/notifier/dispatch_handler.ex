@@ -100,6 +100,7 @@ defmodule AshDispatch.Notifier.DispatchHandler do
   # - `:sample` - extra data that stands in for the prepared data. When given,
   #   nothing is loaded and `prepare_data/2` is not called: sample data is
   #   already the data an event sees, and its records are not in any database
+  # - `:send_variables?` - `false` skips `generate_send_variables/2` (a preview)
   @spec prepare(struct(), map(), map(), keyword()) ::
           {:ok,
            %{module: module() | nil, context: Context.t(), event_config: map(), channels: list()}}
@@ -148,8 +149,10 @@ defmodule AshDispatch.Notifier.DispatchHandler do
         maybe_enrich_context_with_prepare_data(context, prepare_changeset, record, event_module)
       end
 
+    # A preview (`send_variables?: false`) never runs generate_send_variables/2:
+    # that is where events mint tokens and write rows.
     context =
-      if event_module do
+      if event_module && Keyword.get(opts, :send_variables?, true) do
         case EventResolver.generate_send_variables(
                event_module,
                context,

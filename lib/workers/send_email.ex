@@ -276,7 +276,7 @@ defmodule AshDispatch.Workers.SendEmail do
     |> Map.new(fn {name, value} -> {to_string(name), value} end)
   end
 
-  # Only when there are any, so a backend written before 0.9.0 is called with
+  # Only when there are any, so a backend written before 0.8.6 is called with
   # exactly the params it always was.
   defp put_headers(params, headers) when map_size(headers) == 0, do: params
   defp put_headers(params, headers), do: Map.put(params, :headers, headers)

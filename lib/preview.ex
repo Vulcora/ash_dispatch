@@ -10,6 +10,7 @@ defmodule AshDispatch.Preview.Rendered do
   empty.
 
   - `:content` - the full content map the receipt would have stored
+  - `:context` - the `AshDispatch.Context` the letter was rendered in
   - `:recipient` - the identifier the receipt would have been addressed to
     (or the `:recipient_email` override); `nil` when nobody could be resolved
   - `:recipient_name` - the recipient's display name, when configured
@@ -44,6 +45,7 @@ defmodule AshDispatch.Preview.Rendered do
           action_url: String.t() | nil,
           action_label: String.t() | nil,
           content: map(),
+          context: AshDispatch.Context.t() | nil,
           error: String.t() | nil
         }
 
@@ -68,6 +70,7 @@ defmodule AshDispatch.Preview.Rendered do
     :message,
     :action_url,
     :action_label,
+    :context,
     :error,
     attachments: [],
     headers: %{},
@@ -107,9 +110,8 @@ defmodule AshDispatch.Preview do
     either, the first record of the event's resource is read instead.
   - `{:record, id}` — the record with that id, from the event's resource. For
     an event triggered by a resource action this runs that action's path in
-    full: the event's `load`, `prepare_data/2` (with a bare
-    `Ash.Changeset.new(record)`, since there is no action) and the send
-    variables.
+    full: the event's `load` and `prepare_data/2` (with a bare
+    `Ash.Changeset.new(record)`, since there is no action).
   - a map — the event's data, taken as it is (what you would pass to
     `Dispatcher.dispatch/3`).
 
@@ -132,6 +134,11 @@ defmodule AshDispatch.Preview do
     ManualTrigger resource, which is guarded by its own policies
   - `:variables` - template variables, as the third argument of
     `Dispatcher.dispatch/3`
+  - `:read_records?` - when `:sample` finds no sample data, read the first
+    record of the event's resource instead. Default `true`
+  - `:resolve_recipients?` - resolve the recipient the way the dispatcher
+    does (which can query the database). Default `true`; with `false` the
+    letter is rendered without a recipient unless `:recipient` is given
 
   ## Example
 
@@ -143,6 +150,13 @@ defmodule AshDispatch.Preview do
 
       letter.subject
       #=> "Order #4711 confirmed"
+
+  ## What it never does
+
+  It never calls `generate_send_variables/2`. That callback is where events
+  mint what a send needs — a reset token, an invitation JWT, a database row —
+  and a preview must not create any of it. A letter that prints such a
+  variable is rendered with the one passed in `:variables` (or none).
 
   ## What it cannot show
 
@@ -310,7 +324,7 @@ defmodule AshDispatch.Preview do
         end
 
       case prepared do
-        nil -> Dispatcher.prepare(event_id, data, variables)
+        nil -> Dispatcher.prepare(event_id, data, variables, send_variables?: false)
         prepared -> prepared
       end
       |> put_locale(Keyword.get(opts, :locale))
@@ -335,7 +349,8 @@ defmodule AshDispatch.Preview do
         {:ok, prepared} =
           DispatchHandler.prepare(record, config, config.event_config,
             actor: Keyword.get(opts, :actor),
-            sample: sample
+            sample: sample,
+            send_variables?: false
           )
 
         {:ok, %{prepared | context: merge_variables(prepared.context, variables)}}
@@ -387,9 +402,14 @@ defmodule AshDispatch.Preview do
   end
 
   defp source_data(event_id, module, :sample, seed, opts) do
+    read_records? = Keyword.get(opts, :read_records?, true)
+
     case sample_data(module, seed) do
       {:ok, data} when map_size(data) > 0 ->
         {:ok, :sample, data}
+
+      {:ok, _empty} when not read_records? ->
+        {:error, "#{inspect(module)} defines no sample data"}
 
       {:ok, _empty} ->
         # No sample data: read a record instead, as the ManualTrigger preview
@@ -577,7 +597,8 @@ defmodule AshDispatch.Preview do
       | locale: attrs.locale,
         recipient: recipient_identifier && to_string(recipient_identifier),
         recipient_name: AshDispatch.ContentMap.get_content(attrs.content, :recipient_name),
-        content: attrs.content
+        content: attrs.content,
+        context: context
     }
     |> put_envelope(%{attrs | recipient: recipient_identifier}, context, channel)
   rescue
@@ -609,17 +630,23 @@ defmodule AshDispatch.Preview do
         {context, recipient}
 
       :error ->
-        try do
-          case Dispatcher.recipients_for(context, channel, event_config) do
-            {context, [first | _]} -> {context, first}
-            {context, []} -> {context, nil}
-          end
-        rescue
-          error ->
-            Logger.debug("Preview: recipients for #{context.event_id} raised: #{inspect(error)}")
-            {context, nil}
+        if Keyword.get(opts, :resolve_recipients?, true) do
+          resolve_first_recipient(context, channel, event_config)
+        else
+          {context, nil}
         end
     end
+  end
+
+  defp resolve_first_recipient(context, channel, event_config) do
+    case Dispatcher.recipients_for(context, channel, event_config) do
+      {context, [first | _]} -> {context, first}
+      {context, []} -> {context, nil}
+    end
+  rescue
+    error ->
+      Logger.debug("Preview: recipients for #{context.event_id} raised: #{inspect(error)}")
+      {context, nil}
   end
 
   # The envelope, built the way the send builds it: the email transport's job
@@ -695,7 +722,8 @@ defmodule AshDispatch.Preview do
   defp seed_for(:sample, opts) do
     case Keyword.get(opts, :seed) do
       seed when is_integer(seed) -> seed
-      nil -> :rand.uniform(1_000_000)
+      # Not :rand — drawing from it would move the caller's own sequence.
+      nil -> :binary.decode_unsigned(:crypto.strong_rand_bytes(3)) + 1
       other -> :erlang.phash2(other)
     end
   end

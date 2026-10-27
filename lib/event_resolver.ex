@@ -413,7 +413,7 @@ defmodule AshDispatch.EventResolver do
   @doc """
   Extra email headers for a channel via the optional `headers/2` callback.
 
-  Returns a map of header name to value, both strings. Anything else is
+  Returns a map of header name to string value (integers are converted). Anything else is
   dropped rather than raised on: a malformed header must cost the header, not
   the email. Names that would let an event rewrite the envelope (`To`, `From`,
   `Subject`, `Reply-To`, …) are dropped too — those have callbacks of their
@@ -425,10 +425,17 @@ defmodule AshDispatch.EventResolver do
       headers when is_map(headers) or is_list(headers) ->
         headers
         |> Enum.flat_map(fn
-          {name, value} when (is_binary(name) or is_atom(name)) and is_binary(value) ->
+          {name, value}
+          when (is_binary(name) or is_atom(name)) and (is_binary(value) or is_integer(value)) ->
             name = to_string(name)
+            value = to_string(value)
 
-            if valid_header?(name, value), do: [{name, value}], else: []
+            if valid_header?(name, value) do
+              [{name, value}]
+            else
+              Logger.warning("headers/2 of #{inspect(module)}: dropped header #{inspect(name)}")
+              []
+            end
 
           _ ->
             []

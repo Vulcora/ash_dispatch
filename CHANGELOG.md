@@ -7,14 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.9.0] - 2026-10-26
-
-### ⚠️ Requires Elixir 1.17
-
-`mix.exs` now declares `elixir: "~> 1.17"` (was `~> 1.15`). A default install
-already needed 1.17 — Ash 3.33 uses `Duration` — so this makes the
-requirement say what `mix deps.get` produces. An app on Elixir 1.15 or 1.16
-stays on 0.8.x.
+## [0.8.6] - 2026-10-27
 
 ### Added
 
@@ -36,6 +29,10 @@ stays on 0.8.x.
     envelope with the email transport's job args and the `SendEmail` worker's
     backend params. A parity test sends letters for real (both the notifier
     and `dispatch/3`) and compares them with their previews field by field.
+  - **No side effects.** A preview never calls `generate_send_variables/2`
+    (where events mint tokens and write rows), creates no receipt or job, and
+    with `read_records?: false` / `resolve_recipients?: false` reads nothing
+    from the database at all — which is how `EmailEvent` uses it.
   - `AshDispatch.preview/3`, the `EmailEvent` resource and the ManualTrigger
     `:preview` action now render through it.
 - **`sample_data/1`** on events, called with `seed: integer`; the default
@@ -48,18 +45,19 @@ stays on 0.8.x.
   body, or output still containing `<%`, `{@`, `#{`, a HEEx block expression
   or `TODO` (plus `forbid:` markers of your own). Returns the number of
   letters rendered, so an app's "every mail renders" test is one line with an
-  exact count.
+  exact count. `problems_for/2` runs the same checks on a single letter.
 - **Strict templates** — `config :ash_dispatch, strict_templates: true`
   refuses `.heex` templates with `{if`, `{for`, `{case` (and `unless`,
   `cond`, `with`) or `#{` in body position: the `:ash_dispatch` compiler fails
   the build with the file and line of each, and `TemplateResolver` refuses to
   render one (`AshDispatch.TemplateError`, raised by the send path). Off by
-  default in 0.9. See `AshDispatch.StrictTemplates`.
+  default. See `AshDispatch.StrictTemplates`.
 - **`headers/2`** on events: extra email headers such as `X-Entity-Ref-ID`.
   Stored in the receipt (so a retry keeps them), passed to the backend as
   `:headers` and added by `AshDispatch.EmailBackend.Swoosh`. Names the
-  envelope already sets (`To`, `From`, `Subject`, `Reply-To`, …), non-string
-  values and values with line breaks are dropped.
+  envelope already sets (`To`, `From`, `Subject`, `Reply-To`, …), values that
+  are neither strings nor integers, and values with line breaks are dropped
+  with a warning.
 - **`Dispatcher.dispatch/4`** with options for manual sends: `:channels`,
   `:recipient_email`, `:skip_preferences`, `:actor`.
 - A guide, **Previews and testing**.
@@ -82,7 +80,8 @@ stays on 0.8.x.
   the `:retry` action — which enqueues a job — and then enqueued another; an
   in-app retry, which delivers inline, was delivered twice. `SendEmail` and
   `SendSMS` uniqueness now also covers `:retryable`, so a cron retry no longer
-  lands beside the job Oban's backoff is about to run.
+  lands beside the job Oban's backoff is about to run — instead that waiting
+  job is made available at once, so "send now" sends now.
 - **A retried email keeps its sender.** Without content args the worker read
   the sender from the receipt with an atom key, which a JSONB-stored receipt
   does not have, and sent from the default address.

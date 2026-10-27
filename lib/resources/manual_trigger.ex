@@ -23,7 +23,7 @@ defmodule AshDispatch.Resources.ManualTrigger do
   >
   > The `.Base` variant is the maintained one:
   > `use AshDispatch.Resources.ManualTrigger.Base, domain: MyApp.Deliveries`.
-  > Since 0.9.0 this variant's `:preview` and `:trigger` run through the same
+  > Since 0.8.6 this variant's `:preview` and `:trigger` run through the same
   > helpers as `.Base` (its `:trigger` used to raise). Kept only so existing
   > registrations keep compiling; it will be removed in a later release.
 
@@ -220,7 +220,7 @@ defmodule AshDispatch.Resources.ManualTrigger do
         skip_preferences = Ash.Changeset.get_attribute(changeset, :skip_preferences)
 
         # The same path as the `.Base` variant: the options reach
-        # `Dispatcher.dispatch/4` as options (until 0.9.0 they were a keyword
+        # `Dispatcher.dispatch/4` as options (until 0.8.6 they were a keyword
         # list in the variables slot, which raised).
         opts =
           AshDispatch.Resources.ManualTrigger.Helpers.build_trigger_opts(

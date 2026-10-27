@@ -60,11 +60,15 @@ defmodule AshDispatch.StrictTemplates do
 
       config :ash_dispatch, strict_templates: true
 
-  Off by default in 0.9. When on, the `:ash_dispatch` compiler fails the
+  Off by default. When on, the `:ash_dispatch` compiler fails the
   build on a violation (every `.heex` under `lib/**/templates/` and
   `priv/ash_dispatch/`), and `AshDispatch.TemplateResolver` refuses to render
   one — `{:error, %AshDispatch.TemplateError{}}` — so a template edited in
-  dev without a recompile is caught too.
+  dev without a recompile is caught too. On the send path that error is
+  raised rather than sending the letter without its HTML: an action-triggered
+  send logs it (the notifier rescues), a direct `Dispatcher.dispatch/3` raises
+  to its caller, `dispatch_safely/3` logs it. Since the compiler checks the
+  same files, this only happens to a template changed after the build.
   """
 
   defmodule Violation do
@@ -224,11 +228,30 @@ defmodule AshDispatch.StrictTemplates do
     |> Enum.reduce(content, fn [{offset, len}], acc ->
       start = offset + len
 
-      case closing_brace(acc, start) do
-        nil -> acc
-        close -> blank(acc, offset, close - offset + 1)
+      case inside_tag?(acc, offset) && closing_brace(acc, start) do
+        close when is_integer(close) -> blank(acc, offset, close - offset + 1)
+        _ -> acc
       end
     end)
+  end
+
+  # `Total={if ...}` in running text is body text, not an attribute: only a
+  # `name={` after an unclosed `<` is one.
+  defp inside_tag?(content, offset) do
+    <<before::binary-size(^offset), _::binary>> = content
+
+    case {last_index(before, "<"), last_index(before, ">")} do
+      {nil, _} -> false
+      {open, nil} -> open >= 0
+      {open, close} -> open > close
+    end
+  end
+
+  defp last_index(text, char) do
+    case :binary.matches(text, char) do
+      [] -> nil
+      matches -> matches |> List.last() |> elem(0)
+    end
   end
 
   defp closing_brace(content, start) do

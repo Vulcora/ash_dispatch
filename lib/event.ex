@@ -266,10 +266,11 @@ defmodule AshDispatch.Event do
 
       def headers(_context, _channel), do: %{}
 
-  Names and values must be strings. Anything else, a value with a line break,
-  and the headers the library sets itself (`To`, `From`, `Subject`,
-  `Reply-To`, …) are dropped: those have callbacks of their own, and an email
-  without a header is cheaper than an email that never leaves.
+  Names are strings (or atoms), values strings or integers. Anything else,
+  a value with a line break, and the headers the library sets itself (`To`,
+  `From`, `Subject`, `Reply-To`, …) are dropped with a warning — the envelope
+  has callbacks of its own, and an email without a header is cheaper than an
+  email that never leaves.
 
   The headers are stored in `receipt.content`, so a retry keeps them, and they
   reach the email backend as `:headers` (`AshDispatch.EmailBackend.Swoosh`
@@ -857,7 +858,7 @@ defmodule AshDispatch.Event do
       def sample_data(_opts), do: sample_data()
 
       @impl true
-      # No extra headers by default — the email looks as it did before 0.9.0.
+      # No extra headers by default — the email looks as it did before 0.8.6.
       def headers(_context, _channel), do: %{}
 
       @impl true

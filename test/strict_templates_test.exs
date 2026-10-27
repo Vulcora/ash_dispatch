@@ -60,6 +60,10 @@ defmodule AshDispatch.StrictTemplatesTest do
       assert [%{kind: :interpolation}] = check(~s(<a href="mailto:\#{@email}">x</a>))
     end
 
+    test "name={...} in running text is body text, not an attribute" do
+      assert [%{kind: :block}] = check("<p>Total={if @discount, do: 1}</p>")
+    end
+
     test "only .heex is checked" do
       assert StrictTemplates.check("\#{x} {if a, do: b}", "email.text.eex") == []
     end

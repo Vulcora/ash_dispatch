@@ -16,7 +16,7 @@ worker won the race (17 dropped in one production deployment). On enqueue
 failure the receipt is put back to `:failed` instead of stranding on
 `:scheduled`.
 
-**Double enqueueing resolved in 0.9.0:**
+**Double enqueueing resolved in 0.8.6:**
 - The cron ran the `:retry` action — whose `EnqueueRetryJob` change enqueues
   a job — and then enqueued a second one itself. It now tells the action not
   to (`ash_dispatch_enqueue?: false` in the changeset context) and keeps its
@@ -31,7 +31,7 @@ Still open:
   should run in `:emails` (a queue integrators already must define) instead
   of `:default`.
 
-## 2. ManualTrigger `:trigger` accepts arguments it ignores — RESOLVED in 0.9.0
+## 2. ManualTrigger `:trigger` accepts arguments it ignores — RESOLVED in 0.8.6
 
 The four options are dispatch options now (`Dispatcher.dispatch/4`). A
 recipient override dispatches only email channels, renders each for its
@@ -149,13 +149,7 @@ bug fixed in `fix/gettext-domain-catalog`:
   `Spark.Dsl.Extension.codegen/1` callback — ash_typescript has no codegen
   hooks, so "an ash_typescript extension" is not actually possible today.
 
-## 9. Raise the declared Elixir floor — RESOLVED in 0.9.0
-
-`mix.exs` says `elixir: "~> 1.17"`, matching what CI's
-`compile-without-optional-deps` job has built on since 0.8.5. Original
-finding kept below for context.
-
-### Original finding
+## 9. Raise the declared Elixir floor — planned for 0.9.0
 
 `mix.exs` says `elixir: "~> 1.15"`. That is true of ash_dispatch's own code,
 and of an app that pins an older Ash — but **Ash 3.33 does not compile on

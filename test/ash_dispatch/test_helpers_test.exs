@@ -57,6 +57,19 @@ defmodule AshDispatch.TestHelpersTest do
     assert error.message =~ "subject contains `confirmed`"
   end
 
+  test "CSS in a <style> block is not mistaken for template source" do
+    html = "<style>@supports (display:grid){@media (min-width:1px){.a{b:c}}}</style><p>ok</p>"
+
+    rendered = %AshDispatch.Preview.Rendered{
+      transport: :email,
+      subject: "Hello",
+      html_body: html,
+      text_body: "ok"
+    }
+
+    assert AshDispatch.Test.problems_for(rendered) == []
+  end
+
   test "rendering nothing is a failure, not a pass" do
     error =
       assert_raise ExUnit.AssertionError, fn ->

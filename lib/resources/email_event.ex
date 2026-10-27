@@ -212,19 +212,10 @@ defmodule AshDispatch.Resources.EmailEvent do
     # Use centralized ChannelResolver for consistent priority logic
     all_channels = AshDispatch.ChannelResolver.resolve(event_id, event_module, sample_context)
 
-    # The previews come from AshDispatch.Preview — the send path's own
-    # renderer — rather than from a template render of our own: the HTML an
-    # admin reads here is the HTML the recipient gets.
-    rendered =
-      case AshDispatch.Preview.render(event_id, :sample, transport: :email, seed: 0) do
-        {:ok, rendered} -> rendered
-        {:error, _} -> []
-      end
-
     email_channels =
       all_channels
       |> Enum.filter(&(&1.transport == :email))
-      |> Enum.map(&serialize_channel(&1, event_module, sample_context, rendered))
+      |> Enum.map(&serialize_channel(&1, event_id, event_module, sample_context))
 
     # Use EventResolver for all callback lookups (handles function_exported? and error handling)
     domain = EventResolver.domain(event_module)
@@ -247,15 +238,28 @@ defmodule AshDispatch.Resources.EmailEvent do
     }
   end
 
-  defp serialize_channel(%AshDispatch.Channel{} = channel, event_module, context, rendered) do
+  defp serialize_channel(%AshDispatch.Channel{} = channel, event_id, event_module, context) do
     # Use EventResolver for all callback lookups (handles function_exported? and error handling)
     # Prefer channel.variant (from DSL) over EventResolver callback
     variant = channel.variant || EventResolver.template_variant(event_module, context, channel)
 
+    # The preview comes from AshDispatch.Preview — the send path's own
+    # renderer — so the HTML an admin reads here is the HTML the recipient
+    # gets. One channel at a time, so one broken channel costs only itself,
+    # and from sample data only: listing events must not read customer
+    # records or run recipient queries (it never did).
     letter =
-      Enum.find(rendered, fn letter ->
-        letter.audience == channel.audience and to_string(letter.variant) == to_string(variant)
-      end)
+      case AshDispatch.Preview.render(event_id, :sample,
+             transport: :email,
+             audience: channel.audience,
+             variant: variant,
+             seed: 0,
+             read_records?: false,
+             resolve_recipients?: false
+           ) do
+        {:ok, [letter | _]} -> letter
+        _ -> nil
+      end
 
     {subject, html_preview, text_preview} =
       case letter do

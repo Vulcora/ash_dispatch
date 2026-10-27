@@ -111,6 +111,16 @@ defmodule AshDispatch.Test do
     end
   end
 
+  @doc """
+  The problems `render_all/1` would report for one rendered letter — `[]`
+  when there are none. For checking a letter rendered some other way, e.g. by
+  `AshDispatch.Preview.render/3` from a specific record. Takes `:forbid`.
+  """
+  @spec problems_for(Preview.Rendered.t(), keyword()) :: [String.t()]
+  def problems_for(%Preview.Rendered{} = rendered, opts \\ []) do
+    problems(rendered, @markers ++ List.wrap(Keyword.get(opts, :forbid, [])))
+  end
+
   # ── Rendering ───────────────────────────────────────────────────────
 
   defp rows(opts) do
@@ -167,7 +177,7 @@ defmodule AshDispatch.Test do
   defp fields(rendered) do
     [
       subject: rendered.subject,
-      html_body: rendered.html_body,
+      html_body: without_styles(rendered.html_body),
       text_body: rendered.text_body,
       title: rendered.title,
       message: rendered.message
@@ -186,19 +196,21 @@ defmodule AshDispatch.Test do
   defp leftover?(text, marker), do: String.contains?(text, marker)
 
   defp excerpt(text, marker) do
-    case :binary.match(text, marker) do
-      {start, _len} ->
-        from = max(start - 20, 0)
-
-        text
-        |> binary_part(from, min(byte_size(text) - from, 80))
+    case String.split(text, marker, parts: 2) do
+      [before, after_marker] ->
+        (String.slice(before, -20, 20) <> marker <> String.slice(after_marker, 0, 60))
         |> String.replace(~r/\s+/, " ")
         |> String.trim()
 
-      :nomatch ->
+      _ ->
         ""
     end
   end
+
+  # CSS is not template output: a minified `@supports (...){@media ...}` would
+  # read as a leftover `{@`.
+  defp without_styles(nil), do: nil
+  defp without_styles(html), do: String.replace(html, ~r/<style\b.*?<\/style>/is, "")
 
   defp blank?(nil), do: true
   defp blank?(text) when is_binary(text), do: String.trim(text) == ""

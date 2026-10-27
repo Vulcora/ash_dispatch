@@ -51,7 +51,7 @@ defmodule Mix.Tasks.Compile.AshDispatch do
   Fails the build when a `.heex` template has an expression that would reach
   the recipient as raw text — `{if ...}`, `{for ...}`, `{case ...}` or
   `#{...}` in body position — naming the file and line of each. Off by
-  default in 0.9. See `AshDispatch.StrictTemplates`.
+  default. See `AshDispatch.StrictTemplates`.
   """
 
   use Mix.Task.Compiler

@@ -311,7 +311,7 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
   """
   #
   # `opts` (from `build_trigger_opts/5`) are DISPATCH options, not template
-  # variables. Until 0.9.0 they were passed as the variables map, where
+  # variables. Until 0.8.6 they were passed as the variables map, where
   # nothing read them: the mail went to whoever the resolver returned, every
   # channel was dispatched and preferences applied — so "send a test to
   # myself" mailed the real recipient. `Dispatcher.dispatch/4` now honours
@@ -428,12 +428,23 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
   defp to_preview_map(%AshDispatch.Preview.Rendered{} = rendered) do
     email? = rendered.transport == :email
 
+    # Subject and sender are part of these maps for EVERY channel, as they
+    # always were: non-email channels have no envelope, so they come from the
+    # module's callbacks, in the context the letter was rendered in.
+    {subject, from} =
+      if email? or is_nil(rendered.context) do
+        {rendered.subject, rendered.from}
+      else
+        {EventResolver.subject(rendered.module, rendered.context, rendered.channel),
+         EventResolver.from(rendered.module, rendered.context, rendered.channel)}
+      end
+
     %{
       channel: %{transport: rendered.transport, audience: rendered.audience},
-      subject: rendered.subject || AshDispatch.ContentMap.get_content(rendered.content, :subject),
+      subject: subject,
       html_body: rendered.html_body,
       text_body: rendered.text_body,
-      from_address: from_address(rendered.from),
+      from_address: from_address(from),
       recipient: rendered.recipient || "preview@example.com",
       audience: rendered.audience,
       transport: rendered.transport,

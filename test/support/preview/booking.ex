@@ -116,6 +116,17 @@ defmodule AshDispatch.Test.Preview.BookingConfirmed do
 
   def attachments(_context, _channel), do: []
 
+  # See BookingReminder: reports when it runs, which a preview must never do.
+  @impl true
+  def generate_send_variables(_context, variables) do
+    case Application.get_env(:ash_dispatch, :capture_pid) do
+      pid when is_pid(pid) -> send(pid, {:minted, id()})
+      _ -> :ok
+    end
+
+    {:ok, variables}
+  end
+
   @impl true
   def prepare_template_assigns(%{data: %{booking: booking}} = context, _channel) do
     recipient = context.variables[:recipient]

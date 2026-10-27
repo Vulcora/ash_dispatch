@@ -1,7 +1,7 @@
 defmodule AshDispatch.MixProject do
   use Mix.Project
 
-  @version "0.9.0"
+  @version "0.8.6"
   @description "Event-driven notification system for Ash Framework with multiple transport types"
   @source_url "https://github.com/Vulcora/ash_dispatch"
 
@@ -9,7 +9,7 @@ defmodule AshDispatch.MixProject do
     [
       app: :ash_dispatch,
       version: @version,
-      elixir: "~> 1.17",
+      elixir: "~> 1.15",
       elixirc_paths: elixirc_paths(Mix.env()),
       compilers: Mix.compilers() ++ [:ash_dispatch],
       start_permanent: Mix.env() == :prod,
