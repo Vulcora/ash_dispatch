@@ -23,8 +23,9 @@ defmodule AshDispatch.Workers.SendSMS do
     queue: :sms,
     max_attempts: 5,
     # One job per receipt. A "send now" while the original is still queued must
-    # not become two messages to the same phone.
-    unique: [keys: [:receipt_id], states: [:available, :scheduled, :executing]]
+    # not become two messages to the same phone — and neither may the retry
+    # cron while Oban's own backoff retry is still waiting (`:retryable`).
+    unique: [keys: [:receipt_id], states: [:available, :scheduled, :executing, :retryable]]
 
   alias AshDispatch.Config
   alias AshDispatch.ReceiptStatus

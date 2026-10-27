@@ -74,9 +74,13 @@ defmodule AshDispatch do
   @doc """
   Renders an event's channels without delivering anything.
 
-  This is the preview engine behind the ManualTrigger resource, exposed as
-  a plain function so an app can render a mail into an admin screen, a
-  test, or a snapshot without going through a resource action.
+  This is the preview behind the ManualTrigger resource, exposed as a plain
+  function so an app can render a mail into an admin screen, a test, or a
+  snapshot without going through a resource action. It renders through
+  `AshDispatch.Preview` — the send path's own renderer — and returns its
+  results in the maps the ManualTrigger `:preview` action has always
+  returned. For the full envelope (reply address, attachments, headers), a
+  seed, or a variant, use `AshDispatch.Preview.render/3` directly.
 
   For each channel of the event it loads the event's record, runs the
   event's callbacks and renders its templates, returning one map per
@@ -90,7 +94,7 @@ defmodule AshDispatch do
         html_body: "<html>…</html>",
         text_body: "Your order …",
         from_address: "orders@example.com",
-        recipient: "Alice <alice@example.com>",
+        recipient: "alice@example.com",   # what the receipt is addressed to
         notification_title: nil,   # :in_app channels only
         notification_message: nil  # :in_app channels only
       }

@@ -64,7 +64,7 @@ end
 - **⚛️ Generated TypeScript SDK** - Ready-to-use React hooks, NotificationProvider, and NotificationBell components
 - **📡 Lightweight Broadcast** - `:broadcast` transport for real-time PubSub events without receipt overhead
 - **🔌 Extensible** - Add custom transports and event modules
-- **🧪 Test-Friendly** - Factory integration for testing templates
+- **🔍 Previews on the send path** - `AshDispatch.Preview` renders any event exactly as it would be sent; `AshDispatch.Test.assert_all_render/1` makes "every mail renders" a one-line test
 - **🔀 Smart Deduplication** - Optional `deduplicate_group` to prevent duplicate notifications when audiences overlap
 
 ## Tutorials
@@ -86,6 +86,7 @@ end
 - [App Integration](lib/documentation/topics/app-integration.md)
 - [Code Generation](lib/documentation/topics/code-generation.md)
 - [Oban Configuration](lib/documentation/topics/oban-configuration.md)
+- [Previews and Testing](lib/documentation/topics/previews-and-testing.md) - Render any event as sent, test that every mail renders, strict templates
 
 ## Reference
 
@@ -126,7 +127,7 @@ mix ash.migrate
 ```elixir
 def deps do
   [
-    {:ash_dispatch, "~> 0.8"}
+    {:ash_dispatch, "~> 0.8.6"}
   ]
 end
 ```

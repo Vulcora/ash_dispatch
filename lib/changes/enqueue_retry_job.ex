@@ -10,6 +10,15 @@ defmodule AshDispatch.Changes.EnqueueRetryJob do
   require Logger
 
   @impl true
+  # The RetryFailedDeliveries cron runs `:retry` too, and enqueues the job
+  # itself — it needs the enqueue's result, to put the receipt back to
+  # `:failed` when there is no job behind it. It says so through the changeset
+  # context; without that, every cron retry was enqueued twice (once here,
+  # once there), and an in-app retry, which delivers inline, was delivered
+  # twice.
+  def change(%{context: %{ash_dispatch_enqueue?: false}} = changeset, _opts, _context),
+    do: changeset
+
   def change(changeset, _opts, _context) do
     Ash.Changeset.after_action(changeset, fn _changeset, receipt ->
       case enqueue_job(receipt) do

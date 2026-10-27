@@ -7,6 +7,101 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.6] - 2026-10-27
+
+### Added
+
+- **`AshDispatch.Preview`** — render any event exactly as it would be sent,
+  without sending it.
+  - `events/0`: the catalogue, one row per event × channel (transport,
+    audience, variant) with the event's metadata (resource, trigger,
+    category, `sensitive?`, locales).
+  - `render/3`: from `:sample` data, `{:record, id}` or a data map, with
+    `seed:`, `transport:`, `audience:`, `variant:`, `locale:`,
+    `recipient_email:` and `actor:`. Returns `AshDispatch.Preview.Rendered`
+    structs carrying the envelope the email backend would receive — `to`,
+    `from`, `reply_to`, `subject`, `html_body`, `text_body`, `attachments`,
+    `headers`.
+  - **No second renderer.** It opens the event through the send path's own
+    functions (`Dispatcher.prepare/3`, or the notifier's preparation for an
+    action-triggered event), resolves the recipient like the dispatcher,
+    renders through the function that builds the receipt, and builds the
+    envelope with the email transport's job args and the `SendEmail` worker's
+    backend params. A parity test sends letters for real (both the notifier
+    and `dispatch/3`) and compares them with their previews field by field.
+  - **No side effects.** A preview never calls `generate_send_variables/2`
+    (where events mint tokens and write rows), creates no receipt or job, and
+    with `read_records?: false` / `resolve_recipients?: false` reads nothing
+    from the database at all — which is how `EmailEvent` uses it.
+  - `AshDispatch.preview/3`, the `EmailEvent` resource and the ManualTrigger
+    `:preview` action now render through it.
+- **`sample_data/1`** on events, called with `seed: integer`; the default
+  calls `sample_data/0`. A `:sample` preview seeds the process's `:rand` with
+  the seed (and restores it afterwards), so the same seed gives the same
+  letter whichever callback the event defines.
+- **`AshDispatch.Test.assert_all_render/1`** and **`render_all/1`**: render
+  every row of the catalogue from sample data, once per seed, and fail on a
+  letter that could not be rendered, an email with an empty subject or no
+  body, or output still containing `<%`, `{@`, `#{`, a HEEx block expression
+  or `TODO` (plus `forbid:` markers of your own). Returns the number of
+  letters rendered, so an app's "every mail renders" test is one line with an
+  exact count. `problems_for/2` runs the same checks on a single letter.
+- **Strict templates** — `config :ash_dispatch, strict_templates: true`
+  refuses `.heex` templates with `{if`, `{for`, `{case` (and `unless`,
+  `cond`, `with`) or `#{` in body position: the `:ash_dispatch` compiler fails
+  the build with the file and line of each, and `TemplateResolver` refuses to
+  render one (`AshDispatch.TemplateError`, raised by the send path). Off by
+  default. See `AshDispatch.StrictTemplates`.
+- **`headers/2`** on events: extra email headers such as `X-Entity-Ref-ID`.
+  Stored in the receipt (so a retry keeps them), passed to the backend as
+  `:headers` and added by `AshDispatch.EmailBackend.Swoosh`. Names the
+  envelope already sets (`To`, `From`, `Subject`, `Reply-To`, …), values that
+  are neither strings nor integers, and values with line breaks are dropped
+  with a warning.
+- **`Dispatcher.dispatch/4`** with options for manual sends: `:channels`,
+  `:recipient_email`, `:skip_preferences`, `:actor`.
+- A guide, **Previews and testing**.
+
+### Fixed
+
+- **ManualTrigger `:trigger` honours `recipient_email`, `audience`,
+  `transport` and `skip_preferences`** (BACKLOG #2). They were packed into the
+  template variables and read by nothing, so "send a test to myself" mailed
+  the real recipient. A recipient override now dispatches only email
+  channels, each rendered for its first resolved recipient and sent to the
+  override as one receipt without a `user_id`; `content.manual_override`
+  records the address, the recipient it replaced and the actor.
+  `skip_preferences` bypasses both opt-out gates and is recorded the same
+  way.
+- **The trigger no longer generates the send variables twice.** An event
+  that minted a token in `generate_send_variables/2` minted two and mailed
+  the second.
+- **A cron retry is enqueued once** (BACKLOG #1). `RetryFailedDeliveries` ran
+  the `:retry` action — which enqueues a job — and then enqueued another; an
+  in-app retry, which delivers inline, was delivered twice. `SendEmail` and
+  `SendSMS` uniqueness now also covers `:retryable`, so a cron retry no longer
+  lands beside the job Oban's backoff is about to run — instead that waiting
+  job is made available at once, so "send now" sends now.
+- **A retried email keeps its sender.** Without content args the worker read
+  the sender from the receipt with an atom key, which a JSONB-stored receipt
+  does not have, and sent from the default address.
+- **The legacy `AshDispatch.Resources.ManualTrigger`'s `:trigger`** no longer
+  raises (`FunctionClauseError`); it and `:preview` run through the same
+  helpers as `.Base`.
+
+### Changed
+
+- **Previews show what is sent.** The ManualTrigger/`AshDispatch.preview/3`
+  maps keep their keys, but their content now comes from the send path:
+  `recipient` is the identifier the receipt is addressed to (the
+  `Name <email>` formatting was preview-only), bodies are trimmed as the
+  receipt stores them, and `EmailEvent`'s `preview_html`/`preview_text` come
+  from the same render.
+- `AshDispatch.Notifier.DispatchHandler` and `AshDispatch.Dispatcher` expose
+  their preparation (`prepare/4`, `prepare/3`, `recipients_for/3`,
+  `build_receipt/4`) as `@doc false` functions — the seam the preview renders
+  through, not public API.
+
 ## [0.8.5] - 2026-09-23
 
 ### Documentation

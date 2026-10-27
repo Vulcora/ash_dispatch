@@ -255,7 +255,12 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
     next_retry_count = (receipt.retry_count || 0) + 1
     is_final_retry = next_retry_count >= max_retries
 
+    # `ash_dispatch_enqueue?: false`: the `:retry` action enqueues on its own
+    # (Changes.EnqueueRetryJob, for the admin path), and this function enqueues
+    # below because it needs the result. Both used to run.
     case receipt
+         |> Ash.Changeset.new()
+         |> Ash.Changeset.set_context(%{ash_dispatch_enqueue?: false})
          |> Ash.Changeset.for_update(:retry, %{})
          |> Ash.update(authorize?: false) do
       {:ok, updated_receipt} ->

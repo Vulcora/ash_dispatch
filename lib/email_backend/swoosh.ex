@@ -83,6 +83,8 @@ defmodule AshDispatch.EmailBackend.Swoosh do
       `:cid`) to embed the file in the body instead of attaching it — the HTML
       body then references it as `<img src="cid:logo.png">`. Defaults to a
       regular `:attachment` with the cid unset.
+    - `:headers` - Optional map of extra header name to value, from the event's
+      `headers/2` callback (e.g. `%{"X-Entity-Ref-ID" => booking.id}`).
 
   ## Returns
 
@@ -140,6 +142,15 @@ defmodule AshDispatch.EmailBackend.Swoosh do
           value when is_binary(value) and value != "" -> Swoosh.Email.reply_to(built, value)
           _ -> built
         end
+      end)
+      |> then(fn built ->
+        # Extra headers from the event's `headers/2` (e.g. X-Entity-Ref-ID).
+        # Absent for every event without the callback — then nothing changes.
+        params
+        |> Map.get(:headers, %{})
+        |> Enum.reduce(built, fn {name, value}, acc ->
+          Swoosh.Email.header(acc, to_string(name), to_string(value))
+        end)
       end)
       |> then(fn built ->
         params

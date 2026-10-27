@@ -64,9 +64,23 @@ defmodule AshDispatch.Transport.Retry do
         receipt
         |> worker.new_for_receipt()
         |> Oban.insert()
+        |> run_waiting_retry()
 
       other ->
         {:error, {:not_a_worker_transport, other}}
     end
   end
+
+  # The send workers are unique per receipt across `:retryable` too, so a
+  # retry of a receipt whose job is sitting in Oban's own backoff does not
+  # insert a second job — Oban hands back the waiting one (`conflict?: true`).
+  # Left at that, "send now" and the cron would quietly wait out the backoff
+  # (and the cron would count a retry that did not happen), so the waiting job
+  # is made available now instead: the retry happens, once.
+  defp run_waiting_retry({:ok, %{conflict?: true, state: "retryable", id: id} = job}) do
+    Oban.retry_job(id)
+    {:ok, job}
+  end
+
+  defp run_waiting_retry(result), do: result
 end

@@ -21,12 +21,11 @@ defmodule AshDispatch.Resources.ManualTrigger do
   @moduledoc """
   > #### Deprecated — use `AshDispatch.Resources.ManualTrigger.Base` {: .warning}
   >
-  > This legacy variant's `:trigger` action builds its dispatch opts as a
-  > keyword list, which fails `Dispatcher.dispatch/3`'s `is_map/1` guard with
-  > a `FunctionClauseError`. The `.Base` variant is the maintained one:
+  > The `.Base` variant is the maintained one:
   > `use AshDispatch.Resources.ManualTrigger.Base, domain: MyApp.Deliveries`.
-  > Kept only so existing registrations of `:list_events`/`:preview` keep
-  > compiling; will be removed in 0.6.
+  > Since 0.8.6 this variant's `:preview` and `:trigger` run through the same
+  > helpers as `.Base` (its `:trigger` used to raise). Kept only so existing
+  > registrations keep compiling; it will be removed in a later release.
 
   Non-persisted resource for manually triggering events from admin interfaces.
 
@@ -177,7 +176,7 @@ defmodule AshDispatch.Resources.ManualTrigger do
             filter -> filter
           end
 
-        case preview_trigger(
+        case AshDispatch.Resources.ManualTrigger.Helpers.preview_trigger(
                event_id,
                context_data,
                channel_filter,
@@ -220,31 +219,24 @@ defmodule AshDispatch.Resources.ManualTrigger do
         transport = Ash.Changeset.get_attribute(changeset, :transport)
         skip_preferences = Ash.Changeset.get_attribute(changeset, :skip_preferences)
 
-        # Build options (include actor for authorization)
-        opts = [skip_preferences: skip_preferences, actor: context.actor]
-
+        # The same path as the `.Base` variant: the options reach
+        # `Dispatcher.dispatch/4` as options (until 0.8.6 they were a keyword
+        # list in the variables slot, which raised).
         opts =
-          if recipient_email do
-            Keyword.put(opts, :recipient_email, recipient_email)
-          else
-            opts
-          end
+          AshDispatch.Resources.ManualTrigger.Helpers.build_trigger_opts(
+            recipient_email,
+            audience,
+            transport,
+            skip_preferences,
+            context.actor
+          )
 
-        # Build channel filters
-        channel_filters =
-          []
-          |> maybe_add_channel_filter(:audience, audience)
-          |> maybe_add_channel_filter(:transport, transport)
-
-        opts =
-          if channel_filters != [] do
-            Keyword.put(opts, :channels, channel_filters)
-          else
-            opts
-          end
-
-        # Trigger the event using Dispatcher
-        case AshDispatch.Dispatcher.dispatch(event_id, context_data, opts) do
+        case AshDispatch.Resources.ManualTrigger.Helpers.load_and_dispatch(
+               event_id,
+               context_data,
+               opts,
+               context.actor
+             ) do
           {:ok, _results} ->
             changeset
 
@@ -473,173 +465,6 @@ defmodule AshDispatch.Resources.ManualTrigger do
     end
   end
 
-  defp preview_trigger(event_id, context_data, channel_filter, recipient_email, actor) do
-    # Use centralized EventResolver for event lookup
-    case EventResolver.find_module(event_id) do
-      {:ok, event_module} ->
-        with {:ok, context} <-
-               build_context_from_data(event_id, event_module, context_data, actor),
-             {:ok, channels} <- get_filtered_channels(event_module, context, channel_filter) do
-          previews =
-            Enum.map(channels, fn channel ->
-              # Use EventResolver for all callback lookups
-              subject = EventResolver.subject(event_module, context, channel)
-              from_result = EventResolver.from(event_module, context, channel)
-              from_address = if from_result, do: elem(from_result, 1), else: ""
-              recipient = recipient_email || get_preview_recipient(event_module, context, channel)
-              # Prefer channel.variant (from DSL) over EventResolver callback
-              variant =
-                channel.variant || EventResolver.template_variant(event_module, context, channel)
-
-              # Prepare template assigns using EventResolver
-              base_assigns =
-                EventResolver.prepare_template_assigns(event_module, context, channel)
-
-              assigns = Map.merge(context.data, base_assigns)
-
-              # For in_app transport, get notification content instead of rendering templates
-              {html_body, text_body, notification_title, notification_message} =
-                if channel.transport == :in_app do
-                  title = EventResolver.notification_title(event_module, context, channel)
-                  message = EventResolver.notification_message(event_module, context, channel)
-                  {nil, nil, title, message}
-                else
-                  # Render email templates
-                  {html, text} =
-                    render_templates(event_module, channel.transport, variant, assigns)
-
-                  {html, text, nil, nil}
-                end
-
-              %{
-                channel: %{
-                  transport: channel.transport,
-                  audience: channel.audience
-                },
-                subject: subject,
-                html_body: html_body,
-                text_body: text_body,
-                from_address: from_address,
-                recipient: recipient,
-                audience: channel.audience,
-                transport: channel.transport,
-                notification_title: notification_title,
-                notification_message: notification_message
-              }
-            end)
-
-          {:ok, previews}
-        end
-
-      {:error, :not_found} ->
-        {:error, "Event not found: #{event_id}"}
-    end
-  end
-
-  defp build_context_from_data(event_id, event_module, context_data, actor) do
-    # Normalize context_data keys to atoms (JSON sends string keys)
-    context_data = atomize_keys(context_data)
-
-    # If user_id is provided, load the real user
-    # Otherwise use sample data for preview
-    base_data =
-      cond do
-        # If user_id is provided in context_data, load that specific user
-        Map.has_key?(context_data, :user_id) ->
-          user = load_user(context_data[:user_id])
-          if user, do: %{user: user}, else: %{}
-
-        # Otherwise, use EventResolver for safe sample_data retrieval
-        true ->
-          EventResolver.sample_data(event_module)
-      end
-
-    # Merge context_data on top (but remove user_id since we already loaded the user)
-    context_data_without_user_id = Map.delete(context_data, :user_id)
-    merged_data = Map.merge(base_data, context_data_without_user_id)
-
-    # Use EventResolver for safe prepare_data call
-    enriched_data =
-      if EventResolver.exports?(event_module, :prepare_data, 2) do
-        # Create a mock changeset with the merged data
-        changeset = %{context: merged_data, __struct__: Ash.Changeset}
-        prepared = EventResolver.prepare_data(event_module, changeset, nil)
-        # If prepare_data returns empty, use merged_data
-        if map_size(prepared) > 0, do: prepared, else: merged_data
-      else
-        merged_data
-      end
-
-    {:ok,
-     %Context{
-       event_id: event_id,
-       data: enriched_data,
-       metadata: %{actor: actor}
-     }}
-  end
-
-  defp get_filtered_channels(event_module, context, nil) do
-    # Use centralized ChannelResolver for consistent priority logic
-    channels = AshDispatch.ChannelResolver.resolve(context.event_id, event_module, context)
-    {:ok, channels}
-  end
-
-  defp get_filtered_channels(event_module, context, channel_filter) do
-    # Use centralized ChannelResolver for consistent priority logic
-    channels = AshDispatch.ChannelResolver.resolve(context.event_id, event_module, context)
-
-    # Apply user-specified filters
-    filtered =
-      Enum.filter(channels, fn channel ->
-        Enum.all?(channel_filter, fn {key, value} ->
-          Map.get(channel, key) == value
-        end)
-      end)
-
-    {:ok, filtered}
-  end
-
-  defp get_preview_recipient(event_module, context, channel) do
-    # Use EventResolver for safe callback execution
-    case EventResolver.recipients(event_module, context, channel) do
-      [first | _] -> first
-      [] -> "preview@example.com"
-    end
-  end
-
-  defp render_templates(event_module, transport, variant, assigns) do
-    # Get otp_app from config - needed for priv manifest lookup
-    otp_app = Config.otp_app()
-
-    html =
-      case AshDispatch.TemplateResolver.render(
-             event_module: event_module,
-             format: :html,
-             transport: transport,
-             variant: variant,
-             assigns: assigns,
-             otp_app: otp_app
-           ) do
-        {:ok, rendered} -> rendered
-        {:error, _} -> nil
-      end
-
-    text =
-      case AshDispatch.TemplateResolver.render(
-             event_module: event_module,
-             format: :text,
-             transport: transport,
-             variant: variant,
-             assigns: assigns,
-             otp_app: otp_app
-           ) do
-        {:ok, rendered} -> rendered
-        {:error, _} -> nil
-      end
-
-    {html, text}
-  end
-
   defp get_event_description(event_module) do
     case Module.split(event_module) do
       # Pattern: MyApp.Orders.Events.Created.Event -> Orders > Created
@@ -739,19 +564,4 @@ defmodule AshDispatch.Resources.ManualTrigger do
 
   defp maybe_add_filter(map, _key, nil), do: map
   defp maybe_add_filter(map, key, value), do: Map.put(map, key, value)
-
-  defp maybe_add_channel_filter(list, _key, nil), do: list
-
-  defp maybe_add_channel_filter(list, key, value) do
-    list ++ [%{key => value}]
-  end
-
-  defp atomize_keys(map) when is_map(map) do
-    Map.new(map, fn
-      {key, value} when is_binary(key) -> {String.to_atom(key), value}
-      {key, value} -> {key, value}
-    end)
-  end
-
-  defp atomize_keys(value), do: value
 end

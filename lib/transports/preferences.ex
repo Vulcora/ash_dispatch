@@ -42,7 +42,12 @@ defmodule AshDispatch.Transports.Preferences do
   def with_consent(receipt, context, channel, event_config, fun) do
     varna_om_foraldralos_leverantor()
 
-    if UserPreference.allows_receipt?(receipt, context, channel, event_config) do
+    # `skip_preferences: true` on `Dispatcher.dispatch/4` — a manual trigger
+    # that was explicitly told to send regardless. The receipt's content
+    # records that it did (`manual_override`).
+    skip? = match?(%{skip_preferences: true}, AshDispatch.Dispatcher.override(context))
+
+    if skip? or UserPreference.allows_receipt?(receipt, context, channel, event_config) do
       fun.()
     else
       Logger.info(

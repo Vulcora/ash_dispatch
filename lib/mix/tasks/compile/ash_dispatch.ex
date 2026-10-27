@@ -1,5 +1,5 @@
 defmodule Mix.Tasks.Compile.AshDispatch do
-  @moduledoc """
+  @moduledoc ~S"""
   Mix compiler that copies AshDispatch templates to priv/ directory.
 
   **Disabled by default** for fast development iteration. Templates are loaded
@@ -43,6 +43,15 @@ defmodule Mix.Tasks.Compile.AshDispatch do
 
   The compiler runs during `mix compile` but only copies files when
   `compile_templates: true` is configured.
+
+  ## Strict templates
+
+      config :ash_dispatch, strict_templates: true
+
+  Fails the build when a `.heex` template has an expression that would reach
+  the recipient as raw text — `{if ...}`, `{for ...}`, `{case ...}` or
+  `#{...}` in body position — naming the file and line of each. Off by
+  default. See `AshDispatch.StrictTemplates`.
   """
 
   use Mix.Task.Compiler
@@ -52,13 +61,48 @@ defmodule Mix.Tasks.Compile.AshDispatch do
 
   @doc false
   def run(_args) do
-    # Skip template compilation unless explicitly enabled via config
-    # Templates are loaded directly from lib/ in dev for fast iteration
-    # Set `config :ash_dispatch, compile_templates: true` to enable (e.g., in prod)
-    if Application.get_env(:ash_dispatch, :compile_templates, false) do
-      run_compile()
+    case strict_diagnostics() do
+      [] ->
+        # Skip template compilation unless explicitly enabled via config
+        # Templates are loaded directly from lib/ in dev for fast iteration
+        # Set `config :ash_dispatch, compile_templates: true` to enable (e.g., in prod)
+        if Application.get_env(:ash_dispatch, :compile_templates, false) do
+          run_compile()
+        else
+          {:ok, []}
+        end
+
+      diagnostics ->
+        {:error, diagnostics}
+    end
+  end
+
+  # `config :ash_dispatch, strict_templates: true`: a `.heex` template whose
+  # expressions would reach the recipient as raw text fails the build, with
+  # the file and line of each. Checked whether or not templates are copied —
+  # the point is that it never gets as far as a release. See
+  # `AshDispatch.StrictTemplates`.
+  defp strict_diagnostics do
+    if AshDispatch.StrictTemplates.enabled?() do
+      violations = AshDispatch.StrictTemplates.check_project(File.cwd!())
+
+      Enum.map(violations, fn violation ->
+        message =
+          AshDispatch.StrictTemplates.format_violation(violation) <>
+            "\n\n" <> AshDispatch.StrictTemplates.advice()
+
+        Mix.shell().error("error: " <> message)
+
+        %Mix.Task.Compiler.Diagnostic{
+          compiler_name: "ash_dispatch",
+          file: Path.absname(violation.file),
+          position: violation.line,
+          severity: :error,
+          message: message
+        }
+      end)
     else
-      {:ok, []}
+      []
     end
   end
 

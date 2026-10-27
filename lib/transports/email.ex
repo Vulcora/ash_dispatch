@@ -105,25 +105,7 @@ defmodule AshDispatch.Transports.Email do
 
   # Enqueue Oban job for the receipt (one receipt = one recipient now)
   defp enqueue_email_job_for_receipt(receipt, context, channel) do
-    # Build job args from receipt (which now has all recipient info)
-    from = get_from_field(receipt)
-
-    args = %{
-      "receipt_id" => receipt.id,
-      # Receipt already has recipient email
-      "recipient_email" => receipt.recipient,
-      "event_id" => context.event_id,
-      "subject" => receipt.subject,
-      "from" => from,
-      "html_body" => receipt.body_html,
-      "text_body" => receipt.body_text,
-      # The reply address is already decided and sits in the receipt's
-      # content; it rides along in the args so the common case avoids re-reading
-      # the map, and the worker falls back to the receipt when the args lack it
-      # (a retry).
-      "reply_to" => AshDispatch.ContentMap.get_content(receipt.content, :reply_to),
-      "attachments" => resolve_attachments(context, channel)
-    }
+    args = job_args(receipt, context, channel)
 
     # Calculate schedule time
     schedule_in = schedule_seconds(channel)
@@ -141,6 +123,35 @@ defmodule AshDispatch.Transports.Email do
         Logger.error("Failed to enqueue email job: #{inspect(error)}")
         {:error, error}
     end
+  end
+
+  @doc false
+  # The `SendEmail` job's args for a receipt. Public-but-undocumented because
+  # `AshDispatch.Preview` builds the same args from the same receipt
+  # attributes: what a preview shows as sender, reply address, attachments and
+  # headers is then what the worker hands the backend, not a reconstruction of
+  # it.
+  def job_args(receipt, context, channel) do
+    # Build job args from receipt (which now has all recipient info)
+    from = get_from_field(receipt)
+
+    %{
+      "receipt_id" => receipt.id,
+      # Receipt already has recipient email
+      "recipient_email" => receipt.recipient,
+      "event_id" => context.event_id,
+      "subject" => receipt.subject,
+      "from" => from,
+      "html_body" => receipt.body_html,
+      "text_body" => receipt.body_text,
+      # The reply address is already decided and sits in the receipt's
+      # content; it rides along in the args so the common case avoids re-reading
+      # the map, and the worker falls back to the receipt when the args lack it
+      # (a retry).
+      "reply_to" => AshDispatch.ContentMap.get_content(receipt.content, :reply_to),
+      "attachments" => resolve_attachments(context, channel)
+    }
+    |> put_unless_nil("headers", AshDispatch.ContentMap.get_content(receipt.content, :headers))
   end
 
   @doc false

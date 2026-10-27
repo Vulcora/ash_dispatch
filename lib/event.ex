@@ -250,6 +250,35 @@ defmodule AshDispatch.Event do
   @callback reply_to(context(), channel()) :: String.t() | nil
 
   @doc """
+  Extra email headers — a map of header name to value — or `%{}` for none.
+
+  ## Why it exists
+
+  Some headers belong to the letter rather than to the transport. The common
+  one is `X-Entity-Ref-ID`: Gmail threads mails with the same subject from the
+  same sender into one conversation, which buries the third "Your booking is
+  confirmed" under the first two. A header that is unique per letter keeps
+  them apart.
+
+      def headers(context, %Channel{transport: :email}) do
+        %{"X-Entity-Ref-ID" => context.data.booking.id}
+      end
+
+      def headers(_context, _channel), do: %{}
+
+  Names are strings (or atoms), values strings or integers. Anything else,
+  a value with a line break, and the headers the library sets itself (`To`,
+  `From`, `Subject`, `Reply-To`, …) are dropped with a warning — the envelope
+  has callbacks of its own, and an email without a header is cheaper than an
+  email that never leaves.
+
+  The headers are stored in `receipt.content`, so a retry keeps them, and they
+  reach the email backend as `:headers` (`AshDispatch.EmailBackend.Swoosh`
+  adds each with `Swoosh.Email.header/3`).
+  """
+  @callback headers(context(), channel()) :: %{String.t() => String.t()}
+
+  @doc """
   In-app notification title.
   """
   @callback notification_title(context(), channel()) :: String.t()
@@ -339,6 +368,28 @@ defmodule AshDispatch.Event do
       end
   """
   @callback sample_data() :: map()
+
+  @doc """
+  Seeded sample data for event previews.
+
+  `opts` carries `seed: integer`. The same seed must give the same data, so a
+  preview that was "shuffled" can be reproduced — a link with the seed in it
+  shows the letter its sender saw. `AshDispatch.Preview` also seeds the
+  process's `:rand` state with it before calling, so data drawn from `:rand`
+  (directly, or through a library built on it) is reproducible without any
+  work here.
+
+  The default calls `sample_data/0`, so an event that only defines that keeps
+  working unchanged.
+
+  ## Example
+      def sample_data(seed: seed) do
+        names = ~w(Alva Hugo Maja Elias)
+
+        %{customer: %{name: Enum.at(names, rem(seed, length(names)))}}
+      end
+  """
+  @callback sample_data(keyword()) :: map()
 
   @doc """
   Counters to broadcast when this event creates notifications.
@@ -600,6 +651,8 @@ defmodule AshDispatch.Event do
     attachments: 2,
     prepare_template_assigns: 2,
     sample_data: 0,
+    sample_data: 1,
+    headers: 2,
     generate_send_variables: 2,
     source_url: 2,
     counters: 2,
@@ -799,6 +852,16 @@ defmodule AshDispatch.Event do
       def sample_data, do: %{}
 
       @impl true
+      # Unseeded by default: an event that only defines `sample_data/0` keeps
+      # it, whatever the seed. `AshDispatch.Preview` has already seeded
+      # `:rand`, so data drawn from it is reproducible anyway.
+      def sample_data(_opts), do: sample_data()
+
+      @impl true
+      # No extra headers by default — the email looks as it did before 0.8.6.
+      def headers(_context, _channel), do: %{}
+
+      @impl true
       def counters(_context, _channel) do
         # Read from DSL counter broadcasts
         # For now, return empty list
@@ -931,6 +994,8 @@ defmodule AshDispatch.Event do
                      extra_content: 2,
                      prepare_template_assigns: 2,
                      sample_data: 0,
+                     sample_data: 1,
+                     headers: 2,
                      counters: 2,
                      applicable_for_user?: 1,
                      required_resources: 0,

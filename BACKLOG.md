@@ -16,18 +16,32 @@ worker won the race (17 dropped in one production deployment). On enqueue
 failure the receipt is put back to `:failed` instead of stranding on
 `:scheduled`.
 
+**Double enqueueing resolved in 0.8.6:**
+- The cron ran the `:retry` action — whose `EnqueueRetryJob` change enqueues
+  a job — and then enqueued a second one itself. It now tells the action not
+  to (`ash_dispatch_enqueue?: false` in the changeset context) and keeps its
+  own enqueue, which it needs for the failure handling.
+- `SendEmail` and `SendSMS` `unique` now cover `:retryable`, so a cron retry
+  no longer lands beside the job Oban's own backoff is about to run.
+- `retry_count`: only `:retry` increments it (`mark_failed` stopped in
+  0.5.6); `test/workers/retry_accounting_test.exs` now pins both.
+
 Still open:
-- The cron's `unique` check on SendEmail does not cover the `:retryable`
-  state, so cron + in-flight-backoff can double-enqueue; the `mark_sending`
-  gate serializes them except under a narrow concurrent-read window.
 - `mix ash_dispatch.install` should add the cron entry, and the retry worker
   should run in `:emails` (a queue integrators already must define) instead
   of `:default`.
-- Side-finding: both `mark_failed` and `retry` increment `retry_count`, so
-  the budget is consumed twice as fast as configured. Makes retries fewer,
-  not silent.
 
-## 2. ManualTrigger `:trigger` accepts arguments it ignores
+## 2. ManualTrigger `:trigger` accepts arguments it ignores — RESOLVED in 0.8.6
+
+The four options are dispatch options now (`Dispatcher.dispatch/4`). A
+recipient override dispatches only email channels, renders each for its
+first resolved recipient, creates one receipt to the override address without
+a `user_id`, and records the replaced recipient and the actor in
+`content.manual_override`. `skip_preferences` bypasses both opt-out gates and
+is recorded the same way. The trigger also no longer generates the send
+variables twice. Original finding kept below for context.
+
+### Original finding
 
 `recipient_email`, `audience`, `transport` and `skip_preferences` on the
 `.Base` `:trigger` action are packed into the dispatch *variables* map and
