@@ -38,4 +38,4 @@ The suite is self-contained: it needs no database and no consuming app.
 That belongs in the consuming app, against its own database and Oban. The
 library ships helpers for it — see the *Previews and testing* guide
 (`AshDispatch.Test.assert_all_render/1`, `AshDispatch.Preview`) once you are
-on 0.9.
+on 0.8.6.
