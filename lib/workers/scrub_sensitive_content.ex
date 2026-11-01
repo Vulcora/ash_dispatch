@@ -6,7 +6,8 @@ defmodule AshDispatch.Workers.ScrubSensitiveContent do
   The receipt-first pattern stores full rendered content, which for OTP
   codes and password-reset links means live secrets in the database. Once a
   receipt is older than `config :ash_dispatch, :scrub_after_hours` (default
-  24), its `body_text` is replaced with a marker and `body_html` cleared.
+  24), its `body_text` is replaced with a marker, `body_html` cleared and the
+  copies of both bodies in `content` (`html_body`, `text_body`) removed.
   Recipient, subject, status and delivery timestamps are untouched.
 
   Receipts in `:failed` are skipped so the retry path can still resend the
@@ -56,22 +57,38 @@ defmodule AshDispatch.Workers.ScrubSensitiveContent do
       event_ids ->
         hours = Application.get_env(:ash_dispatch, :scrub_after_hours, 24)
         cutoff = DateTime.add(DateTime.utc_now(), -hours * 3600, :second)
-        table = receipt_table()
 
         {count, _} =
-          Config.repo().update_all(
-            from(r in table,
-              where: r.event_id in ^event_ids,
-              where: r.inserted_at < ^cutoff,
-              where: r.status != "failed",
-              where: not is_nil(r.body_text) and r.body_text != ^@marker
-            ),
-            set: [body_text: @marker, body_html: nil]
-          )
+          Config.repo().update_all(scrub_query(receipt_table(), event_ids, cutoff), [])
 
         if count > 0, do: Logger.info("ScrubSensitiveContent: scrubbed #{count} receipt bodies")
         :ok
     end
+  end
+
+  @doc false
+  # The receipts to scrub and what they become. The rendered bodies live twice
+  # on an email receipt: in `body_text`/`body_html` and again under
+  # `html_body`/`text_body` in `content` (the dispatcher stores the whole
+  # rendered content map), so both are emptied. A receipt already carrying the
+  # marker is picked up again while its content still holds a body, so
+  # receipts scrubbed before 0.8.7 lose the copy too.
+  def scrub_query(table, event_ids, cutoff) do
+    from(r in table,
+      where: r.event_id in ^event_ids,
+      where: r.inserted_at < ^cutoff,
+      where: r.status != "failed",
+      where:
+        (not is_nil(r.body_text) and r.body_text != ^@marker) or not is_nil(r.body_html) or
+          fragment("(? \\?| array['html_body', 'text_body'])", r.content),
+      update: [
+        set: [
+          body_text: ^@marker,
+          body_html: nil,
+          content: fragment("(? - 'html_body' - 'text_body')", r.content)
+        ]
+      ]
+    )
   end
 
   @doc false

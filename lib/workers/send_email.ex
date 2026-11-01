@@ -100,6 +100,11 @@ defmodule AshDispatch.Workers.SendEmail do
     "content_type" => ..., "data" => base64}` plus an optional `"type" =>
     "inline"` / `"cid" => ...` pair for inline images
 
+  Every field but `receipt_id` is optional: a missing one is read from the
+  receipt. An event declaring `metadata: [sensitive_content: true]` is enqueued
+  with only `receipt_id`, `event_id` and `attachments`, so its rendered bodies
+  never sit in `oban_jobs` (`AshDispatch.Transports.Email.job_args/3`).
+
   ## Returns
 
   - `:ok` on success

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.7] - 2026-11-01
+
+### Security
+
+- **A sensitive event's bodies no longer sit in `oban_jobs`.** The email
+  transport copied the rendered `html_body` and `text_body` into the
+  `SendEmail` job's args for every event, so a reset link or one-time token
+  stayed in `oban_jobs` until the Pruner removed the completed job — out of
+  reach of `ScrubSensitiveContent`. For an event declaring
+  `metadata: [sensitive_content: true]` the args now carry only `receipt_id`,
+  `event_id` and `attachments`; the worker reads the envelope and the bodies
+  from the receipt at send time, the path every retry already took.
+- **`ScrubSensitiveContent` empties the copy in `content` too.** The receipt
+  stores the rendered bodies twice, in `body_text`/`body_html` and under
+  `html_body`/`text_body` in `content`; the scrub only blanked the first.
+  Both are emptied now, and receipts scrubbed by an earlier version are
+  picked up again while their content still holds a body.
+
 ## [0.8.6] - 2026-10-27
 
 ### Added

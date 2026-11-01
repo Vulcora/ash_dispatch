@@ -30,4 +30,30 @@ defmodule AshDispatch.Workers.ScrubSensitiveContentTest do
       assert :ok = ScrubSensitiveContent.perform(%Oban.Job{args: %{}})
     end
   end
+
+  describe "scrub_query/3" do
+    setup do
+      query =
+        ScrubSensitiveContent.scrub_query("receipts", ["ticket.otp_issued"], DateTime.utc_now())
+
+      %{query: query}
+    end
+
+    test "empties both bodies and removes the copies of them from content", %{query: query} do
+      set = Enum.flat_map(query.updates, fn %{expr: [set: set]} -> set end)
+
+      assert set |> Keyword.keys() |> Enum.sort() == [:body_html, :body_text, :content]
+      assert {:fragment, _, parts} = set[:content]
+
+      raw = for {:raw, r} <- parts, into: "", do: r
+      assert raw =~ "- 'html_body'"
+      assert raw =~ "- 'text_body'"
+    end
+
+    test "picks up a receipt whose content still holds a body", %{query: query} do
+      wheres = Enum.map_join(query.wheres, " ", &Macro.to_string(&1.expr))
+      assert wheres =~ "html_body"
+      assert wheres =~ "text_body"
+    end
+  end
 end
