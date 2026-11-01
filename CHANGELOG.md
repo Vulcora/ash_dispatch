@@ -24,8 +24,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The worker fails closed for a sensitive event with no body left.** If the
   receipt holds no body, or the scrub's marker, nothing reaches the backend:
   the receipt goes to `:failed_permanent` and the job is cancelled.
-- **`ScrubSensitiveContent` only takes terminal receipts** (`:sent`, `:skipped`,
-  `:failed_permanent`), never one that can still be sent.
+- **`SendSMS` fails closed the same way**, for a sensitive event with no text left.
+- **`ScrubSensitiveContent` takes terminal receipts** (`:sent`, `:skipped`,
+  `:failed_permanent`) after `:scrub_after_hours`, so a letter that can still be
+  sent keeps its body. Any other status is scrubbed at the new cap
+  `:scrub_stranded_after_hours` (default 168): a receipt stranded in `:sending`
+  or `:pending` must not keep a live secret forever.
+- **The scrub also removes an SMS's text** (`message`, `body`) from `content`,
+  which no earlier version reached.
+- **A warning when `sensitive_content` cannot be read**: an event the registry
+  does not find gets the full job args, and now says so.
+
+### Changed
+
+- **Requires Oban `~> 2.12`**, for `{:cancel, reason}`.
+- **Publishing needs a green CI run on main**, with the Postgres tests. The
+  publish workflow starts from CI instead of from the push.
 - **`ScrubSensitiveContent` empties the copy in `content` too.** The receipt
   stores the rendered bodies twice, in `body_text`/`body_html` and under
   `html_body`/`text_body` in `content`; the scrub only blanked the first.

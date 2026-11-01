@@ -163,8 +163,16 @@ defmodule AshDispatch.Transports.Email do
   # keyword list from the DSL, but a map is accepted too.
   def sensitive?(event_id) when is_binary(event_id) do
     case AshDispatch.EventRegistry.find_event(event_id) do
-      {:ok, event} -> sensitive_metadata?(Map.get(event, :metadata))
-      _ -> false
+      {:ok, event} ->
+        sensitive_metadata?(Map.get(event, :metadata))
+
+      _ ->
+        Logger.warning(
+          "Event #{event_id} is not in the registry, so its sensitive_content metadata " <>
+            "cannot be read and its rendered bodies go into the job args"
+        )
+
+        false
     end
   end
 

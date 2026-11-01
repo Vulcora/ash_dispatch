@@ -31,10 +31,53 @@ defmodule AshDispatch.Workers.ScrubSensitiveContentTest do
     end
   end
 
-  describe "scrub_query/3" do
+  describe "cutoffs/1" do
     setup do
-      query =
-        ScrubSensitiveContent.scrub_query("receipts", ["ticket.otp_issued"], DateTime.utc_now())
+      saved =
+        for key <- [:scrub_after_hours, :scrub_stranded_after_hours],
+            do: {key, Application.get_env(:ash_dispatch, key)}
+
+      on_exit(fn ->
+        for {key, value} <- saved do
+          if is_nil(value),
+            do: Application.delete_env(:ash_dispatch, key),
+            else: Application.put_env(:ash_dispatch, key, value)
+        end
+      end)
+    end
+
+    defp timmar_bakat(nu, tid), do: DateTime.diff(nu, tid, :hour)
+
+    test "the defaults: a day, and a week for what never reached an end" do
+      nu = DateTime.utc_now()
+      {cutoff, stranded} = ScrubSensitiveContent.cutoffs(nu)
+
+      assert timmar_bakat(nu, cutoff) == 24
+      assert timmar_bakat(nu, stranded) == 7 * 24
+    end
+
+    test "the cap is configurable" do
+      Application.put_env(:ash_dispatch, :scrub_stranded_after_hours, 48)
+      nu = DateTime.utc_now()
+
+      assert {_, stranded} = ScrubSensitiveContent.cutoffs(nu)
+      assert timmar_bakat(nu, stranded) == 48
+    end
+
+    test "the cap is never shorter than the window" do
+      Application.put_env(:ash_dispatch, :scrub_after_hours, 100)
+      Application.put_env(:ash_dispatch, :scrub_stranded_after_hours, 10)
+      nu = DateTime.utc_now()
+
+      assert {_, stranded} = ScrubSensitiveContent.cutoffs(nu)
+      assert timmar_bakat(nu, stranded) == 100
+    end
+  end
+
+  describe "scrub_query/4" do
+    setup do
+      nu = DateTime.utc_now()
+      query = ScrubSensitiveContent.scrub_query("receipts", ["ticket.otp_issued"], nu, nu)
 
       %{query: query}
     end

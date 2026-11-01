@@ -274,13 +274,8 @@ defmodule AshDispatch.Workers.SendEmail do
 
   defp blank?(body), do: body in [nil, ""]
 
-  # `:mark_failed_permanent` has no transition from `:pending`.
-  defp refuse(%{status: :pending} = receipt, reason) do
-    receipt |> ReceiptStatus.mark_failed(reason) |> refuse(reason)
-  end
-
   defp refuse(receipt, reason) do
-    ReceiptStatus.mark_failed_permanent(receipt, reason)
+    ReceiptStatus.refuse(receipt, reason)
     Logger.error("Email refused for receipt #{receipt.id}: #{reason}")
     {:cancel, reason}
   end

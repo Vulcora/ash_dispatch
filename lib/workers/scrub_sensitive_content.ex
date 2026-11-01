@@ -7,13 +7,19 @@ defmodule AshDispatch.Workers.ScrubSensitiveContent do
   codes and password-reset links means live secrets in the database. Once a
   receipt is older than `config :ash_dispatch, :scrub_after_hours` (default
   24), its `body_text` is replaced with a marker, `body_html` cleared and the
-  copies of both bodies in `content` (`html_body`, `text_body`) removed.
+  copies of the text in `content` (`html_body`, `text_body`, and an SMS's
+  `message` and `body`) removed.
   Recipient, subject, status and delivery timestamps are untouched.
 
-  Only terminal receipts (`:sent`, `:skipped`, `:failed_permanent`) are
-  scrubbed. A pending, scheduled, sending or failed receipt can still be sent —
-  a delivery delayed past the window, a stalled queue, a retry — and the receipt
-  is where a sensitive event's worker reads the body.
+  Terminal receipts (`:sent`, `:skipped`, `:failed_permanent`) are scrubbed
+  after that window. A scheduled or failed receipt may still be sent — a delivery
+  delayed past the window, a stalled queue, a retry — and the receipt is where a
+  sensitive event's worker reads the body, so anything else waits for
+  `config :ash_dispatch, :scrub_stranded_after_hours` (default 168, never shorter
+  than the window). That cap is scrubbed whatever the status: a receipt stranded
+  in `:sending` or `:pending` has no way forward and nothing sweeps it, and a
+  live secret must not stay forever. A letter still waiting at the cap is refused
+  by the worker instead of being sent empty.
 
   Attachments are not touched: they live in the `SendEmail` job's args until the
   Pruner removes the job. See `AshDispatch.Transports.Email.job_args/3`.
@@ -25,8 +31,8 @@ defmodule AshDispatch.Workers.ScrubSensitiveContent do
         ...,
         metadata: [sensitive_content: true])
 
-      # Optional retention window (hours):
-      config :ash_dispatch, scrub_after_hours: 24
+      # Optional retention windows (hours):
+      config :ash_dispatch, scrub_after_hours: 24, scrub_stranded_after_hours: 168
 
   ## Scheduling
 
@@ -50,9 +56,11 @@ defmodule AshDispatch.Workers.ScrubSensitiveContent do
 
   @marker "[scrubbed: sensitive content past retention window]"
 
-  # Nothing is left to send from these. Every other status can still reach the
-  # worker, which for a sensitive event reads the body from the receipt alone.
+  # Nothing is left to send from these. Any other status may still reach the
+  # worker, which for a sensitive event reads the body from the receipt alone,
+  # so it gets the longer `@stranded_hours`.
   @terminal ["sent", "skipped", "failed_permanent"]
+  @stranded_hours 7 * 24
 
   @doc "The replacement text written into scrubbed `body_text` fields."
   def marker, do: @marker
@@ -64,11 +72,13 @@ defmodule AshDispatch.Workers.ScrubSensitiveContent do
         :ok
 
       event_ids ->
-        hours = Application.get_env(:ash_dispatch, :scrub_after_hours, 24)
-        cutoff = DateTime.add(DateTime.utc_now(), -hours * 3600, :second)
+        {cutoff, stranded_cutoff} = cutoffs(DateTime.utc_now())
 
         {count, _} =
-          Config.repo().update_all(scrub_query(receipt_table(), event_ids, cutoff), [])
+          Config.repo().update_all(
+            scrub_query(receipt_table(), event_ids, cutoff, stranded_cutoff),
+            []
+          )
 
         if count > 0, do: Logger.info("ScrubSensitiveContent: scrubbed #{count} receipt bodies")
         :ok
@@ -76,25 +86,37 @@ defmodule AshDispatch.Workers.ScrubSensitiveContent do
   end
 
   @doc false
+  # The two limits: `{cutoff, stranded_cutoff}`. The cap is never shorter than
+  # the window, so raising the window alone cannot scrub a waiting letter early.
+  def cutoffs(now) do
+    hours = Application.get_env(:ash_dispatch, :scrub_after_hours, 24)
+    stranded = Application.get_env(:ash_dispatch, :scrub_stranded_after_hours, @stranded_hours)
+
+    {DateTime.add(now, -hours * 3600, :second),
+     DateTime.add(now, -max(hours, stranded) * 3600, :second)}
+  end
+
+  @doc false
   # The receipts to scrub and what they become. The rendered bodies live twice
   # on an email receipt: in `body_text`/`body_html` and again under
   # `html_body`/`text_body` in `content` (the dispatcher stores the whole
-  # rendered content map), so both are emptied. A receipt already carrying the
+  # rendered content map), so both are emptied, and an SMS keeps its text only
+  # in `content` (`message`, `body`). A receipt already carrying the
   # marker is picked up again while its content still holds a body, so
   # receipts scrubbed before 0.8.7 lose the copy too.
-  def scrub_query(table, event_ids, cutoff) do
+  def scrub_query(table, event_ids, cutoff, stranded_cutoff) do
     from(r in table,
       where: r.event_id in ^event_ids,
-      where: r.inserted_at < ^cutoff,
-      where: r.status in ^@terminal,
+      where:
+        (r.status in ^@terminal and r.inserted_at < ^cutoff) or r.inserted_at < ^stranded_cutoff,
       where:
         (not is_nil(r.body_text) and r.body_text != ^@marker) or not is_nil(r.body_html) or
-          fragment("(? \\?| array['html_body', 'text_body'])", r.content),
+          fragment("(? \\?| array['html_body', 'text_body', 'message', 'body'])", r.content),
       update: [
         set: [
           body_text: ^@marker,
           body_html: nil,
-          content: fragment("(? - 'html_body' - 'text_body')", r.content)
+          content: fragment("(? - 'html_body' - 'text_body' - 'message' - 'body')", r.content)
         ]
       ]
     )

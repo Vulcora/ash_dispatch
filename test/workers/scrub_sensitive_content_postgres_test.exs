@@ -71,7 +71,11 @@ defmodule AshDispatch.Workers.ScrubSensitiveContentPostgresTest do
 
   defp scrub do
     @table
-    |> ScrubSensitiveContent.scrub_query([@event], DateTime.utc_now())
+    |> ScrubSensitiveContent.scrub_query(
+      [@event],
+      DateTime.utc_now(),
+      DateTime.add(DateTime.utc_now(), -86_400, :second)
+    )
     |> Repo.update_all([])
     |> elem(0)
   end
@@ -110,6 +114,34 @@ defmodule AshDispatch.Workers.ScrubSensitiveContentPostgresTest do
     for id <- 1..length(statuses) do
       assert {"Reset: token", "<a>token</a>", %{"html_body" => _}} = row(id)
     end
+  end
+
+  test "a stranded receipt is scrubbed past the cap, whatever its status" do
+    gammal = DateTime.add(DateTime.utc_now(), -2 * 86_400, :second)
+    statuses = ~w(pending scheduled sending failed)
+
+    for {status, id} <- Enum.with_index(statuses, 1) do
+      receipt!(id, status: status, inserted_at: gammal)
+    end
+
+    assert scrub() == 4
+
+    for id <- 1..length(statuses) do
+      assert {@marker, nil, content} = row(id)
+      refute Map.has_key?(content, "html_body")
+    end
+  end
+
+  test "a sensitive SMS loses its text from the content" do
+    receipt!(1,
+      body_text: nil,
+      body_html: nil,
+      content: ~s({"message": "Your code is 123456", "body": "123456", "recipient_name": "A"})
+    )
+
+    assert scrub() == 1
+    assert {@marker, nil, content} = row(1)
+    assert content == %{"recipient_name" => "A"}
   end
 
   test "picks up a receipt scrubbed before 0.8.7, whose content still holds a body" do

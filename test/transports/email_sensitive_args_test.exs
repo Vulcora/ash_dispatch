@@ -7,6 +7,8 @@ defmodule AshDispatch.Transports.EmailSensitiveArgsTest do
   alias AshDispatch.Transports.Email
   alias AshDispatch.Workers.SendEmail
 
+  import ExUnit.CaptureLog
+
   @moduletag :capture_log
 
   @secret "https://example.com/reset/s3cr3t-token"
@@ -89,6 +91,14 @@ defmodule AshDispatch.Transports.EmailSensitiveArgsTest do
     assert args["html_body"] =~ "s3cr3t-token"
     assert args["text_body"] =~ "s3cr3t-token"
     assert args["subject"] == "Your code"
+  end
+
+  test "an event the registry cannot find is reported: the protection did not apply" do
+    assert capture_log(fn -> refute Email.sensitive?("no.such.event") end) =~ "no.such.event"
+  end
+
+  test "a known event is not reported" do
+    assert capture_log(fn -> Email.sensitive?("ticket.created") end) == ""
   end
 
   test "an unknown event is not sensitive and keeps the full args" do

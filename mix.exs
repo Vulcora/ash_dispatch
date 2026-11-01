@@ -38,7 +38,7 @@ defmodule AshDispatch.MixProject do
       # Core dependencies
       {:ash, "~> 3.0"},
       {:ash_state_machine, "~> 0.2"},
-      {:oban, "~> 2.0"},
+      {:oban, "~> 2.12"},
 
       # Data layer (Postgres for persistent storage)
       {:ash_postgres, "~> 2.0"},
