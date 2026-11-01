@@ -1,4 +1,7 @@
-ExUnit.start()
+# The Postgres-backed tests need a database; the CI test job provides one.
+exclude = if System.get_env("ASH_DISPATCH_TEST_DATABASE_URL"), do: [], else: [:postgres]
+
+ExUnit.start(exclude: exclude)
 
 # Ensure ash_dispatch application is started for tests
 Application.ensure_all_started(:ash_dispatch)

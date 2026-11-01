@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `metadata: [sensitive_content: true]` the args now carry only `receipt_id`,
   `event_id` and `attachments`; the worker reads the envelope and the bodies
   from the receipt at send time, the path every retry already took.
+  Attachments stay in the args — a retry reads them back from the original
+  job — so an event must not put a live secret in an attachment.
+- **The worker fails closed for a sensitive event with no body left.** If the
+  receipt holds no body, or the scrub's marker, nothing reaches the backend:
+  the receipt goes to `:failed_permanent` and the job is cancelled.
+- **`ScrubSensitiveContent` only takes terminal receipts** (`:sent`, `:skipped`,
+  `:failed_permanent`), never one that can still be sent.
 - **`ScrubSensitiveContent` empties the copy in `content` too.** The receipt
   stores the rendered bodies twice, in `body_text`/`body_html` and under
   `html_body`/`text_body` in `content`; the scrub only blanked the first.

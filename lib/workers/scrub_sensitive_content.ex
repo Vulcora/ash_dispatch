@@ -10,8 +10,13 @@ defmodule AshDispatch.Workers.ScrubSensitiveContent do
   copies of both bodies in `content` (`html_body`, `text_body`) removed.
   Recipient, subject, status and delivery timestamps are untouched.
 
-  Receipts in `:failed` are skipped so the retry path can still resend the
-  original content; they are scrubbed once they reach a terminal state.
+  Only terminal receipts (`:sent`, `:skipped`, `:failed_permanent`) are
+  scrubbed. A pending, scheduled, sending or failed receipt can still be sent —
+  a delivery delayed past the window, a stalled queue, a retry — and the receipt
+  is where a sensitive event's worker reads the body.
+
+  Attachments are not touched: they live in the `SendEmail` job's args until the
+  Pruner removes the job. See `AshDispatch.Transports.Email.job_args/3`.
 
   ## Configuration
 
@@ -45,6 +50,10 @@ defmodule AshDispatch.Workers.ScrubSensitiveContent do
 
   @marker "[scrubbed: sensitive content past retention window]"
 
+  # Nothing is left to send from these. Every other status can still reach the
+  # worker, which for a sensitive event reads the body from the receipt alone.
+  @terminal ["sent", "skipped", "failed_permanent"]
+
   @doc "The replacement text written into scrubbed `body_text` fields."
   def marker, do: @marker
 
@@ -77,7 +86,7 @@ defmodule AshDispatch.Workers.ScrubSensitiveContent do
     from(r in table,
       where: r.event_id in ^event_ids,
       where: r.inserted_at < ^cutoff,
-      where: r.status != "failed",
+      where: r.status in ^@terminal,
       where:
         (not is_nil(r.body_text) and r.body_text != ^@marker) or not is_nil(r.body_html) or
           fragment("(? \\?| array['html_body', 'text_body'])", r.content),

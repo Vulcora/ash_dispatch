@@ -138,8 +138,14 @@ defmodule AshDispatch.Transports.Email do
   # completed job's args until the Pruner removes it — days, in a table that
   # `ScrubSensitiveContent` never touches. The worker reads everything else
   # from the receipt at send time, which is the path every retry already takes
-  # (`new_for_receipt/1`), so the receipt stays the single place the content
+  # (`new_for_receipt/1`), so the receipt is the only place the rendered content
   # lives and the one place the scrub has to empty.
+  #
+  # Attachments are the exception: they exist nowhere but in these args, a retry
+  # reads them back from the original job, and they stay base64-encoded in
+  # `oban_jobs` until the Pruner removes the job. No scrub reaches them. An event
+  # must therefore never put a live secret in `attachments/2` or
+  # `default_email_attachments`: keep the secret in the body.
   def job_args(receipt, context, channel) do
     if sensitive?(context.event_id) do
       %{

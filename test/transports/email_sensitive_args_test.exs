@@ -56,6 +56,19 @@ defmodule AshDispatch.Transports.EmailSensitiveArgsTest do
     refute Jason.encode!(args) =~ "s3cr3t-token"
   end
 
+  test "a sensitive event's attachments stay in the args, as documented" do
+    Application.put_env(:ash_dispatch, :default_email_attachments, fn ->
+      [%{filename: "logo.png", content_type: "image/png", data: "bytes"}]
+    end)
+
+    on_exit(fn -> Application.delete_env(:ash_dispatch, :default_email_attachments) end)
+
+    assert [%{"filename" => "logo.png", "data" => data}] =
+             args(receipt(), "ticket.otp_issued")["attachments"]
+
+    assert Base.decode64!(data) == "bytes"
+  end
+
   test "the worker still sends a sensitive event's full envelope, read from the receipt" do
     receipt = receipt()
     params = SendEmail.email_params(receipt, args(receipt, "ticket.otp_issued"))
