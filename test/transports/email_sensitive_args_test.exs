@@ -94,7 +94,8 @@ defmodule AshDispatch.Transports.EmailSensitiveArgsTest do
   end
 
   test "an event the registry cannot find is reported: the protection did not apply" do
-    assert capture_log(fn -> refute Email.sensitive?("no.such.event") end) =~ "no.such.event"
+    assert capture_log([level: :warning], fn -> refute Email.sensitive?("no.such.event") end) =~
+             "no.such.event"
   end
 
   test "a known event is not reported" do
