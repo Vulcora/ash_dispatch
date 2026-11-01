@@ -28,7 +28,10 @@ defmodule AshDispatch.Workers.SendSMS do
     unique: [keys: [:receipt_id], states: [:available, :scheduled, :executing, :retryable]]
 
   alias AshDispatch.Config
+  alias AshDispatch.ContentMap
   alias AshDispatch.ReceiptStatus
+  alias AshDispatch.Transports.Email
+  alias AshDispatch.Workers.ScrubSensitiveContent
 
   require Logger
 
@@ -61,14 +64,41 @@ defmodule AshDispatch.Workers.SendSMS do
 
       :ok
     else
-      case backend() do
-        nil ->
+      case {backend(), refusal(receipt)} do
+        {nil, _refusal} ->
           ReceiptStatus.mark_skipped(receipt, "transport_not_implemented")
           :ok
 
-        backend ->
+        {_backend, reason} when is_binary(reason) ->
+          ReceiptStatus.refuse(receipt, reason)
+          Logger.error("SMS refused for receipt #{receipt.id}: #{reason}")
+          {:cancel, reason}
+
+        {backend, nil} ->
           send_with(backend, receipt)
       end
+    end
+  end
+
+  # Same rule as `SendEmail`: the scrub removes a sensitive event's text from
+  # `content`, and a reopened receipt must fail closed, not go out empty.
+  defp refusal(receipt) do
+    text =
+      ContentMap.get_content(receipt.content, :message) ||
+        ContentMap.get_content(receipt.content, :body)
+
+    cond do
+      not Email.sensitive?(receipt.event_id) ->
+        nil
+
+      ScrubSensitiveContent.marker() in [text, receipt.body_text] ->
+        "sensitive content already scrubbed from the receipt, not sent"
+
+      text in [nil, ""] ->
+        "sensitive event's receipt has no text, not sent"
+
+      true ->
+        nil
     end
   end
 
@@ -115,7 +145,7 @@ defmodule AshDispatch.Workers.SendSMS do
 
       {:error, reason} ->
         # The backend never got to mark it — do it here, or the receipt strands
-        # in :sending until the stranded-receipt cron picks it up.
+        # in :sending, where no cron picks it up.
         ReceiptStatus.mark_failed(receipt, reason)
         Logger.error("SMS failed for receipt #{receipt.id}: #{inspect(reason)}")
         {:error, reason}

@@ -371,7 +371,8 @@ Receipts store full rendered bodies, which for OTP codes and password-reset
 links means live secrets in the database. Declare such events with
 `metadata: [sensitive_content: true]` and schedule
 `AshDispatch.Workers.ScrubSensitiveContent` (cron): bodies older than
-`config :ash_dispatch, :scrub_after_hours` (default 24) are blanked while
+`config :ash_dispatch, :scrub_after_hours` (default 24, terminal receipts only;
+any other status at `:scrub_stranded_after_hours`, default 168) are blanked while
 recipient, subject, status and delivery timestamps stay intact. `:failed`
 receipts are left for the retry path first.
 

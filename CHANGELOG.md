@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.7] - 2026-11-01
+
+### Security
+
+- **A sensitive event's bodies no longer sit in `oban_jobs`.** The email
+  transport copied the rendered `html_body` and `text_body` into the
+  `SendEmail` job's args for every event, so a reset link or one-time token
+  stayed in `oban_jobs` until the Pruner removed the completed job — out of
+  reach of `ScrubSensitiveContent`. For an event declaring
+  `metadata: [sensitive_content: true]` the args now carry only `receipt_id`,
+  `event_id` and `attachments`; the worker reads the envelope and the bodies
+  from the receipt at send time, the path every retry already took.
+  Attachments stay in the args — a retry reads them back from the original
+  job — so an event must not put a live secret in an attachment.
+- **The worker fails closed for a sensitive event with no body left.** If the
+  receipt holds no body, or the scrub's marker, nothing reaches the backend:
+  the receipt goes to `:failed_permanent` and the job is cancelled.
+- **`SendSMS` fails closed the same way**, for a sensitive event with no text left.
+- **`ScrubSensitiveContent` takes terminal receipts** (`:sent`, `:skipped`,
+  `:failed_permanent`) after `:scrub_after_hours`, so a letter that can still be
+  sent keeps its body. Any other status is scrubbed at the new cap
+  `:scrub_stranded_after_hours` (default 168): a receipt stranded in `:sending`
+  or `:pending` must not keep a live secret forever.
+- **The scrub also removes an SMS's text** (`message`, `body`) from `content`,
+  which no earlier version reached.
+- **A warning when `sensitive_content` cannot be read**: an event the registry
+  does not find gets the full job args, and now says so.
+
+### Changed
+
+- **Requires Oban `~> 2.12`**, for `{:cancel, reason}`.
+- **Publishing needs a green CI run on main**, with the Postgres tests. The
+  publish workflow starts from CI instead of from the push.
+- **`ScrubSensitiveContent` empties the copy in `content` too.** The receipt
+  stores the rendered bodies twice, in `body_text`/`body_html` and under
+  `html_body`/`text_body` in `content`; the scrub only blanked the first.
+  Both are emptied now, and receipts scrubbed by an earlier version are
+  picked up again while their content still holds a body.
+
 ## [0.8.6] - 2026-10-27
 
 ### Added

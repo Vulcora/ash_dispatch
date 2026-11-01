@@ -168,6 +168,19 @@ defmodule AshDispatch.ReceiptStatus do
   end
 
   @doc """
+  Refuses to send a receipt: it ends in "failed_permanent" whatever its status,
+  through "failed" from "pending", which has no direct transition.
+  """
+  @spec refuse(struct(), String.t()) :: struct()
+  def refuse(%{status: :pending} = receipt, reason) when is_binary(reason) do
+    receipt |> mark_failed(reason) |> mark_failed_permanent(reason)
+  end
+
+  def refuse(receipt, reason) when is_binary(reason) do
+    mark_failed_permanent(receipt, reason)
+  end
+
+  @doc """
   Marks a receipt as "failed_permanent" (no more retries).
 
   Used by retry worker when max retries exceeded.

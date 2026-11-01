@@ -82,6 +82,8 @@ defmodule AshDispatch.Workers.SendEmail do
   alias AshDispatch.Config
   alias AshDispatch.ContentMap
   alias AshDispatch.ReceiptStatus
+  alias AshDispatch.Transports.Email
+  alias AshDispatch.Workers.ScrubSensitiveContent
 
   require Logger
 
@@ -100,10 +102,18 @@ defmodule AshDispatch.Workers.SendEmail do
     "content_type" => ..., "data" => base64}` plus an optional `"type" =>
     "inline"` / `"cid" => ...` pair for inline images
 
+  Every field but `receipt_id` is optional: a missing one is read from the
+  receipt. An event declaring `metadata: [sensitive_content: true]` is enqueued
+  with only `receipt_id`, `event_id` and `attachments`, so its rendered bodies
+  never sit in `oban_jobs` (`AshDispatch.Transports.Email.job_args/3`). If such
+  a receipt holds no body, or the scrub's marker, nothing is sent: the receipt
+  goes to `:failed_permanent` and the job is cancelled.
+
   ## Returns
 
   - `:ok` on success
   - `{:error, reason}` on failure (Oban will retry)
+  - `{:cancel, reason}` when a sensitive event has no body left to send
   """
   @impl Oban.Worker
   def perform(%Oban.Job{args: args}) do
@@ -189,7 +199,8 @@ defmodule AshDispatch.Workers.SendEmail do
       with :continue <- check_skip_email_delivery(),
            :continue <- check_email_backend_configured(),
            :continue <- check_skip_if_read_policy(receipt),
-           :send <- check_user_preferences(receipt) do
+           :send <- check_user_preferences(receipt),
+           :continue <- check_sensitive_body(receipt, args) do
         # Mark as sending - handle race condition gracefully
         case ReceiptStatus.mark_sending(receipt) do
           {:ok, receipt} ->
@@ -232,8 +243,41 @@ defmodule AshDispatch.Workers.SendEmail do
           ReceiptStatus.mark_skipped(receipt, reason)
           Logger.info("Email skipped for receipt #{receipt.id}: #{reason}")
           :ok
+
+        {:refuse, reason} ->
+          refuse(receipt, reason)
       end
     end
+  end
+
+  # A sensitive event's job carries no bodies, so the receipt is all there is.
+  # If it holds nothing to send, or the scrub's marker, the letter is gone and
+  # no retry brings it back: fail closed, and never report it as sent. A job
+  # enqueued before 0.8.7 still carries its bodies in the args and passes.
+  defp check_sensitive_body(receipt, args) do
+    params = email_params(receipt, args)
+
+    cond do
+      not Email.sensitive?(receipt.event_id) ->
+        :continue
+
+      params.text_body == ScrubSensitiveContent.marker() ->
+        {:refuse, "sensitive content already scrubbed from the receipt, not sent"}
+
+      blank?(params.text_body) and blank?(params.html_body) ->
+        {:refuse, "sensitive event's receipt has no body, not sent"}
+
+      true ->
+        :continue
+    end
+  end
+
+  defp blank?(body), do: body in [nil, ""]
+
+  defp refuse(receipt, reason) do
+    ReceiptStatus.refuse(receipt, reason)
+    Logger.error("Email refused for receipt #{receipt.id}: #{reason}")
+    {:cancel, reason}
   end
 
   @doc false

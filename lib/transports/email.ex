@@ -131,7 +131,60 @@ defmodule AshDispatch.Transports.Email do
   # attributes: what a preview shows as sender, reply address, attachments and
   # headers is then what the worker hands the backend, not a reconstruction of
   # it.
+  #
+  # An event declaring `metadata: [sensitive_content: true]` gets args that
+  # carry only the receipt id, the event id and the attachments. Its rendered
+  # bodies hold live secrets (reset links, one-time tokens), and Oban keeps a
+  # completed job's args until the Pruner removes it — days, in a table that
+  # `ScrubSensitiveContent` never touches. The worker reads everything else
+  # from the receipt at send time, which is the path every retry already takes
+  # (`new_for_receipt/1`), so the receipt is the only place the rendered content
+  # lives and the one place the scrub has to empty.
+  #
+  # Attachments are the exception: they exist nowhere but in these args, a retry
+  # reads them back from the original job, and they stay base64-encoded in
+  # `oban_jobs` until the Pruner removes the job. No scrub reaches them. An event
+  # must therefore never put a live secret in `attachments/2` or
+  # `default_email_attachments`: keep the secret in the body.
   def job_args(receipt, context, channel) do
+    if sensitive?(context.event_id) do
+      %{
+        "receipt_id" => receipt.id,
+        "event_id" => context.event_id,
+        "attachments" => resolve_attachments(context, channel)
+      }
+    else
+      full_job_args(receipt, context, channel)
+    end
+  end
+
+  @doc false
+  # Does the event declare `metadata: [sensitive_content: true]`? Metadata is a
+  # keyword list from the DSL, but a map is accepted too.
+  def sensitive?(event_id) when is_binary(event_id) do
+    case AshDispatch.EventRegistry.find_event(event_id) do
+      {:ok, event} ->
+        sensitive_metadata?(Map.get(event, :metadata))
+
+      _ ->
+        Logger.warning(
+          "Event #{event_id} is not in the registry, so its sensitive_content metadata " <>
+            "cannot be read and its rendered bodies go into the job args"
+        )
+
+        false
+    end
+  end
+
+  def sensitive?(_event_id), do: false
+
+  defp sensitive_metadata?(metadata) when is_list(metadata),
+    do: Keyword.get(metadata, :sensitive_content) == true
+
+  defp sensitive_metadata?(%{} = metadata), do: Map.get(metadata, :sensitive_content) == true
+  defp sensitive_metadata?(_), do: false
+
+  defp full_job_args(receipt, context, channel) do
     # Build job args from receipt (which now has all recipient info)
     from = get_from_field(receipt)
 
