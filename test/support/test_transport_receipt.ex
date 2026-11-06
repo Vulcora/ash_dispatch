@@ -25,6 +25,7 @@ defmodule AshDispatch.Test.TransportReceipt do
     attribute :audience, :atom, public?: true
     attribute :transport, :atom, default: :email, public?: true
     attribute :user_id, :uuid, public?: true
+    attribute :actor_id, :uuid, public?: true
     attribute :recipient, :string, public?: true
     attribute :subject, :string, public?: true
     attribute :body_html, :string, public?: true
@@ -56,6 +57,7 @@ defmodule AshDispatch.Test.TransportReceipt do
         :audience,
         :transport,
         :user_id,
+        :actor_id,
         :recipient,
         :subject,
         :body_html,

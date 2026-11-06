@@ -60,14 +60,15 @@ defmodule AshDispatch.Dispatcher do
     - `:skip_preferences` - bypass the recipients' opt-out for this dispatch
       (recorded the same way)
     - `:actor` - who caused the event (a user struct or a map with `:id`).
-      Kept as `context.actor`; with
-      `config :ash_dispatch, exclude_actor_on_manual_dispatch: true` a
-      channel with `exclude_actor: true` leaves them out (off by default in
-      0.8.x, the default from 0.9.0). `context.user` is not changed by it:
-      it is still found in `data`. It is also who asked, for the override
-      record above
+      Kept as `context.actor`, and its id is stored on every receipt as
+      `actor_id`. A channel with `exclude_actor: true` leaves them out — the
+      default since 0.9.0; `config :ash_dispatch,
+      exclude_actor_on_manual_dispatch: false` turns that off. `context.user`
+      is not changed by it: it is still found in `data`. It is also who
+      asked, for the override record above
     - `:tenant` - the tenant the event happened in, as `context.tenant`. The
-      preference checker gets it as `opts[:tenant]`
+      preference checker gets it as `opts[:tenant]` and in-app notifications
+      store it
 
   ## Returns
 
@@ -147,7 +148,10 @@ defmodule AshDispatch.Dispatcher do
 
       # Dispatch to all channels
       # Deduplication is opt-in via deduplicate_in_app: true in event config
-      results = dispatch_all_channels(channels, context, prepared.event_config)
+      results =
+        AshDispatch.UserPreference.with_dispatch_scope(fn ->
+          dispatch_all_channels(channels, context, prepared.event_config)
+        end)
 
       # Return success if any dispatch succeeded
       if Enum.any?(results, fn
@@ -396,6 +400,15 @@ defmodule AshDispatch.Dispatcher do
   defp do_dispatch_channel(context, channel, event_config) do
     {context, recipients} = recipients_for(context, channel, event_config)
 
+    # One preference read for the whole channel instead of one per receipt,
+    # when the configured checker can batch (`c:UserPreference.prefetch/2`).
+    AshDispatch.UserPreference.prefetch(
+      Enum.map(recipients, &get_user_id(&1, channel, event_config)),
+      context,
+      channel,
+      event_config
+    )
+
     # Create one receipt per recipient
     results =
       Enum.map(recipients, fn recipient ->
@@ -510,6 +523,17 @@ defmodule AshDispatch.Dispatcher do
 
     # Apply deduplication - users in the same deduplicate_group get max one notification
     deduplicated_recipients = apply_group_deduplication(recipients_with_channels, event_config)
+
+    deduplicated_recipients
+    |> Enum.group_by(fn {_recipient, channel} -> channel end, fn {recipient, _} -> recipient end)
+    |> Enum.each(fn {channel, recipients} ->
+      AshDispatch.UserPreference.prefetch(
+        Enum.map(recipients, &get_user_id(&1, channel, event_config)),
+        context,
+        channel,
+        event_config
+      )
+    end)
 
     # Dispatch to each recipient using their associated channel
     Enum.map(deduplicated_recipients, fn {recipient, channel} ->
@@ -734,9 +758,13 @@ defmodule AshDispatch.Dispatcher do
 
         # Create DeliveryReceipt
         # Use authorize?: false and skip_unknown_inputs to work within transaction context
+        # `actor_id` arrived in 0.9.0: a receipt resource of its own that has
+        # no such attribute still creates, without it.
         Config.delivery_receipt_resource()
-        |> Ash.Changeset.for_create(:create, Map.put(attrs, :notification_id, notification_id))
-        |> Ash.create(authorize?: false, skip_unknown_inputs: [:notification_id])
+        |> Ash.Changeset.for_create(:create, Map.put(attrs, :notification_id, notification_id),
+          skip_unknown_inputs: [:notification_id, :actor_id]
+        )
+        |> Ash.create(authorize?: false)
     end
   end
 
@@ -793,6 +821,7 @@ defmodule AshDispatch.Dispatcher do
       audience: channel.audience,
       recipient: recipient_identifier,
       user_id: get_user_id(recipient, channel, event_config),
+      actor_id: extract_user_id_from_recipient(context.actor || context.user),
       source_type: source_type,
       source_id: source_id,
       locale: locale
@@ -803,6 +832,17 @@ defmodule AshDispatch.Dispatcher do
     content =
       if recipient_name do
         Map.put(content, :recipient_name, recipient_name)
+      else
+        content
+      end
+
+    # An in-app notification files itself under the event's category and
+    # tenant. Kept in the content, so a retry from the receipt has them too.
+    content =
+      if channel.transport == :in_app do
+        content
+        |> maybe_put(:category, notification_category(event_config))
+        |> maybe_put(:tenant, Context.tenant_key(context.tenant))
       else
         content
       end
@@ -1563,6 +1603,19 @@ defmodule AshDispatch.Dispatcher do
 
   # Helper to conditionally add a key-value pair to a map only if value is not nil
   # This prevents overwriting module callback values with nil in hybrid mode
+  defp notification_category(event_config) do
+    case event_config[:metadata] do
+      metadata when is_list(metadata) or is_map(metadata) ->
+        case metadata[:category] do
+          nil -> nil
+          category -> to_string(category)
+        end
+
+      _ ->
+        nil
+    end
+  end
+
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
 

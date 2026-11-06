@@ -53,6 +53,135 @@ dispatch do
 end
 ```
 
+### What the checker is given
+
+`opts` carries, besides `:category` and `:audience`:
+
+| key | since | value |
+| --- | --- | --- |
+| `:event_id` | 0.6 | the event id again |
+| `:tenant` | 0.9.0 | the tenant the event happened in (`context.tenant`): the action's tenant, or `Dispatcher.dispatch/4`'s `:tenant` |
+| `:recipient` | 0.9.0 | the resolved recipient of this receipt — a user struct or a recipient map — on the send path, `nil` elsewhere |
+| `:event_default` | 0.9.0 | the event's own default for this transport (see below), what to answer when nobody has said anything |
+
+## The built-in preference resource (0.9.0)
+
+Most apps want the same thing: a person can switch an event or a whole
+category off per transport, the house (the tenant) sets the defaults, and some
+events cannot be switched off at all. ash_dispatch ships that, so you do not
+have to write the checker above.
+
+### 1. The resource
+
+```elixir
+defmodule MyApp.Notifications.Preference do
+  use AshDispatch.Resources.Preference.Base,
+    repo: MyApp.Repo,
+    domain: MyApp.Notifications
+end
+```
+
+```elixir
+config :ash_dispatch,
+  user_preference: AshDispatch.UserPreference.Resource,
+  preference_resource: MyApp.Notifications.Preference
+```
+
+Then `mix ash.codegen add_notification_preferences`. The scope identity is
+`NULLS NOT DISTINCT`, which needs Postgres 15 or later.
+
+Each row is one switch:
+
+| `tenant` | `user_id` | `event_id` / `category` | `transport` | `enabled` |
+| --- | --- | --- | --- | --- |
+| `"org_1"` | `nil` | `category: "reminders"` | `:email` | `false` — the house's default |
+| `"org_1"` | `anna` | `event_id: "meetings.invited"` | `:email` | `true` — Anna's own choice |
+
+`tenant` is a string: `AshDispatch.Context.tenant_key/1` turns whatever the app
+uses for an Ash tenant (a string, an integer, an organisation record) into one.
+In an app without tenancy it is `nil` throughout.
+
+### 2. Precedence
+
+The answer for a recipient is the most specific row that exists:
+
+1. the person's row for the event
+2. the person's row for the event's category
+3. the tenant's row for the event
+4. the tenant's row for the category
+5. the event's own default
+
+The person beats the tenant, the tenant beats the event; at each level the
+event beats its category.
+
+### 3. The event's say
+
+```elixir
+event :invited,
+  metadata: [
+    category: :meetings,
+    # off by email until someone switches it on; other transports on
+    preference_default: [email: false]
+  ]
+
+event :cancelled,
+  metadata: [
+    category: :meetings,
+    # mandatory: never gated, by any checker, and shown locked
+    user_configurable: false
+  ]
+```
+
+`user_configurable: false` is enforced by the library, not by the checker: an
+app's own checker is not even asked about a mandatory event. An event module
+says the same with `user_configurable? false` in its DSL.
+
+### 4. One query per dispatch
+
+The checker never reads per recipient. Before a channel's receipts are created
+the dispatcher hands all of its recipients to `prefetch/2`, which reads the
+tenant's rows for the event and its category — the tenant's defaults plus the
+rows of exactly those people — in one query, and keeps them for the rest of the
+dispatch. A second channel to the same people (email after in-app) costs
+nothing. Your own checker can do the same: see
+`c:AshDispatch.UserPreference.prefetch/2` and
+`AshDispatch.UserPreference.with_dispatch_scope/1`.
+
+### 5. A settings screen
+
+`AshDispatch.UserPreference.Resource` has what a settings page needs:
+
+```elixir
+# What can be switched: id, category, transports, the event's defaults,
+# and whether it is configurable at all (mandatory ones shown locked).
+Resource.configurable_events()
+
+# Every event × transport with the answer for this person, where it comes
+# from (:user | :tenant | :event) and what "reset" would go back to.
+Resource.settings(user.id, tenant)
+#=> [%{event_id: "meetings.invited", transport: :email, enabled: false,
+#      source: :tenant, tenant_default: false, configurable: true}, ...]
+
+# Switch, and reset to the default.
+Resource.put(%{tenant: t, user_id: user.id, event_id: "meetings.invited", transport: :email}, true, actor: user)
+Resource.clear(%{tenant: t, user_id: user.id, event_id: "meetings.invited", transport: :email}, actor: user)
+
+# The house's default: user_id nil.
+Resource.put(%{tenant: t, category: "reminders", transport: :email}, false, actor: owner)
+```
+
+Only channels to preference-gated audiences are offered: a delivery that is
+never asked about must not have a switch.
+
+### 6. Policies
+
+A person reads their own rows and the tenant's defaults, and writes their own
+rows. A tenant default is written by an actor that passes
+`AshDispatch.PolicyChecks.HasPermission` with
+`permission: :manage_notification_preferences` — your `:permission_checker`
+decides — or with `authorize?: false` once the app has checked who is asking.
+Pass `policies?: false` to the base to write all policies yourself.
+
 ## How It Works
 
 ### Preference Check Flow
@@ -630,6 +759,10 @@ end
 
 ### 1. Always Allow Critical Notifications
 
+Since 0.9.0, mark them `metadata: [user_configurable: false]`: the library then
+never gates them, whatever the checker says. The checker-side version below is
+still a sensible second line:
+
 ```elixir
 def user_allows?(user_id, event_id, transport, opts) do
   category = opts[:category]
@@ -726,7 +859,13 @@ end
 
 ### Batch Checking
 
-For multi-recipient events:
+Since 0.9.0 the dispatcher batches for you: implement the optional
+`c:AshDispatch.UserPreference.prefetch/2` callback, load everything for the
+batch of user ids it is given, and keep it in the dispatch scope
+(`AshDispatch.UserPreference.scope_put/2`); `user_allows?/4` then reads it back
+with `scope_get/1`. `AshDispatch.UserPreference.Resource` does exactly that.
+
+Outside the send path, for multi-recipient checks of your own:
 
 ```elixir
 def batch_allows?(user_ids, event_id, transport, opts) when is_list(user_ids) do

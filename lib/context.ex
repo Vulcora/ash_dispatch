@@ -77,7 +77,8 @@ defmodule AshDispatch.Context do
     up in `data`. Since 0.8.8
   - `:tenant` - The tenant the event happened in: the action's tenant, or the
     `:tenant` option of `Dispatcher.dispatch/4`. Handed to the preference
-    checker as `opts[:tenant]`. Since 0.8.8
+    checker as `opts[:tenant]` (since 0.8.8) and stored on in-app
+    notifications (since 0.9.0); see `tenant_key/1`.
   - `:base_url` - Base URL for link building
   - `:metadata` - Additional metadata
   - `:opts` - Additional options
@@ -179,6 +180,36 @@ defmodule AshDispatch.Context do
   def template_assigns(%__MODULE__{} = context) do
     Map.merge(context.data, context.variables)
   end
+
+  @doc """
+  The tenant as the string ash_dispatch stores it.
+
+  A tenant reaches the library in whatever shape the app uses for Ash: a
+  string, an integer, or a record (an organisation struct). Notification and
+  preference rows store it as a string, so every shape is reduced to one:
+  a binary as it is, a record by its `:id`, anything else through
+  `to_string/1`. `nil` stays `nil` — an app without tenancy.
+
+  ## Examples
+
+      iex> AshDispatch.Context.tenant_key(nil)
+      nil
+
+      iex> AshDispatch.Context.tenant_key("org_1")
+      "org_1"
+
+      iex> AshDispatch.Context.tenant_key(42)
+      "42"
+
+      iex> AshDispatch.Context.tenant_key(%{id: "0190a"})
+      "0190a"
+  """
+  @spec tenant_key(term()) :: String.t() | nil
+  def tenant_key(nil), do: nil
+  def tenant_key(tenant) when is_binary(tenant), do: tenant
+  def tenant_key(%{id: id}), do: tenant_key(id)
+  def tenant_key(tenant) when is_atom(tenant) or is_number(tenant), do: to_string(tenant)
+  def tenant_key(tenant), do: to_string(tenant)
 
   # Private helpers
 

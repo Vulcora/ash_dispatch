@@ -106,7 +106,10 @@ defmodule AshDispatch.Helpers.NotificationLoader do
       timestamp: notification.inserted_at,
       metadata: notification.metadata,
       actionLabel: notification.action_label,
-      actionUrl: notification.action_url
+      actionUrl: notification.action_url,
+      category: Map.get(notification, :category),
+      seenAt: Map.get(notification, :seen_at),
+      archivedAt: Map.get(notification, :archived_at)
     }
   end
 
@@ -152,6 +155,8 @@ defmodule AshDispatch.Helpers.NotificationLoader do
 
   - `:actor` - User performing the action (for authorization)
   - `:authorize?` - Passed on to the action
+  - `:tenant` - only this tenant's notifications (and those without a
+    tenant). Since 0.9.0
 
   ## Examples
 
@@ -168,9 +173,76 @@ defmodule AshDispatch.Helpers.NotificationLoader do
   `:actor` and `:authorize?` are passed on now.
   """
   def mark_all_as_read(user_id, opts \\ []) do
-    Config.notification_resource().mark_all_as_read(
-      user_id,
-      Keyword.take(opts, [:actor, :authorize?])
-    )
+    case Keyword.get(opts, :tenant) do
+      nil ->
+        Config.notification_resource().mark_all_as_read(user_id, action_opts(opts))
+
+      tenant ->
+        Config.notification_resource()
+        |> Ash.ActionInput.for_action(
+          :mark_all_as_read,
+          %{user_id: user_id, tenant: AshDispatch.Context.tenant_key(tenant)},
+          action_opts(opts)
+        )
+        |> Ash.run_action()
+    end
   end
+
+  @doc """
+  How many unread, not archived notifications the actor has.
+
+  ## Options
+
+  - `:actor` - (required) the user
+  - `:tenant` - only count notifications of this tenant
+
+  ## Examples
+
+      NotificationLoader.unread_count(actor: current_user)
+      #=> {:ok, 3}
+  """
+  @spec unread_count(keyword()) :: {:ok, non_neg_integer()} | {:error, term()}
+  def unread_count(opts) do
+    input =
+      case Keyword.get(opts, :tenant) do
+        nil -> %{}
+        tenant -> %{tenant: AshDispatch.Context.tenant_key(tenant)}
+      end
+
+    Config.notification_resource()
+    |> Ash.ActionInput.for_action(:unread_count, input, action_opts(opts))
+    |> Ash.run_action()
+  end
+
+  @doc """
+  Tells a user's open screens that notifications were read, so a bell in
+  another tab can count again. Broadcasts `"notifications_read"` on the
+  user's topic (`AshDispatch.Config.channel_topic/0`) through the configured
+  `:pubsub_module`; does nothing without one.
+
+  The notification resource calls it after `mark_as_read` and
+  `mark_all_as_read`.
+  """
+  @spec broadcast_read(term()) :: :ok
+  def broadcast_read(nil), do: :ok
+
+  def broadcast_read(user_id) do
+    case Config.pubsub_module() do
+      nil ->
+        :ok
+
+      pubsub ->
+        pubsub.broadcast("#{Config.channel_topic()}:#{user_id}", "notifications_read", %{
+          userId: user_id
+        })
+
+        :ok
+    end
+  rescue
+    error ->
+      Logger.warning("[NotificationLoader] broadcast_read failed: #{Exception.message(error)}")
+      :ok
+  end
+
+  defp action_opts(opts), do: Keyword.take(opts, [:actor, :authorize?])
 end

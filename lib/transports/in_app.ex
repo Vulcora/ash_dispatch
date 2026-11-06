@@ -132,7 +132,9 @@ defmodule AshDispatch.Transports.InApp do
         source: receipt.event_id,
         type: get_notification_type(content),
         metadata: get_content(content, :metadata) || %{},
-        idempotency_key: idempotency_key
+        idempotency_key: idempotency_key,
+        category: get_content(content, :category),
+        tenant: get_content(content, :tenant)
       }
 
       notification_resource = Config.notification_resource()
@@ -143,7 +145,9 @@ defmodule AshDispatch.Transports.InApp do
       # create/update/destroy from the outside, so without this no
       # notifications could be created at all.
       case notification_resource
-           |> Ash.Changeset.for_create(:create, notification_attrs)
+           |> Ash.Changeset.for_create(:create, notification_attrs,
+             skip_unknown_inputs: [:category, :tenant]
+           )
            |> Ash.create(authorize?: false) do
         {:ok, notification} ->
           # Broadcast and mark receipt as sent
@@ -220,7 +224,9 @@ defmodule AshDispatch.Transports.InApp do
           source: context.event_id,
           type: get_notification_type(receipt.content),
           metadata: metadata,
-          idempotency_key: idempotency_key
+          idempotency_key: idempotency_key,
+          category: get_content(receipt.content, :category),
+          tenant: get_content(receipt.content, :tenant)
         }
 
         # Create Notification record via Ash. `authorize?: false`: the
@@ -335,6 +341,7 @@ defmodule AshDispatch.Transports.InApp do
         metadata: notification.metadata || %{},
         actionLabel: notification.action_label,
         actionUrl: notification.action_url,
+        category: Map.get(notification, :category),
         invalidates: invalidates
       }
 
@@ -419,8 +426,10 @@ defmodule AshDispatch.Transports.InApp do
   end
 
   defp insert_notification(notification_resource, attrs, idempotency_key) do
+    # `category` and `tenant` arrived in 0.9.0: a notification resource that
+    # does not have them yet still creates, without them.
     notification_resource
-    |> Ash.Changeset.for_create(:create, attrs)
+    |> Ash.Changeset.for_create(:create, attrs, skip_unknown_inputs: [:category, :tenant])
     |> Ash.create(authorize?: false)
     |> case do
       {:ok, notification} -> {:ok, notification}

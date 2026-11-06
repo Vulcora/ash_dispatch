@@ -64,7 +64,7 @@ If you prefer manual setup or need more control, follow the steps below.
 # mix.exs
 def deps do
   [
-    {:ash_dispatch, "~> 0.8"},
+    {:ash_dispatch, "~> 0.9"},
     {:oban, "~> 2.17"},  # Required for async delivery
     {:swoosh, "~> 1.16"} # Required for email transport
   ]

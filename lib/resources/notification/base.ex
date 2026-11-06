@@ -35,10 +35,79 @@ defmodule AshDispatch.Resources.Notification.Base do
   - `:repo` - (required) Ecto repo module
   - `:domain` - (required) Ash domain
   - `:extensions` - Additional Ash extensions (e.g., `[AshTypescript.Resource]`)
+  - `:data_layer` - defaults to `AshPostgres.DataLayer`. `Ash.DataLayer.Ets`
+    works for tests; the `postgres` block is then left out.
   - `:table` - Postgres table name. Defaults to `"notifications"`. Override
     when the consumer app already owns that table for a legacy notification
     system and ash_dispatch needs to coexist (e.g., `table: "dispatch_notifications"`).
   """
+
+  @doc false
+  # The body of `mark_all_as_read` / `mark_all_as_seen`: every one of the
+  # user's notifications matching `pending` through `action`, in one bulk
+  # update — the user is the `user_id` argument, or the actor. The actor is
+  # carried into the bulk update, so the changes and notifiers see who did it.
+  def mark_all(resource, action, input, context, pending, after_fun) do
+    require Ash.Query
+
+    user_id =
+      input.arguments[:user_id] ||
+        case context.actor do
+          %{id: id} -> id
+          _ -> nil
+        end
+
+    tenant = input.arguments[:tenant]
+
+    if is_nil(user_id) do
+      {:error,
+       Ash.Error.Invalid.exception(
+         errors: [ArgumentError.exception("no user: pass user_id or an actor")]
+       )}
+    else
+      query =
+        resource
+        |> Ash.Query.new()
+        |> Ash.Query.filter(^Ash.Expr.ref(:user_id) == ^user_id)
+        |> then(fn query ->
+          Enum.reduce(pending, query, fn
+            {field, nil}, query -> Ash.Query.filter(query, is_nil(^Ash.Expr.ref(field)))
+            {field, value}, query -> Ash.Query.filter(query, ^Ash.Expr.ref(field) == ^value)
+          end)
+        end)
+        |> then(fn query ->
+          # A notification without a tenant (every row from before 0.9.0, and
+          # every dispatch without `:tenant`) belongs to the person, and is
+          # in each tenant's inbox — as `:unread` counts it.
+          if tenant,
+            do:
+              Ash.Query.filter(
+                query,
+                is_nil(^Ash.Expr.ref(:tenant)) or ^Ash.Expr.ref(:tenant) == ^tenant
+              ),
+            else: query
+        end)
+
+      result =
+        Ash.bulk_update(query, action, %{},
+          actor: context.actor,
+          authorize?: false,
+          context: %{ash_dispatch_bulk: true},
+          return_errors?: true,
+          # Use stream strategy to ensure changes are triggered
+          strategy: :stream
+        )
+
+      case result do
+        %Ash.BulkResult{errors: errors} when is_list(errors) and errors != [] ->
+          {:error, Ash.Error.to_error_class(errors)}
+
+        _ ->
+          after_fun.(user_id)
+          {:ok, %{success: true}}
+      end
+    end
+  end
 
   defmacro __using__(opts) do
     repo = Keyword.fetch!(opts, :repo)
@@ -53,6 +122,21 @@ defmodule AshDispatch.Resources.Notification.Base do
     # action in this base, which the consumer cannot edit.
     extra_notifiers = Keyword.get(opts, :notifiers, [])
     table = Keyword.get(opts, :table, "notifications")
+    data_layer = Keyword.get(opts, :data_layer, AshPostgres.DataLayer)
+    postgres? = Macro.expand(data_layer, __CALLER__) == AshPostgres.DataLayer
+
+    postgres_block =
+      if postgres? do
+        quote do
+          postgres do
+            table unquote(table)
+            repo(unquote(repo))
+
+            identity_wheres_to_sql(unique_idempotency_key: "idempotency_key IS NOT NULL")
+          end
+        end
+      end
+
     # AshDispatch.Resource provides counter broadcasting DSL
     all_extensions = [AshDispatch.Resource] ++ extra_extensions
 
@@ -70,7 +154,7 @@ defmodule AshDispatch.Resources.Notification.Base do
       # default-deny for every app that doesn't happen to define its own.
       use Ash.Resource,
         domain: unquote(domain),
-        data_layer: AshPostgres.DataLayer,
+        data_layer: unquote(data_layer),
         authorizers: [Ash.Policy.Authorizer],
         extensions: unquote(all_extensions),
         notifiers: unquote(extra_notifiers)
@@ -78,12 +162,7 @@ defmodule AshDispatch.Resources.Notification.Base do
       require Ash.Query
       require Ash.Expr
 
-      postgres do
-        table unquote(table)
-        repo(unquote(repo))
-
-        identity_wheres_to_sql(unique_idempotency_key: "idempotency_key IS NOT NULL")
-      end
+      unquote(postgres_block)
 
       policies do
         # Notifications are per-user. NOTE on ordering: these policies
@@ -105,11 +184,18 @@ defmodule AshDispatch.Resources.Notification.Base do
           authorize_if expr(^ref(:user_id) == ^actor(:id))
         end
 
-        # `mark_all_as_read` takes user_id as an ARGUMENT and runs bulk_update
-        # with authorize?: false internally — without this check anyone could
-        # mark another user's entire feed as read.
-        policy action(:mark_all_as_read) do
+        # `mark_all_as_read` / `mark_all_as_seen` take an optional user_id
+        # ARGUMENT and run bulk_update with authorize?: false internally —
+        # without this check anyone could mark another user's entire feed as
+        # read. Without the argument they work on the actor's own feed.
+        policy action([:mark_all_as_read, :mark_all_as_seen]) do
           authorize_if expr(^arg(:user_id) == ^actor(:id))
+          authorize_if expr(is_nil(^arg(:user_id)) and not is_nil(^actor(:id)))
+        end
+
+        # Counts the actor's own notifications, through the read policy above.
+        policy action(:unread_count) do
+          authorize_if actor_present()
         end
 
         # Notifications are created by the dispatcher, which runs with
@@ -141,7 +227,9 @@ defmodule AshDispatch.Resources.Notification.Base do
             :source,
             :occurred_at,
             :event_id,
-            :idempotency_key
+            :idempotency_key,
+            :category,
+            :tenant
           ]
 
           change fn changeset, _ ->
@@ -161,6 +249,55 @@ defmodule AshDispatch.Resources.Notification.Base do
           accept [:read, :read_at]
         end
 
+        # The actor's unread, not archived notifications — what a bell counts.
+        read :unread do
+          argument :tenant, :string, allow_nil?: true
+
+          filter expr(
+                   ^ref(:user_id) == ^actor(:id) and ^ref(:read) == false and
+                     is_nil(^ref(:archived_at))
+                 )
+
+          # A notification without a tenant is counted in every tenant.
+          filter expr(
+                   is_nil(^arg(:tenant)) or is_nil(^ref(:tenant)) or
+                     ^ref(:tenant) == ^arg(:tenant)
+                 )
+
+          prepare build(sort: [inserted_at: :desc])
+        end
+
+        action :unread_count, :integer do
+          description "How many unread notifications the actor has"
+          argument :tenant, :string, allow_nil?: true
+
+          run fn input, context ->
+            __MODULE__
+            |> Ash.Query.for_read(:unread, %{tenant: input.arguments[:tenant]},
+              actor: context.actor
+            )
+            |> Ash.count(actor: context.actor)
+          end
+        end
+
+        update :mark_as_seen do
+          accept []
+          require_atomic? false
+          change set_attribute(:seen_at, &DateTime.utc_now/0)
+        end
+
+        update :archive do
+          accept []
+          require_atomic? false
+          change set_attribute(:archived_at, &DateTime.utc_now/0)
+        end
+
+        update :unarchive do
+          accept []
+          require_atomic? false
+          change set_attribute(:archived_at, nil)
+        end
+
         read :list_for_user do
           argument :user_id, :uuid do
             allow_nil? false
@@ -176,42 +313,63 @@ defmodule AshDispatch.Resources.Notification.Base do
 
           change set_attribute(:read, true)
           change set_attribute(:read_at, &DateTime.utc_now/0)
+
+          change fn changeset, _context ->
+            if is_nil(changeset.data.seen_at) do
+              Ash.Changeset.change_attribute(changeset, :seen_at, DateTime.utc_now())
+            else
+              changeset
+            end
+          end
+
+          change after_action(fn changeset, record, _context ->
+                   if not Map.get(changeset.context, :ash_dispatch_bulk, false) do
+                     AshDispatch.Helpers.NotificationLoader.broadcast_read(record.user_id)
+                   end
+
+                   {:ok, record}
+                 end)
         end
 
         action :mark_all_as_read, :map do
-          description "Mark all notifications as read for a user"
+          description "Mark all of a user's notifications as read (the actor's, without user_id)"
 
           argument :user_id, :uuid do
-            allow_nil? false
+            allow_nil? true
           end
 
-          run fn input, _context ->
-            require Ash.Query
-            arg_user_id = input.arguments.user_id
+          argument :tenant, :string, allow_nil?: true
 
-            result =
-              __MODULE__
-              |> Ash.Query.new()
-              |> Ash.Query.filter(^ref(:user_id) == ^arg_user_id and ^ref(:read) == false)
-              |> Ash.bulk_update(:mark_as_read, %{},
-                authorize?: false,
-                return_errors?: true,
-                # Use stream strategy to ensure changes are triggered
-                strategy: :stream
-              )
+          run fn input, context ->
+            AshDispatch.Resources.Notification.Base.mark_all(
+              __MODULE__,
+              :mark_as_read,
+              input,
+              context,
+              [read: false],
+              &AshDispatch.Helpers.NotificationLoader.broadcast_read/1
+            )
+          end
+        end
 
-            case result do
-              %Ash.BulkResult{status: :success, error_count: 0} ->
-                # records_count is only available when return_records?: true
-                # With stream strategy, we don't get a count, so just return success
-                {:ok, %{success: true}}
+        action :mark_all_as_seen, :map do
+          description "Mark all of a user's notifications as seen (the actor's, without user_id)"
 
-              %Ash.BulkResult{errors: errors} when errors != [] ->
-                {:error, Ash.Error.to_error_class(errors)}
+          argument :user_id, :uuid do
+            allow_nil? true
+          end
 
-              _ ->
-                {:ok, %{success: true}}
-            end
+          argument :tenant, :string, allow_nil?: true
+
+          run fn input, context ->
+            AshDispatch.Resources.Notification.Base.mark_all(
+              __MODULE__,
+              :mark_as_seen,
+              input,
+              context,
+              [seen_at: nil],
+              fn _user_id -> :ok end
+            )
           end
         end
       end
@@ -219,8 +377,9 @@ defmodule AshDispatch.Resources.Notification.Base do
       # Counter broadcasting for unread notifications
       counters do
         counter :unread_notifications,
-          trigger_on: [:create, :mark_as_read, :mark_all_as_read],
-          query_filter: [read: false],
+          trigger_on: [:create, :mark_as_read, :mark_all_as_read, :archive, :unarchive],
+          # The same set `:unread` counts: an archived notification is not unread.
+          query_filter: [read: false, archived_at: nil],
           audience: :user,
           invalidates: ["notifications"]
       end
@@ -311,19 +470,50 @@ defmodule AshDispatch.Resources.Notification.Base do
           description "Optional key to prevent duplicate notifications"
         end
 
+        attribute :category, :string do
+          public? true
+          allow_nil? true
+          description "The event's category (metadata `category:`), for filtering a feed"
+        end
+
+        attribute :tenant, :string do
+          public? true
+          allow_nil? true
+          description "Tenant the event happened in (`AshDispatch.Context.tenant_key/1`)"
+        end
+
+        attribute :seen_at, :utc_datetime_usec do
+          public? true
+          allow_nil? true
+          description "When the user first saw the notification (opened the list)"
+        end
+
+        attribute :archived_at, :utc_datetime_usec do
+          public? true
+          allow_nil? true
+          description "When the user archived the notification; archived ones are not unread"
+        end
+
         timestamps(public?: true)
       end
 
       identities do
         identity :unique_idempotency_key, [:idempotency_key],
-          where: expr(not is_nil(^ref(:idempotency_key)))
+          where: expr(not is_nil(^ref(:idempotency_key))),
+          pre_check?: unquote(not postgres?)
       end
 
       code_interface do
         define :create
         define :get
         define :mark_as_read
+        define :mark_as_seen
+        define :archive
+        define :unarchive
         define :mark_all_as_read, args: [:user_id]
+        define :mark_all_as_seen
+        define :unread
+        define :unread_count
         define :list_for_user, args: [:user_id]
         define :read, action: :read
       end
