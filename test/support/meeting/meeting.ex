@@ -200,7 +200,7 @@ defmodule AshDispatch.Test.MeetingCase do
         :error -> Application.delete_env(@otp_app, :ash_domains)
       end
 
-      Ash.DataLayer.Ets.stop(AshDispatch.Test.TransportReceipt)
+      AshDispatch.Test.Ets.stop(AshDispatch.Test.TransportReceipt)
     end)
 
     :ok
