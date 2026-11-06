@@ -151,18 +151,26 @@ defmodule AshDispatch.Helpers.NotificationLoader do
   ## Options
 
   - `:actor` - User performing the action (for authorization)
+  - `:authorize?` - Passed on to the action
 
   ## Examples
 
       NotificationLoader.mark_all_as_read(user_id, actor: current_user)
-      #=> {:ok, %{marked_count: 5}}
+      #=> {:ok, %{success: true}}
 
   ## Returns
 
-  - `{:ok, %{marked_count: integer}}` - Successfully marked notifications as read
-  - `{:error, reason}` - Failed to mark notifications
+  - `{:ok, %{success: true}}` - Successfully marked notifications as read
+  - `{:error, reason}` - Failed (e.g. forbidden: `user_id` is not the actor's)
+
+  Until 0.8.8 the options were ignored and the action ran without an actor,
+  so the resource's policy (`user_id` must be the actor's) refused every call.
+  `:actor` and `:authorize?` are passed on now.
   """
-  def mark_all_as_read(user_id, _opts \\ []) do
-    Config.notification_resource().mark_all_as_read(user_id)
+  def mark_all_as_read(user_id, opts \\ []) do
+    Config.notification_resource().mark_all_as_read(
+      user_id,
+      Keyword.take(opts, [:actor, :authorize?])
+    )
   end
 end

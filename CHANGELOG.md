@@ -7,6 +7,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.8] - Unreleased
+
+Fixes and opt-in additions only: no migration, and an app on `~> 0.8.7`
+reaches the same people as before unless it turns something on.
+
+### Fixed
+
+- **`NotificationLoader.mark_all_as_read/2` passes `:actor` on.** It dropped
+  its options, so the action ran without an actor and the notification
+  resource's policy (`user_id` must be the actor's) refused every call.
+  `:actor` and `:authorize?` reach the action now. *Upgrade:* nothing — a
+  call that passed `actor:` and got `{:error, %Ash.Error.Forbidden{}}` now
+  marks the notifications as read. The return value is `{:ok, %{success: true}}`
+  (the docs said `marked_count`; the action never returned one).
+- **An audience in the atom shorthand in `recipient_fields`** (`audiences:
+  [user: :email]`) no longer raises in the field lookup.
+
+### Added
+
+- **`recipient_fields` `id:`** — where a map recipient keeps its user. A
+  receipt's `user_id` was always the recipient's `:id`, so a contact map
+  `%{user_id: ..., email: ...}` from a resolver got a receipt without a user:
+  no preference gate, no in-app notification, never matched by
+  `exclude_actor`. Name the key generically, per transport, per audience, or
+  per audience and transport:
+
+  ```elixir
+  config :ash_dispatch,
+    recipient_fields: [
+      email: [identifier: :email],
+      audiences: [bookers: [id: :user_id]]
+    ]
+  ```
+
+  Without `id:` nothing changes. `RecipientExtractor.extract_user_id/4` is
+  public. *Upgrade:* add `id:` where your recipients are maps with the user
+  under another key.
+- **The preference checker gets `:tenant` and `:recipient`** in its opts,
+  next to `:category`, `:audience` and `:event_id`. `:tenant` is the action's
+  tenant for an action-triggered event and `Dispatcher.dispatch/4`'s new
+  `:tenant` for a manual one (`nil` without); `:recipient` is the resolved
+  recipient of the receipt being checked. `allows_user?/4` passes both on
+  when given. *Upgrade:* nothing; a checker that keeps preferences per
+  organisation can read `opts[:tenant]`.
+- **`Dispatcher.dispatch/4` takes `:tenant`** (`context.tenant`), and the
+  ManualTrigger's `:trigger` action passes its own tenant. An action-triggered
+  event's `context.tenant` is the action's tenant.
+- **`Dispatcher.dispatch/4`'s `:actor` is kept as `context.actor`** (it only
+  named who asked for an override before), and the ManualTrigger's actor
+  with it. An action-triggered event's `context.actor` is the action's
+  actor. `context.user` does not change: on a manual event it is still the
+  user found in `data`.
+- **`config :ash_dispatch, exclude_actor_on_manual_dispatch: true`** makes a
+  channel's `exclude_actor: true` leave out a manual dispatch's `:actor`
+  too. **Off by default in 0.8.x**: an app that already passes `actor:`
+  reaches the same people after upgrading. **0.9.0 turns it on by default.**
+  *Upgrade:* turn it on if you want 0.9.0's behaviour now, and pass `actor:`
+  on manual dispatches whose channels say `exclude_actor: true`.
+
+### Not in this release
+
+- The actor's id on the receipt needs a new `actor_id` column, so it comes
+  with 0.9.0 and its migration.
+
 ## [0.8.7] - 2026-11-01
 
 ### Security

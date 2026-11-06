@@ -59,7 +59,15 @@ defmodule AshDispatch.Dispatcher do
       address, the recipient it replaced and the actor
     - `:skip_preferences` - bypass the recipients' opt-out for this dispatch
       (recorded the same way)
-    - `:actor` - who asked, for the record above
+    - `:actor` - who caused the event (a user struct or a map with `:id`).
+      Kept as `context.actor`; with
+      `config :ash_dispatch, exclude_actor_on_manual_dispatch: true` a
+      channel with `exclude_actor: true` leaves them out (off by default in
+      0.8.x, the default from 0.9.0). `context.user` is not changed by it:
+      it is still found in `data`. It is also who asked, for the override
+      record above
+    - `:tenant` - the tenant the event happened in, as `context.tenant`. The
+      preference checker gets it as `opts[:tenant]`
 
   ## Returns
 
@@ -132,7 +140,8 @@ defmodule AshDispatch.Dispatcher do
   def dispatch(event_id, data, variables, opts)
       when is_binary(event_id) and is_map(data) and is_map(variables) and is_list(opts) do
     with {:ok, override} <- build_override(opts),
-         {:ok, prepared} <- prepare(event_id, data, variables) do
+         {:ok, prepared} <-
+           prepare(event_id, data, variables, Keyword.take(opts, [:actor, :tenant])) do
       context = put_override(prepared.context, override)
       channels = filter_channels(prepared.channels, Keyword.get(opts, :channels), override)
 
@@ -159,6 +168,9 @@ defmodule AshDispatch.Dispatcher do
   # that resolved these itself would be a second implementation of the send
   # path, and a preview that drifts from the send is worse than none: it is
   # believed.
+  #
+  # Options: `:actor` (`context.actor`), `:tenant` (`context.tenant`) and
+  # `:send_variables?`.
   @spec prepare(String.t(), map(), map(), keyword()) ::
           {:ok, %{module: module(), context: Context.t(), event_config: map(), channels: list()}}
           | {:error, term()}
@@ -171,7 +183,9 @@ defmodule AshDispatch.Dispatcher do
           event_id: event_id,
           data: data,
           variables: variables,
-          user: extract_user_from_data(data)
+          user: extract_user_from_data(data),
+          actor: Keyword.get(opts, :actor),
+          tenant: Keyword.get(opts, :tenant)
         }
 
         # Generate real variables using EventResolver (handles function_exported? and error handling)
@@ -422,7 +436,7 @@ defmodule AshDispatch.Dispatcher do
     recipients = resolve_recipients_for_channel(context, channel, event_config)
 
     # Filter out actor if exclude_actor is set
-    recipients = filter_out_actor(recipients, context, channel)
+    recipients = filter_out_actor(recipients, context, channel, event_config)
 
     case override(context) do
       %{recipient_email: email} when is_binary(email) ->
@@ -495,7 +509,7 @@ defmodule AshDispatch.Dispatcher do
       end)
 
     # Apply deduplication - users in the same deduplicate_group get max one notification
-    deduplicated_recipients = apply_group_deduplication(recipients_with_channels)
+    deduplicated_recipients = apply_group_deduplication(recipients_with_channels, event_config)
 
     # Dispatch to each recipient using their associated channel
     Enum.map(deduplicated_recipients, fn {recipient, channel} ->
@@ -507,12 +521,12 @@ defmodule AshDispatch.Dispatcher do
   # Apply deduplication based on channel's deduplicate_group
   # Channels with same group are deduplicated - first channel (by DSL order) wins
   # Channels without a group are never deduplicated
-  defp apply_group_deduplication(recipients_with_channels) do
+  defp apply_group_deduplication(recipients_with_channels, event_config) do
     # Track which user IDs we've seen per dedup group
     {result, _seen} =
       Enum.reduce(recipients_with_channels, {[], %{}}, fn {recipient, channel} = item,
                                                           {acc, seen} ->
-        user_id = get_user_id(recipient)
+        user_id = get_user_id(recipient, channel, event_config)
         dedup_group = channel.deduplicate_group
 
         cond do
@@ -584,6 +598,10 @@ defmodule AshDispatch.Dispatcher do
   end
 
   defp dispatch_with_receipt(context, channel, event_config, recipient) do
+    # The transports see the recipient this receipt is for, so the opt-out
+    # gate can hand it to the checker (`opts[:recipient]`).
+    context = Context.merge_metadata(context, %{ash_dispatch_recipient: recipient})
+
     case create_receipt(context, channel, event_config, recipient) do
       {:ok, :skipped_optional} ->
         # Optional channel that can't be delivered (e.g. SMS recipient
@@ -772,7 +790,7 @@ defmodule AshDispatch.Dispatcher do
       transport: channel.transport,
       audience: channel.audience,
       recipient: recipient_identifier,
-      user_id: get_user_id(recipient),
+      user_id: get_user_id(recipient, channel, event_config),
       source_type: source_type,
       source_id: source_id,
       locale: locale
@@ -915,23 +933,45 @@ defmodule AshDispatch.Dispatcher do
 
   defp put_recipient(context, _recipient), do: context
 
-  # Get user_id from recipient struct
-  defp get_user_id(recipient) when is_map(recipient) do
-    Map.get(recipient, :id)
+  # The recipient's user id: `recipient_fields` `id:` when configured (a map
+  # recipient that carries its user under another key), else `:id`.
+  defp get_user_id(recipient, channel, event_config) do
+    RecipientExtractor.extract_user_id(
+      recipient,
+      channel.transport,
+      channel.audience,
+      event_config[:recipient]
+    )
   end
 
-  defp get_user_id(_), do: nil
+  # Filter out the actor (user who triggered the event) from recipients.
+  # Only applies when channel.exclude_actor is true. The actor is
+  # `context.user` — the action's actor for an action-triggered event — and,
+  # with `exclude_actor_on_manual_dispatch` on, also `context.actor`, the
+  # `:actor` of a manual dispatch.
+  defp filter_out_actor(recipients, context, %{exclude_actor: true} = channel, event_config) do
+    case excluded_actor_ids(context) do
+      [] ->
+        recipients
 
-  # Filter out the actor (user who triggered the event) from recipients
-  # Only applies when channel.exclude_actor is true and context.user is set
-  defp filter_out_actor(recipients, %{user: %{id: actor_id}}, %{exclude_actor: true})
-       when not is_nil(actor_id) do
-    Enum.reject(recipients, fn recipient ->
-      get_user_id(recipient) == actor_id
-    end)
+      actor_ids ->
+        Enum.reject(recipients, fn recipient ->
+          get_user_id(recipient, channel, event_config) in actor_ids
+        end)
+    end
   end
 
-  defp filter_out_actor(recipients, _context, _channel), do: recipients
+  defp filter_out_actor(recipients, _context, _channel, _event_config), do: recipients
+
+  defp excluded_actor_ids(context) do
+    user_id = extract_user_id_from_recipient(context.user)
+
+    actor_id =
+      if Config.exclude_actor_on_manual_dispatch?(),
+        do: extract_user_id_from_recipient(Map.get(context, :actor))
+
+    Enum.uniq(Enum.reject([user_id, actor_id], &is_nil/1))
+  end
 
   # Extract source resource info (type and ID) for linking receipts to source resources
   # Returns {source_type, source_id} tuple where values may be nil

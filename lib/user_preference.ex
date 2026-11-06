@@ -103,6 +103,12 @@ defmodule AshDispatch.UserPreference do
   - `opts` - Options keyword list with:
     - `:category` - Event category atom (e.g., :billing, :marketing)
     - `:audience` - Channel audience (e.g., :user, :admin)
+    - `:event_id` - the event id again, for checkers that pass opts on
+    - `:tenant` - the tenant the event happened in (`context.tenant`: the
+      action's tenant, or `Dispatcher.dispatch/4`'s `:tenant`), or `nil`.
+      Since 0.8.8
+    - `:recipient` - the resolved recipient this receipt is for (a user
+      struct or a recipient map), or `nil` outside the send path. Since 0.8.8
 
   ## Returns
 
@@ -158,8 +164,7 @@ defmodule AshDispatch.UserPreference do
         get_user_id(context),
         context.event_id,
         channel.transport,
-        category: event_category(event_config),
-        audience: channel.audience
+        gate_opts(context, channel, event_config)
       )
     end
   end
@@ -181,6 +186,10 @@ defmodule AshDispatch.UserPreference do
     address, a webhook target) have no preferences to consult, or
   - the configured checker says the user allows it.
 
+  The checker's opts carry `:category`, `:audience`, `:event_id`, `:tenant`
+  (`context.tenant`) and `:recipient` (the resolved recipient of this
+  receipt).
+
   ## Examples
 
       iex> AshDispatch.UserPreference.allows_receipt?(receipt, context, channel, event_config)
@@ -195,8 +204,8 @@ defmodule AshDispatch.UserPreference do
         receipt_user_id(receipt),
         context.event_id,
         channel.transport,
-        category: event_category(event_config),
-        audience: channel.audience
+        gate_opts(context, channel, event_config)
+        |> Keyword.put(:recipient, context_recipient(context))
       )
     end
   end
@@ -225,6 +234,8 @@ defmodule AshDispatch.UserPreference do
   - `opts` - passed through to the checker, augmented with `:event_id`:
     - `:category` - the event's category atom (e.g. `:marketing`)
     - `:audience` - the channel audience the check is running for
+    - `:tenant` - the tenant, when known (`nil` otherwise)
+    - `:recipient` - the recipient, when known (`nil` otherwise)
 
   ## Examples
 
@@ -246,9 +257,11 @@ defmodule AshDispatch.UserPreference do
       [
         category: Keyword.get(opts, :category),
         audience: Keyword.get(opts, :audience),
-        event_id: event_id
+        event_id: event_id,
+        tenant: Keyword.get(opts, :tenant),
+        recipient: Keyword.get(opts, :recipient)
       ]
-      |> Keyword.merge(Keyword.drop(opts, [:category, :audience, :event_id]))
+      |> Keyword.merge(Keyword.drop(opts, [:category, :audience, :event_id, :tenant, :recipient]))
 
     get_checker().user_allows?(user_id, event_id, transport, checker_opts)
   end
@@ -268,6 +281,18 @@ defmodule AshDispatch.UserPreference do
 
   defp receipt_user_id(%{user_id: user_id}), do: user_id
   defp receipt_user_id(_), do: nil
+
+  defp gate_opts(context, channel, event_config) do
+    [
+      category: event_category(event_config),
+      audience: channel.audience,
+      tenant: Map.get(context, :tenant)
+    ]
+  end
+
+  # The recipient the dispatcher put on the context for this receipt.
+  defp context_recipient(%{metadata: %{ash_dispatch_recipient: recipient}}), do: recipient
+  defp context_recipient(_), do: nil
 
   # `event_config` is Access-compatible (keyword list or map) and its
   # `:metadata` is likewise either shape.

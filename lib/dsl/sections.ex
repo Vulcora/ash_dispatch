@@ -208,6 +208,12 @@ defmodule AshDispatch.Dsl.Sections do
           doc: """
           When true, excludes the user who triggered the event from receiving this notification.
           Useful for team notifications where the actor shouldn't be notified of their own action.
+
+          For an action-triggered event that is the action's actor. For a manual one
+          (`Dispatcher.dispatch/4`, the ManualTrigger) it is the user found in `data`, and
+          the dispatch's `:actor` too with `config :ash_dispatch,
+          exclude_actor_on_manual_dispatch: true` (off by default in 0.8.x, the default
+          from 0.9.0).
           """
         ]
       ]

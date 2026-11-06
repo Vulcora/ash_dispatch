@@ -230,6 +230,7 @@ defmodule AshDispatch.Resources.ManualTrigger do
             skip_preferences,
             context.actor
           )
+          |> Map.put(:tenant, context.tenant)
 
         case AshDispatch.Resources.ManualTrigger.Helpers.load_and_dispatch(
                event_id,

@@ -32,6 +32,8 @@ defmodule AshDispatch.Context do
           priority: :urgent | :standard | :informational,
           locale: String.t(),
           user: struct() | nil,
+          actor: struct() | map() | nil,
+          tenant: term() | nil,
           source: String.t() | nil,
           base_url: String.t(),
           now: DateTime.t(),
@@ -46,6 +48,8 @@ defmodule AshDispatch.Context do
     :data,
     :resource_key,
     :user,
+    :actor,
+    :tenant,
     :source,
     :locale,
     priority: :standard,
@@ -67,6 +71,13 @@ defmodule AshDispatch.Context do
   - `:resource_key` - Hint for nested user lookup
   - `:locale` - Locale for i18n
   - `:user` - Actor/user triggering the event
+  - `:actor` - Who caused the event: the action's actor for an
+    action-triggered event, the `:actor` option of `Dispatcher.dispatch/4`
+    for a manual one, `nil` for a system event. Unlike `:user`, never looked
+    up in `data`. Since 0.8.8
+  - `:tenant` - The tenant the event happened in: the action's tenant, or the
+    `:tenant` option of `Dispatcher.dispatch/4`. Handed to the preference
+    checker as `opts[:tenant]`. Since 0.8.8
   - `:base_url` - Base URL for link building
   - `:metadata` - Additional metadata
   - `:opts` - Additional options
@@ -89,6 +100,8 @@ defmodule AshDispatch.Context do
       resource_key: Keyword.get(opts, :resource_key),
       locale: Keyword.get(opts, :locale, Config.default_locale()),
       user: Keyword.get(opts, :user),
+      actor: Keyword.get(opts, :actor),
+      tenant: Keyword.get(opts, :tenant),
       source: Keyword.get(opts, :source),
       base_url: Keyword.get(opts, :base_url, get_default_base_url()),
       now: Keyword.get(opts, :now, DateTime.utc_now()),

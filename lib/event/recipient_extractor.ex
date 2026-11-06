@@ -159,6 +159,72 @@ defmodule AshDispatch.Event.RecipientExtractor do
     end
   end
 
+  @doc """
+  Extracts the recipient's **user id** — the value a receipt stores as
+  `user_id`, which preferences, in-app notifications and `exclude_actor`
+  key on.
+
+  Without configuration it is the recipient's `:id`, as it has always been.
+  A recipient that is a map carrying its user under another key — a booking
+  contact `%{user_id: ..., email: ...}` from a `raw: true` resolver, say —
+  names that key with `id:`, at any level of the usual cascade:
+
+      config :ash_dispatch,
+        recipient_fields: [
+          id: :id,                                  # generic default
+          email: [identifier: :email, id: :user_id], # per transport
+          audiences: [
+            bookers: [id: :user_id],                 # per audience, any transport
+            admin: [email: [id: :account_id]]        # per audience and transport
+          ]
+        ]
+
+  Any field format of `extract_identifier/4` works. Unlike the identifier, a
+  missing value is not an error: a recipient without a user account simply
+  has no user id, and gets a receipt without one.
+
+  ## Examples
+
+      iex> RecipientExtractor.extract_user_id(%{id: "u1", email: "a@b"}, :email, :user)
+      "u1"
+  """
+  @spec extract_user_id(term(), atom(), atom(), keyword() | map() | nil) :: term()
+  def extract_user_id(recipient, transport, audience, event_config \\ nil)
+
+  def extract_user_id(recipient, transport, audience, event_config) when is_map(recipient) do
+    field =
+      get_in_safe(event_config, [:recipient, transport, :id]) ||
+        get_audience_transport_field(audience, transport, :id) ||
+        get_in_safe(Config.recipient_fields(), [:audiences, audience, :id]) ||
+        get_transport_field(transport, :id) ||
+        get_generic_field(:id) ||
+        :id
+
+    extract_field(recipient, field)
+  end
+
+  def extract_user_id(_recipient, _transport, _audience, _event_config), do: nil
+
+  # `get_in/2` that answers nil where a level is not a keyword list or map —
+  # an audience's config can be an atom shorthand in older configurations.
+  defp get_in_safe(nil, _path), do: nil
+
+  defp get_in_safe(data, [key | rest]) when is_list(data) or is_map(data) do
+    value =
+      cond do
+        is_map(data) -> Map.get(data, key)
+        Keyword.keyword?(data) -> Keyword.get(data, key)
+        true -> nil
+      end
+
+    case rest do
+      [] -> value
+      _ -> get_in_safe(value, rest)
+    end
+  end
+
+  defp get_in_safe(_data, _path), do: nil
+
   # Cascading resolution for identifier field
   defp get_identifier_field(transport, audience, event_config) do
     # 1. Event DSL override (most specific)
@@ -182,13 +248,13 @@ defmodule AshDispatch.Event.RecipientExtractor do
   # Get field from audience-specific config (transport-first)
   defp get_audience_transport_field(audience, transport, field_type) do
     config = Config.recipient_fields()
-    get_in(config, [:audiences, audience, transport, field_type])
+    get_in_safe(config, [:audiences, audience, transport, field_type])
   end
 
   # Get field from transport config (primary lookup)
   defp get_transport_field(transport, field_type) do
     config = Config.recipient_fields()
-    get_in(config, [transport, field_type])
+    get_in_safe(config, [transport, field_type])
   end
 
   # Get generic default field (fallback for backwards compatibility)

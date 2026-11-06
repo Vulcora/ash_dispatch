@@ -340,7 +340,7 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
 
   defp dispatch_opts(opts) do
     opts
-    |> Map.take([:recipient_email, :skip_preferences, :channels, :actor])
+    |> Map.take([:recipient_email, :skip_preferences, :channels, :actor, :tenant])
     |> Enum.reject(fn {_key, value} -> is_nil(value) end)
     |> Enum.map(fn
       {:recipient_email, email} -> {:recipient_email, to_string(email)}

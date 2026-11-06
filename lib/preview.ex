@@ -128,7 +128,10 @@ defmodule AshDispatch.Preview do
     of the first resolved one
   - `:recipient_email` - show this address as the recipient. Only what is
     displayed changes; nothing is sent
-  - `:actor` - the actor the event sees, as on an action-triggered send
+  - `:actor` - the actor the event sees, as on an action-triggered send. On
+    a manual event it becomes `context.actor`, as `Dispatcher.dispatch/4`'s
+    `:actor` does
+  - `:tenant` - the tenant the event sees (`context.tenant`)
   - `:authorize?` - read the record (`{:record, id}`, or the fallback for
     `:sample`) with authorization, as `:actor`. Defaults to `false`, as for the
     ManualTrigger resource, which is guarded by its own policies
@@ -324,8 +327,16 @@ defmodule AshDispatch.Preview do
         end
 
       case prepared do
-        nil -> Dispatcher.prepare(event_id, data, variables, send_variables?: false)
-        prepared -> prepared
+        nil ->
+          Dispatcher.prepare(
+            event_id,
+            data,
+            variables,
+            [send_variables?: false] ++ Keyword.take(opts, [:actor, :tenant])
+          )
+
+        prepared ->
+          prepared
       end
       |> put_locale(Keyword.get(opts, :locale))
     end
@@ -349,6 +360,7 @@ defmodule AshDispatch.Preview do
         {:ok, prepared} =
           DispatchHandler.prepare(record, config, config.event_config,
             actor: Keyword.get(opts, :actor),
+            tenant: Keyword.get(opts, :tenant),
             sample: sample,
             send_variables?: false
           )
