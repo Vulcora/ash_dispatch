@@ -41,7 +41,12 @@ defmodule AshDispatch.Inbox.PreferenceResourceTest do
     test "the tenant's default switches it off for everyone in the tenant" do
       [anna, bo] = [user("anna"), user("bo")]
 
-      put_preference!(%{tenant: "org_1", category: "meetings", transport: :in_app, enabled: false})
+      put_preference!(%{
+        tenant: "org_1",
+        category: "meetings",
+        transport: :in_app,
+        enabled: false
+      })
 
       assert {:ok, _} = send_event(:updated, [anna, bo], tenant: "org_1")
 
@@ -53,7 +58,12 @@ defmodule AshDispatch.Inbox.PreferenceResourceTest do
     test "the tenant's default stays in its tenant" do
       anna = user("anna")
 
-      put_preference!(%{tenant: "org_1", category: "meetings", transport: :in_app, enabled: false})
+      put_preference!(%{
+        tenant: "org_1",
+        category: "meetings",
+        transport: :in_app,
+        enabled: false
+      })
 
       assert {:ok, _} = send_event(:updated, [anna], tenant: "org_2")
       assert delivered?(anna)
@@ -62,7 +72,12 @@ defmodule AshDispatch.Inbox.PreferenceResourceTest do
     test "the person's row beats the tenant's" do
       [anna, bo] = [user("anna"), user("bo")]
 
-      put_preference!(%{tenant: "org_1", category: "meetings", transport: :in_app, enabled: false})
+      put_preference!(%{
+        tenant: "org_1",
+        category: "meetings",
+        transport: :in_app,
+        enabled: false
+      })
 
       put_preference!(%{
         tenant: "org_1",
@@ -81,7 +96,12 @@ defmodule AshDispatch.Inbox.PreferenceResourceTest do
     test "a row for the event beats one for its category, at the same level" do
       anna = user("anna")
 
-      put_preference!(%{user_id: anna.id, category: "meetings", transport: :in_app, enabled: true})
+      put_preference!(%{
+        user_id: anna.id,
+        category: "meetings",
+        transport: :in_app,
+        enabled: true
+      })
 
       put_preference!(%{
         user_id: anna.id,
@@ -97,7 +117,12 @@ defmodule AshDispatch.Inbox.PreferenceResourceTest do
     test "a row is per transport" do
       anna = user("anna")
 
-      put_preference!(%{user_id: anna.id, category: "meetings", transport: :email, enabled: false})
+      put_preference!(%{
+        user_id: anna.id,
+        category: "meetings",
+        transport: :email,
+        enabled: false
+      })
 
       assert {:ok, _} = send_event(:updated, [anna])
       assert delivered?(anna)
