@@ -228,6 +228,7 @@ defmodule AshDispatch.Resources.ManualTrigger.Base do
                 skip_preferences,
                 context.actor
               )
+              |> Map.put(:tenant, context.tenant)
 
             # Use load_and_dispatch to load resource data before dispatching
             case Helpers.load_and_dispatch(event_id, context_data, opts, context.actor) do

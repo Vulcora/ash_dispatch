@@ -71,6 +71,7 @@ defmodule AshDispatch.Notifier.DispatchHandler do
       prepare(record, opts, event_config,
         changeset: changeset,
         actor: Map.get(ash_context, :actor),
+        tenant: Map.get(ash_context, :tenant),
         action: changeset.action
       )
 
@@ -96,6 +97,7 @@ defmodule AshDispatch.Notifier.DispatchHandler do
   # - `:changeset` - the action's changeset; `nil` in a preview, where
   #   `prepare_data/2` is called with a bare `Ash.Changeset.new(record)`
   # - `:actor` - the actor
+  # - `:tenant` - the action's tenant, as `context.tenant`
   # - `:action` - the action (`%{name:, type:}`) for the context's metadata
   # - `:sample` - extra data that stands in for the prepared data. When given,
   #   nothing is loaded and `prepare_data/2` is not called: sample data is
@@ -141,6 +143,8 @@ defmodule AshDispatch.Notifier.DispatchHandler do
         event_config
       )
 
+    context = %{context | tenant: Keyword.get(opts, :tenant)}
+
     context =
       if sample do
         %{context | data: Map.merge(context.data, sample)}
@@ -180,7 +184,7 @@ defmodule AshDispatch.Notifier.DispatchHandler do
 
   # ── Mode 2: Standalone event dispatch (preserved verbatim) ──────
 
-  defp dispatch_standalone_event(changeset, record, opts, _ash_context) do
+  defp dispatch_standalone_event(changeset, record, opts, ash_context) do
     event_id = Map.fetch!(opts, :event_id)
     data_key = Map.fetch!(opts, :data_key)
     load = Map.get(opts, :load, [])
@@ -202,7 +206,12 @@ defmodule AshDispatch.Notifier.DispatchHandler do
           Map.put(%{}, data_key, record)
       end
 
-    case Dispatcher.dispatch(event_id, data) do
+    # The tenant only. The actor stays out: this path has always found
+    # `context.user` in `data`, and an event module may read it as the
+    # event's subject.
+    dispatch_opts = if ash_context[:tenant], do: [tenant: ash_context[:tenant]], else: []
+
+    case Dispatcher.dispatch(event_id, data, %{}, dispatch_opts) do
       {:ok, _result} ->
         :ok
 
@@ -218,7 +227,10 @@ defmodule AshDispatch.Notifier.DispatchHandler do
     # The change-module API received an Ash context map; the notification
     # carries actor + tenant separately and the rest is in changeset.context.
     base = (notification.changeset && notification.changeset.context) || %{}
-    Map.put(base, :actor, notification.actor)
+
+    base
+    |> Map.put(:actor, notification.actor)
+    |> Map.put(:tenant, notification.changeset && notification.changeset.tenant)
   end
 
   defp maybe_load_relationships(record, [], _changeset), do: record
@@ -266,6 +278,7 @@ defmodule AshDispatch.Notifier.DispatchHandler do
       resource_key: resource_key,
       priority: Map.get(event_config, :priority, :standard),
       user: actor,
+      actor: actor,
       source: :resource_action,
       locale: locale,
       base_url: get_base_url(),

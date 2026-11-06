@@ -69,6 +69,41 @@ end
 
 **Key Point:** Receipts are always created for audit purposes, even if skipped.
 
+### What the checker is told
+
+`user_allows?/4` gets the receipt's `user_id`, the event id, the transport
+and these opts:
+
+| Key | Value |
+| --- | --- |
+| `:category` | the event's `metadata: [category: ...]` |
+| `:audience` | the channel's audience |
+| `:event_id` | the event id again |
+| `:tenant` | the tenant the event happened in: the action's tenant, or `Dispatcher.dispatch/4`'s `:tenant`; `nil` without one (since 0.8.8) |
+| `:recipient` | the resolved recipient of this receipt — a user struct, or the map a resolver returned (since 0.8.8) |
+
+A checker that keeps preferences per organisation reads `opts[:tenant]`; one
+that needs more than the id (a booking contact's flags, say) reads
+`opts[:recipient]`.
+
+### Recipients that are maps
+
+The `user_id` a receipt is checked for is the recipient's `:id`. A recipient
+that carries its user under another key — a contact map
+`%{user_id: ..., email: ...}` from a resolver — names that key with `id:` in
+`recipient_fields` (since 0.8.8), per transport, per audience, or both:
+
+```elixir
+config :ash_dispatch,
+  recipient_fields: [
+    email: [identifier: :email],
+    audiences: [bookers: [id: :user_id]]
+  ]
+```
+
+A recipient without the key gets a receipt without a `user_id`, and is not
+gated, like any external address.
+
 **Key Point:** The check is **per recipient**. One event fanned out to 300
 customers asks the checker 300 times and produces 300 independent verdicts —
 some receipts `:skipped`, the rest delivered.

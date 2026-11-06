@@ -399,10 +399,47 @@ defmodule AshDispatch.Config do
             default: :display_name
           ]
         ]
+
+  ## The user id
+
+  A receipt's `user_id` (what preferences and `exclude_actor` compare) is the
+  recipient's `:id`. A map recipient that carries its user under another key
+  names it with `id:` — generic, per transport, per audience, or per audience
+  and transport (since 0.8.8):
+
+      config :ash_dispatch,
+        recipient_fields: [
+          email: [identifier: :email],
+          audiences: [bookers: [id: :user_id]]
+        ]
+
+  See `AshDispatch.Event.RecipientExtractor.extract_user_id/4`.
   """
   @spec recipient_fields() :: keyword()
   def recipient_fields do
     Application.get_env(:ash_dispatch, :recipient_fields, [])
+  end
+
+  @doc """
+  Whether a channel's `exclude_actor: true` also leaves out the `:actor` of a
+  manual dispatch (`Dispatcher.dispatch/4`, the ManualTrigger's `:trigger`).
+
+  An action-triggered event always excludes its actor: the action's actor is
+  `context.user`. A manual event's `context.user` is whatever user is found
+  in `data`, and until 0.8.8 `dispatch/4`'s `:actor` only named who asked for
+  an override. Since 0.8.8 the actor is kept as `context.actor`; with this
+  option on, `exclude_actor` leaves them out as well.
+
+  Defaults to `false` in 0.8.x, so an app that passes `:actor` today reaches
+  the same people after upgrading. **0.9.0 makes `true` the default.**
+
+  ## Example
+
+      config :ash_dispatch, exclude_actor_on_manual_dispatch: true
+  """
+  @spec exclude_actor_on_manual_dispatch?() :: boolean()
+  def exclude_actor_on_manual_dispatch? do
+    Application.get_env(:ash_dispatch, :exclude_actor_on_manual_dispatch, false) == true
   end
 
   # ============================================================================
