@@ -426,20 +426,20 @@ defmodule AshDispatch.Config do
 
   An action-triggered event always excludes its actor: the action's actor is
   `context.user`. A manual event's `context.user` is whatever user is found
-  in `data`, and until 0.8.8 `dispatch/4`'s `:actor` only named who asked for
-  an override. Since 0.8.8 the actor is kept as `context.actor`; with this
-  option on, `exclude_actor` leaves them out as well.
+  in `data`; its `:actor` is kept as `context.actor`, and this option makes
+  `exclude_actor` leave them out as well.
 
-  Defaults to `false` in 0.8.x, so an app that passes `:actor` today reaches
-  the same people after upgrading. **0.9.0 makes `true` the default.**
+  **Defaults to `true` since 0.9.0** (it was opt-in in 0.8.8). Set it to
+  `false` to keep 0.8.x's behaviour, where a manual dispatch's actor is still
+  reached.
 
   ## Example
 
-      config :ash_dispatch, exclude_actor_on_manual_dispatch: true
+      config :ash_dispatch, exclude_actor_on_manual_dispatch: false
   """
   @spec exclude_actor_on_manual_dispatch?() :: boolean()
   def exclude_actor_on_manual_dispatch? do
-    Application.get_env(:ash_dispatch, :exclude_actor_on_manual_dispatch, false) == true
+    Application.get_env(:ash_dispatch, :exclude_actor_on_manual_dispatch, true) != false
   end
 
   # ============================================================================
@@ -454,6 +454,22 @@ defmodule AshDispatch.Config do
   @spec user_preference() :: module()
   def user_preference do
     Application.get_env(:ash_dispatch, :user_preference, AshDispatch.UserPreference.Default)
+  end
+
+  @doc """
+  The notification preference resource read by
+  `AshDispatch.UserPreference.Resource` — a resource that uses
+  `AshDispatch.Resources.Preference.Base`.
+
+  ## Example
+
+      config :ash_dispatch,
+        user_preference: AshDispatch.UserPreference.Resource,
+        preference_resource: MyApp.Notifications.Preference
+  """
+  @spec preference_resource() :: module() | nil
+  def preference_resource do
+    Application.get_env(:ash_dispatch, :preference_resource)
   end
 
   @doc """

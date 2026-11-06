@@ -1,7 +1,7 @@
 defmodule AshDispatch.MixProject do
   use Mix.Project
 
-  @version "0.8.8"
+  @version "0.9.0"
   @description "Event-driven notification system for Ash Framework with multiple transport types"
   @source_url "https://github.com/Vulcora/ash_dispatch"
 
@@ -9,7 +9,7 @@ defmodule AshDispatch.MixProject do
     [
       app: :ash_dispatch,
       version: @version,
-      elixir: "~> 1.15",
+      elixir: "~> 1.17",
       elixirc_paths: elixirc_paths(Mix.env()),
       compilers: Mix.compilers() ++ [:ash_dispatch],
       start_permanent: Mix.env() == :prod,
@@ -55,6 +55,8 @@ defmodule AshDispatch.MixProject do
       # PubSub server. Declared so Hex can hold them to compatible versions.
       {:plug_crypto, "~> 1.2 or ~> 2.0", optional: true},
       {:phoenix_pubsub, "~> 2.0", optional: true},
+      # AshDispatch.Phoenix.LiveView (the on_mount hook) compiles only with it.
+      {:phoenix_live_view, "~> 1.0", optional: true},
 
       # Igniter for code generation/installation
       {:igniter, "~> 0.5", optional: true},
@@ -98,6 +100,7 @@ defmodule AshDispatch.MixProject do
         "lib/documentation/topics/localization.md",
         "lib/documentation/topics/priority.md",
         "lib/documentation/topics/phoenix-integration.md",
+        "lib/documentation/topics/liveview.md",
         "lib/documentation/topics/counter-broadcasting.md",
         "lib/documentation/topics/configuration.md",
         "lib/documentation/topics/code-generation.md",
@@ -153,7 +156,14 @@ defmodule AshDispatch.MixProject do
         ],
         Resources: [
           AshDispatch.Resources.DeliveryReceipt,
-          AshDispatch.Resources.Notification
+          AshDispatch.Resources.Notification,
+          AshDispatch.Resources.Notification.Base,
+          AshDispatch.Resources.Preference.Base
+        ],
+        "Preferences & LiveView": [
+          AshDispatch.UserPreference.Resource,
+          AshDispatch.PolicyChecks.PreferenceWriter,
+          AshDispatch.Phoenix.LiveView
         ],
         "Behaviours & Plugins": [
           AshDispatch.UserPreference,

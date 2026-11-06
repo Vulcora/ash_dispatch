@@ -109,6 +109,9 @@ defmodule AshDispatch.UserPreference do
       Since 0.8.8
     - `:recipient` - the resolved recipient this receipt is for (a user
       struct or a recipient map), or `nil` outside the send path. Since 0.8.8
+    - `:event_default` - the event's own default for this transport
+      (`metadata: [preference_default: ...]`, else `true`): what to answer
+      when the person and the tenant have said nothing. Since 0.9.0
 
   ## Returns
 
@@ -135,6 +138,23 @@ defmodule AshDispatch.UserPreference do
               transport :: atom(),
               opts :: keyword()
             ) :: boolean()
+
+  @doc """
+  Loads what `c:user_allows?/4` will need for a batch of recipients, before
+  it is asked about each of them. Optional.
+
+  The dispatcher calls it once per channel with every recipient's user id
+  (`nil` for recipients without one) and the same opts `c:user_allows?/4`
+  gets, minus `:recipient`. A checker that reads a database keeps the result
+  for the dispatch — `with_dispatch_scope/1` and `scope_get/1` /
+  `scope_put/2` are the place — so a fan-out to N recipients costs one query
+  instead of N. Return value is ignored.
+  """
+  @callback prefetch(user_ids :: [any()], opts :: keyword()) :: any()
+
+  @optional_callbacks [prefetch: 2]
+
+  @scope_key {__MODULE__, :dispatch_scope}
 
   @doc """
   Checks if user allows notification based on context and channel.
@@ -184,6 +204,9 @@ defmodule AshDispatch.UserPreference do
     (see `AshDispatch.Config.preference_gated_audiences/0`, default `[:user]`), or
   - the receipt has no `user_id` — external recipients (a plain email
     address, a webhook target) have no preferences to consult, or
+  - the event is mandatory — `metadata: [user_configurable: false]`, or
+    `user_configurable? false` in an event module's DSL — and is never
+    gated, whatever the checker would say, or
   - the configured checker says the user allows it.
 
   The checker's opts carry `:category`, `:audience`, `:event_id`, `:tenant`
@@ -207,6 +230,122 @@ defmodule AshDispatch.UserPreference do
         gate_opts(context, channel, event_config)
         |> Keyword.put(:recipient, context_recipient(context))
       )
+    end
+  end
+
+  @doc false
+  # Called by the dispatcher once per channel, before the receipts are
+  # created: hands the batch of user ids to the checker's `prefetch/2`, when
+  # it has one and the channel is gated.
+  @spec prefetch([any()], Context.t(), Channel.t(), keyword() | map()) :: :ok
+  def prefetch(user_ids, context, channel, event_config) do
+    checker = get_checker()
+    opts = gate_opts(context, channel, event_config)
+
+    if gated_audience?(channel.audience) and not mandatory?(opts) and
+         Code.ensure_loaded?(checker) and function_exported?(checker, :prefetch, 2) do
+      ids = user_ids |> Enum.reject(&is_nil/1) |> Enum.uniq()
+      if ids != [], do: checker.prefetch(ids, opts)
+    end
+
+    :ok
+  rescue
+    # Prefetching is an optimisation: when it fails the checker is asked
+    # per receipt, as without it.
+    error ->
+      require Logger
+      Logger.warning("Preference prefetch failed: #{Exception.message(error)}")
+      :ok
+  end
+
+  @doc """
+  Runs `fun` inside a dispatch scope: a per-process store a checker can use
+  to keep what it read for the rest of one dispatch (`scope_get/1`,
+  `scope_put/2`). The dispatcher opens one around every dispatch. Nested
+  calls share the outer scope; the store is gone when the outermost returns.
+  """
+  @spec with_dispatch_scope((-> result)) :: result when result: var
+  def with_dispatch_scope(fun) when is_function(fun, 0) do
+    case Process.get(@scope_key) do
+      nil ->
+        Process.put(@scope_key, %{})
+
+        try do
+          fun.()
+        after
+          Process.delete(@scope_key)
+        end
+
+      _open ->
+        fun.()
+    end
+  end
+
+  @doc "Reads `key` from the current dispatch scope; `nil` outside one or when unset."
+  @spec scope_get(term()) :: term()
+  def scope_get(key) do
+    case Process.get(@scope_key) do
+      %{} = scope -> Map.get(scope, key)
+      _ -> nil
+    end
+  end
+
+  @doc "Stores `value` under `key` in the current dispatch scope. Outside a scope it does nothing."
+  @spec scope_put(term(), term()) :: :ok
+  def scope_put(key, value) do
+    case Process.get(@scope_key) do
+      %{} = scope -> Process.put(@scope_key, Map.put(scope, key, value))
+      _ -> nil
+    end
+
+    :ok
+  end
+
+  @doc """
+  Whether an event can be switched off by the people who receive it.
+
+  `false` when its metadata says `user_configurable: false` (or
+  `user_configurable?: false`), or its event module's DSL sets
+  `user_configurable? false`. A mandatory event is never gated by
+  preferences and is not offered in a settings screen.
+  """
+  @spec user_configurable?(String.t() | map() | keyword()) :: boolean()
+  def user_configurable?(event_id) when is_binary(event_id) do
+    case AshDispatch.EventRegistry.find_event(event_id) do
+      {:ok, event} -> user_configurable?(event)
+      {:error, _} -> module_configurable?(event_module(event_id), event_id)
+    end
+  end
+
+  def user_configurable?(event_config) when is_list(event_config) or is_map(event_config) do
+    metadata = metadata_of(event_config)
+
+    cond do
+      access(metadata, :user_configurable) == false -> false
+      access(metadata, :user_configurable?) == false -> false
+      true -> module_configurable?(access(event_config, :module), access(event_config, :event_id))
+    end
+  end
+
+  @doc """
+  The event's own default for `transport`: what a recipient gets when
+  neither they nor their tenant has said anything.
+
+  Read from `metadata: [preference_default: ...]` — a boolean for every
+  transport, or a keyword list per transport (`[email: false, in_app: true]`,
+  unlisted transports `true`). Without it, `true`.
+  """
+  @spec event_default(keyword() | map(), atom()) :: boolean()
+  def event_default(event_config, transport) do
+    case access(metadata_of(event_config), :preference_default) do
+      value when is_boolean(value) ->
+        value
+
+      per_transport when is_list(per_transport) or is_map(per_transport) ->
+        access(per_transport, transport) != false
+
+      _ ->
+        true
     end
   end
 
@@ -259,11 +398,34 @@ defmodule AshDispatch.UserPreference do
         audience: Keyword.get(opts, :audience),
         event_id: event_id,
         tenant: Keyword.get(opts, :tenant),
-        recipient: Keyword.get(opts, :recipient)
+        recipient: Keyword.get(opts, :recipient),
+        event_default: Keyword.get(opts, :event_default, true)
       ]
-      |> Keyword.merge(Keyword.drop(opts, [:category, :audience, :event_id, :tenant, :recipient]))
+      |> Keyword.merge(
+        Keyword.drop(opts, [
+          :category,
+          :audience,
+          :event_id,
+          :tenant,
+          :recipient,
+          :event_default,
+          :user_configurable
+        ])
+      )
 
-    get_checker().user_allows?(user_id, event_id, transport, checker_opts)
+    # A mandatory event is never gated. Callers on the send path say so in
+    # `:user_configurable`; anyone else gets it looked up.
+    configurable? =
+      case Keyword.fetch(opts, :user_configurable) do
+        {:ok, value} -> value != false
+        :error -> user_configurable?(event_id)
+      end
+
+    if configurable? do
+      get_checker().user_allows?(user_id, event_id, transport, checker_opts)
+    else
+      true
+    end
   end
 
   @doc """
@@ -286,13 +448,68 @@ defmodule AshDispatch.UserPreference do
     [
       category: event_category(event_config),
       audience: channel.audience,
-      tenant: Map.get(context, :tenant)
+      tenant: Map.get(context, :tenant),
+      event_id: Map.get(context, :event_id),
+      user_configurable: user_configurable?(with_event_id(event_config, context)),
+      event_default: event_default(event_config, channel.transport)
     ]
   end
 
-  # The recipient the dispatcher put on the context for this receipt.
+  defp mandatory?(opts), do: Keyword.get(opts, :user_configurable) == false
+
+  defp with_event_id(event_config, context) when is_list(event_config) do
+    Keyword.put_new(event_config, :event_id, Map.get(context, :event_id))
+  end
+
+  defp with_event_id(event_config, context) when is_map(event_config) do
+    Map.put_new(event_config, :event_id, Map.get(context, :event_id))
+  end
+
+  defp with_event_id(_event_config, context), do: [event_id: Map.get(context, :event_id)]
+
   defp context_recipient(%{opts: %{ash_dispatch_recipient: recipient}}), do: recipient
   defp context_recipient(_), do: nil
+
+  defp metadata_of(event_config) do
+    case access(event_config, :metadata) do
+      metadata when is_list(metadata) or is_map(metadata) -> metadata
+      _ -> []
+    end
+  end
+
+  # Access that never raises: keyword lists, maps, anything else is nil.
+  defp access(data, key) when is_map(data), do: Map.get(data, key)
+
+  defp access(data, key) when is_list(data) do
+    if Keyword.keyword?(data), do: Keyword.get(data, key)
+  end
+
+  defp access(_data, _key), do: nil
+
+  defp event_module(nil), do: nil
+
+  defp event_module(event_id) do
+    case AshDispatch.EventResolver.find_module(event_id) do
+      {:ok, module} -> module
+      _ -> nil
+    end
+  end
+
+  # An event module's `user_configurable?/1` (the DSL option; `true` when
+  # unset). Only an explicit `false` makes the event mandatory.
+  defp module_configurable?(nil, _event_id), do: true
+
+  defp module_configurable?(module, event_id) when is_atom(module) do
+    if Code.ensure_loaded?(module) and function_exported?(module, :user_configurable?, 1) do
+      module.user_configurable?(%Context{event_id: event_id, data: %{}}) != false
+    else
+      true
+    end
+  rescue
+    _ -> true
+  end
+
+  defp module_configurable?(_module, _event_id), do: true
 
   # `event_config` is Access-compatible (keyword list or map) and its
   # `:metadata` is likewise either shape.

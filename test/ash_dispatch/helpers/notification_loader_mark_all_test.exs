@@ -37,7 +37,7 @@ defmodule AshDispatch.Helpers.NotificationLoaderMarkAllTest do
              NotificationLoader.mark_all_as_read("u1",
                actor: actor,
                authorize?: true,
-               tenant: "ignored"
+               unrelated: "ignored"
              )
 
     assert_received {:mark_all_as_read, "u1", opts}
@@ -69,6 +69,10 @@ defmodule AshDispatch.Helpers.NotificationLoaderMarkAllTest do
         read_at timestamp,
         event_id text,
         idempotency_key text,
+        category text,
+        tenant text,
+        seen_at timestamp,
+        archived_at timestamp,
         inserted_at timestamp not null,
         updated_at timestamp not null
       )

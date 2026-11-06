@@ -75,8 +75,10 @@ defmodule AshDispatch.Notifier.DispatchHandler do
         action: changeset.action
       )
 
-    Enum.each(prepared.channels, fn channel ->
-      Dispatcher.dispatch_channel(prepared.context, channel, prepared.event_config)
+    AshDispatch.UserPreference.with_dispatch_scope(fn ->
+      Enum.each(prepared.channels, fn channel ->
+        Dispatcher.dispatch_channel(prepared.context, channel, prepared.event_config)
+      end)
     end)
 
     :ok

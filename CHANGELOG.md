@@ -7,6 +7,115 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - Unreleased
+
+A notification centre and per-person preferences in the library: who acted,
+what a person wants, what a tenant defaults to, what can never be switched
+off — and an unread count that stays live in a LiveView. Built on 0.8.8;
+read its entry first.
+
+### Requires Elixir 1.17
+
+**`mix.exs` now says `elixir: "~> 1.17"`** (it said `~> 1.15`). Ash 3.33
+already needed 1.17 (`Duration`), so a default install could not run on less;
+the declared floor now says so. An app on Elixir 1.15 or 1.16 stays on 0.8.x.
+CI's floor job runs on 1.17.
+
+### Upgrading: what to do
+
+1. **Generate and run migrations.** `DeliveryReceipt.Base` gains `actor_id`;
+   `Notification.Base` gains `category`, `tenant`, `seen_at` and
+   `archived_at`. Ash reads every attribute a resource declares, so a
+   database without the columns fails on read:
+
+       mix ash.codegen ash_dispatch_0_9_0
+       mix ecto.migrate
+
+   All five columns are nullable; existing rows need no backfill. A receipt
+   resource of your own without `actor_id` keeps working, without it.
+2. **Manual sends that pass `:actor` now leave the actor out of
+   `exclude_actor: true` channels.** `exclude_actor_on_manual_dispatch`
+   (opt-in in 0.8.8) defaults to `true`. To keep 0.8.x's behaviour:
+
+       config :ash_dispatch, exclude_actor_on_manual_dispatch: false
+
+   `context.user` does not change: on a manual event it is still the user
+   found in `data`; the actor is `context.actor`.
+3. **A custom preference checker is no longer asked about mandatory
+   events** (`metadata: [user_configurable: false]`, or `user_configurable?
+   false` in an event module): they are delivered, whatever the checker
+   would say. Its opts also carry `:event_default`. Move a mandatory event
+   you do want gated to `user_configurable: true`.
+4. **`Preference.Base` needs Postgres 15** (`NULLS NOT DISTINCT` on its
+   scope identity). Only if you use it.
+5. **`phoenix_live_view` is a new optional dependency** (`~> 1.0`), for
+   `AshDispatch.Phoenix.LiveView`. Nothing changes for an app without it.
+6. **Under `authorize :when_requested`** in your domain, `Notification.Base`'s
+   per-user policies only run when a call asks for authorization — as
+   before, but now a bell and a settings screen read through them too.
+
+### Added
+
+- **`actor_id` on every receipt**: `context.actor`'s id (the action's actor,
+  or `Dispatcher.dispatch/4`'s `:actor`), else the user found in `data`.
+- **In-app notifications are filed under the event's `category` and the
+  dispatch's tenant** (`AshDispatch.Context.tenant_key/1`: a binary as it
+  is, a record by its `:id`).
+- **Mandatory events.** `metadata: [user_configurable: false]` is never
+  gated, by any checker. `AshDispatch.UserPreference.user_configurable?/1`.
+- **An event's own default**, `metadata: [preference_default: false]` or per
+  transport (`[email: false]`), handed to the checker as `:event_default`.
+  `AshDispatch.UserPreference.event_default/2`.
+- **`AshDispatch.Resources.Preference.Base`** — rows per (tenant, person or
+  the tenant's default, event or category, transport) with `enabled`. The
+  person beats the tenant, the tenant beats the event's default; an event
+  row beats a category row. Policies: a person reads their own rows and the
+  defaults and writes their own; a tenant default needs
+  `permission: :manage_notification_preferences`, and the permission checker
+  gets `tenant:` the row's tenant so it can check the actor manages it; with
+  an Ash tenant on the action, the row's tenant must be that tenant.
+- **`AshDispatch.UserPreference.Resource`** — the standard checker for it.
+  One query per dispatch: the dispatcher hands a channel's recipients to the
+  new optional `c:AshDispatch.UserPreference.prefetch/2` callback, and what
+  it reads is kept for the rest of the dispatch
+  (`with_dispatch_scope/1`, `scope_get/1`, `scope_put/2`).
+- **For a settings screen:** `Resource.configurable_events/1`, `settings/3`
+  (every event × transport with the answer for one person, its source and
+  the tenant default "reset" returns to), `put/3` and `clear/2`.
+  `settings/3` reads without authorization: pass it the signed-in user's id,
+  never one from the request.
+- **`Notification.Base`:** `category`, `tenant`, `seen_at`, `archived_at`;
+  actions `:unread` (read), `:unread_count` (the actor's count),
+  `:mark_as_seen`, `:mark_all_as_seen`, `:archive`, `:unarchive`.
+  `mark_as_read` also sets `seen_at`. Reading broadcasts
+  `"notifications_read"` on the user's topic. A tenant filter (`:unread`,
+  `:unread_count`, `mark_all_*`) includes notifications without a tenant:
+  they belong to the person, so pre-0.9.0 rows stay in every inbox.
+- **`AshDispatch.Phoenix.LiveView`** — `on_mount` hook that subscribes to the
+  user's topic and keeps the unread count in an assign, with a `handle_info`
+  hook and an optional `handle_notification/3` in the LiveView; helpers
+  `mark_all_as_read/1` (within the hook's tenant) and `refresh/1`. Guide:
+  [LiveView Notifications](liveview.html).
+- `NotificationLoader.unread_count/1`, `broadcast_read/1`, and `:tenant` on
+  `mark_all_as_read/2`; `config :ash_dispatch, preference_resource:`.
+- `Notification.Base` and `Preference.Base` take `data_layer:` —
+  `Ash.DataLayer.Ets` for an app's own tests.
+
+### Changed
+
+- **`exclude_actor_on_manual_dispatch` defaults to `true`** (see above).
+- **`mark_all_as_read`'s `user_id` is optional**: without it the action
+  marks the actor's own feed, and with it only the actor's. The actor is
+  carried into the bulk update.
+- **The `unread_notifications` counter counts what `:unread` counts**: an
+  archived notification is not unread. It also fires on `:archive` and
+  `:unarchive`.
+
+### Not in this release
+
+- The dependency round BACKLOG 9 meant the Elixir floor to travel with: the
+  floor is raised, the library update pass is still open.
+
 ## [0.8.8] - Unreleased
 
 Fixes and opt-in additions only: no migration, and an app on `~> 0.8.7`

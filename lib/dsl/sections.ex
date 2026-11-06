@@ -211,9 +211,8 @@ defmodule AshDispatch.Dsl.Sections do
 
           For an action-triggered event that is the action's actor. For a manual one
           (`Dispatcher.dispatch/4`, the ManualTrigger) it is the user found in `data`, and
-          the dispatch's `:actor` too with `config :ash_dispatch,
-          exclude_actor_on_manual_dispatch: true` (off by default in 0.8.x, the default
-          from 0.9.0).
+          the dispatch's `:actor` too (since 0.9.0; `config :ash_dispatch,
+          exclude_actor_on_manual_dispatch: false` keeps the 0.8.x behaviour).
           """
         ]
       ]

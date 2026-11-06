@@ -1,0 +1,94 @@
+defmodule AshDispatch.Test.LegacyReceipt do
+  @moduledoc """
+  `AshDispatch.Test.TransportReceipt` as a receipt resource of an app's own
+  from before 0.9.0: no `actor_id`.
+  """
+  use Ash.Resource,
+    domain: AshDispatch.Test.Domain,
+    data_layer: Ash.DataLayer.Ets
+
+  ets do
+    private? true
+  end
+
+  attributes do
+    uuid_primary_key :id
+
+    attribute :status, :atom, default: :pending, public?: true
+    attribute :event_id, :string, public?: true
+    attribute :audience, :atom, public?: true
+    attribute :transport, :atom, default: :email, public?: true
+    attribute :user_id, :uuid, public?: true
+    attribute :recipient, :string, public?: true
+    attribute :subject, :string, public?: true
+    attribute :body_html, :string, public?: true
+    attribute :body_text, :string, public?: true
+    attribute :content, :map, default: %{}, public?: true
+    attribute :error_message, :string, public?: true
+    attribute :oban_job_id, :integer, public?: true
+    attribute :provider_id, :string, public?: true
+    attribute :provider_response, :map, public?: true
+    attribute :retry_count, :integer, default: 0, public?: true
+    attribute :notification_id, :uuid, public?: true
+    # What the dispatcher writes on create, so a full `Dispatcher.dispatch/3`
+    # can run against this resource (the preview parity test does).
+    attribute :source_type, :string, public?: true
+    attribute :source_id, :string, public?: true
+    attribute :locale, :string, public?: true
+
+    create_timestamp :inserted_at
+    update_timestamp :updated_at
+  end
+
+  actions do
+    defaults [:read, :destroy]
+
+    create :create do
+      accept [
+        :status,
+        :event_id,
+        :audience,
+        :transport,
+        :user_id,
+        :recipient,
+        :subject,
+        :body_html,
+        :body_text,
+        :content,
+        :source_type,
+        :source_id,
+        :locale,
+        :notification_id
+      ]
+    end
+
+    update :skip do
+      accept [:error_message]
+      change set_attribute(:status, :skipped)
+    end
+
+    update :schedule do
+      accept [:oban_job_id]
+      change set_attribute(:status, :scheduled)
+    end
+
+    update :mark_sending do
+      change set_attribute(:status, :sending)
+    end
+
+    update :mark_sent do
+      accept [:notification_id, :provider_id, :provider_response]
+      change set_attribute(:status, :sent)
+    end
+
+    update :mark_failed_permanent do
+      accept [:error_message]
+      change set_attribute(:status, :failed_permanent)
+    end
+
+    update :mark_failed do
+      accept [:error_message]
+      change set_attribute(:status, :failed)
+    end
+  end
+end

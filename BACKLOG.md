@@ -149,20 +149,51 @@ bug fixed in `fix/gettext-domain-catalog`:
   `Spark.Dsl.Extension.codegen/1` callback — ash_typescript has no codegen
   hooks, so "an ash_typescript extension" is not actually possible today.
 
-## 9. Raise the declared Elixir floor — planned for 0.9.0
+## 9. Raise the declared Elixir floor — RESOLVED in 0.9.0
 
-`mix.exs` says `elixir: "~> 1.15"`. That is true of ash_dispatch's own code,
+`mix.exs` says `elixir: "~> 1.17"` since 0.9.0, and CI's
+`compile-without-optional-deps` job runs on that floor. The CHANGELOG says so
+under its own heading.
+
+The full library update pass this was meant to travel with is not done: it
+is still open for a later dependency round.
+
+### Original finding
+
+`mix.exs` said `elixir: "~> 1.15"`. That is true of ash_dispatch's own code,
 and of an app that pins an older Ash — but **Ash 3.33 does not compile on
 1.15**: it uses `Duration` (Elixir 1.17) while declaring `~> 1.11`. So a
-default install today needs 1.17, and the declared floor no longer describes
-what `mix deps.get` produces. CI's `compile-without-optional-deps` already
-runs on 1.17 for that reason (0.8.5).
+default install needed 1.17, and the declared floor no longer described
+what `mix deps.get` produces.
 
-Deliberately deferred: raising it shuts out the 1.15-with-older-Ash
-combination, so it belongs with a broader dependency round rather than a
-patch. Planned for **0.9.0**, together with a full library update pass;
-0.8.6–0.8.9 stay available for feature work in between.
+## 10. Notification centre and per-person preferences — RESOLVED in 0.9.0
 
-When it happens: `elixir: "~> 1.17"` in `mix.exs`, move the floor CI job to
-whatever the new floor is, and say so in the CHANGELOG under a heading that
-a consumer on an old Elixir will notice.
+What an app needs for a bell, a notification list and a settings page, which
+until 0.9.0 every consumer built itself:
+
+- `Dispatcher.dispatch/4` `:actor` fills `context.user`, so `exclude_actor`
+  works for manual events; the actor's id is on every receipt (`actor_id`).
+  `:tenant` fills `context.tenant`, for manual and action-triggered events.
+- `recipient_fields` `id:` links a map recipient to its user.
+- The checker gets `:tenant`, `:recipient` and `:event_default`;
+  `metadata: [user_configurable: false]` is never gated.
+- `AshDispatch.Resources.Preference.Base` + `AshDispatch.UserPreference.Resource`:
+  person > tenant > event default, one query per dispatch through the new
+  `prefetch/2` callback, and introspection for a settings screen
+  (`configurable_events/1`, `settings/3`, `put/3`, `clear/2`).
+- `Notification.Base`: `category`, `tenant`, `seen_at`, `archived_at`,
+  `:unread`, `:unread_count`, `mark_all_as_read` that carries the actor
+  (and `NotificationLoader.mark_all_as_read/2` passing it on).
+- `AshDispatch.Phoenix.LiveView`: on_mount hook with a live unread count.
+
+Later, if asked for:
+
+- A standalone event dispatched by the notifier (no DSL `event` block) still
+  finds `context.user` in `data` rather than taking the action's actor, as it
+  always has; switching it would change what such an event module reads as
+  its subject.
+- The receipt carries `actor_id` but no `tenant`; per-tenant receipt reports
+  read it through the source record for now.
+- `Preference.Base`'s upsert relies on `NULLS NOT DISTINCT` (Postgres 15+);
+  `UserPreference.Resource.put/3` updates an existing row itself, so it also
+  works on data layers without it.

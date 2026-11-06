@@ -157,6 +157,14 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
           constraints: [one_of: AshDispatch.Transport.Registry.receipted_atoms()]
 
         attribute :user_id, :uuid, allow_nil?: true, public?: true
+
+        # Who caused the event: the action's actor, or the `:actor` option of
+        # `Dispatcher.dispatch/4`. Nil for a system event.
+        attribute :actor_id, :uuid,
+          allow_nil?: true,
+          public?: true,
+          description: "User whose action caused the event (nil for system events)"
+
         attribute :notification_id, :uuid, allow_nil?: true, public?: true
 
         attribute :audience, :atom,
@@ -319,6 +327,7 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
             :event_id,
             :transport,
             :user_id,
+            :actor_id,
             :notification_id,
             :audience,
             :recipient,

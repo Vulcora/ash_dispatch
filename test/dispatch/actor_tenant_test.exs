@@ -1,6 +1,6 @@
 defmodule AshDispatch.Dispatch.ActorTenantTest do
   @moduledoc """
-  0.8.8: `Dispatcher.dispatch/4`'s `:actor` and `:tenant`, what the
+  Since 0.8.8: `Dispatcher.dispatch/4`'s `:actor` and `:tenant`, what the
   preference checker is told, and `recipient_fields` `id:`.
 
   Until 0.8.8 `:actor` only named who asked for an override, a manual event
@@ -29,7 +29,16 @@ defmodule AshDispatch.Dispatch.ActorTenantTest do
       assert prepared.context.user == nil
     end
 
-    test "exclude_actor does not leave the actor out by default (unchanged from 0.8.7)" do
+    test "since 0.9.0 exclude_actor leaves the actor out by default" do
+      [anna, bo] = [user("anna"), user("bo")]
+
+      assert {:ok, _} = send_updated([anna, bo], actor: anna)
+
+      assert sent_to() == [bo.email]
+    end
+
+    test "exclude_actor_on_manual_dispatch: false keeps 0.8.x's behaviour" do
+      Application.put_env(:ash_dispatch, :exclude_actor_on_manual_dispatch, false)
       [anna, bo] = [user("anna"), user("bo")]
 
       assert {:ok, _} = send_updated([anna, bo], actor: anna)
@@ -260,6 +269,36 @@ defmodule AshDispatch.Dispatch.ActorTenantTest do
       Application.put_env(:ash_dispatch, :recipient_fields, audiences: [user: :email])
 
       assert RecipientExtractor.extract_user_id(%{id: "u1"}, :email, :user) == "u1"
+    end
+  end
+
+  describe "a receipt resource without actor_id (0.9.0)" do
+    test "still creates its receipts, without the actor" do
+      Application.put_env(
+        :ash_dispatch,
+        :delivery_receipt_resource,
+        AshDispatch.Test.LegacyReceipt
+      )
+
+      on_exit(fn -> Ash.DataLayer.Ets.stop(AshDispatch.Test.LegacyReceipt) end)
+      [anna, bo] = [user("anna"), user("bo")]
+
+      assert {:ok, _} = send_updated([anna, bo], actor: anna)
+
+      assert sent_to() == [bo.email]
+      assert [receipt] = Ash.read!(AshDispatch.Test.LegacyReceipt, authorize?: false)
+      refute Map.has_key?(receipt, :actor_id)
+    end
+  end
+
+  describe "the receipt's actor_id (0.9.0)" do
+    test "is the dispatch's :actor" do
+      Application.put_env(:ash_dispatch, :exclude_actor_on_manual_dispatch, false)
+      [anna, bo] = [user("anna"), user("bo")]
+
+      assert {:ok, _} = send_updated([anna, bo], actor: anna)
+
+      assert Enum.all?(receipts("meeting.updated"), &(&1.actor_id == anna.id))
     end
   end
 end
