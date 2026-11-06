@@ -291,7 +291,7 @@ defmodule AshDispatch.UserPreference do
   end
 
   # The recipient the dispatcher put on the context for this receipt.
-  defp context_recipient(%{metadata: %{ash_dispatch_recipient: recipient}}), do: recipient
+  defp context_recipient(%{opts: %{ash_dispatch_recipient: recipient}}), do: recipient
   defp context_recipient(_), do: nil
 
   # `event_config` is Access-compatible (keyword list or map) and its

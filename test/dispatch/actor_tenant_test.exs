@@ -133,6 +133,18 @@ defmodule AshDispatch.Dispatch.ActorTenantTest do
       assert check.opts[:event_id] == "meeting.updated"
     end
 
+    test "the recipient does not end up in context.metadata" do
+      anna = user("anna")
+
+      assert {:ok, _} = send_updated([anna])
+
+      # What the event module sees while rendering this recipient's letter.
+      assert_received {:rendering, metadata}
+      refute Map.has_key?(metadata, :ash_dispatch_recipient)
+      assert [%{opts: opts}] = checks()
+      assert opts[:recipient] == anna
+    end
+
     test "tenant is nil without one, and the recipient is each receipt's own" do
       [anna, bo] = [user("anna"), user("bo")]
 

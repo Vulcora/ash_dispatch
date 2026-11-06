@@ -79,7 +79,14 @@ defmodule AshDispatch.Test.Meeting.Updated do
   def subject(%{data: data}, _channel), do: "Updated: #{title(data)}"
 
   @impl true
-  def prepare_template_assigns(%{data: data}, _channel), do: %{title: title(data)}
+  def prepare_template_assigns(%{data: data} = context, _channel) do
+    case Application.get_env(:ash_dispatch, :capture_pid) do
+      pid when is_pid(pid) -> send(pid, {:rendering, context.metadata})
+      _ -> :ok
+    end
+
+    %{title: title(data)}
+  end
 
   defp title(data), do: data |> Map.get(:meeting, %{}) |> Map.get(:title)
 end

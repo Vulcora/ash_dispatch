@@ -599,8 +599,10 @@ defmodule AshDispatch.Dispatcher do
 
   defp dispatch_with_receipt(context, channel, event_config, recipient) do
     # The transports see the recipient this receipt is for, so the opt-out
-    # gate can hand it to the checker (`opts[:recipient]`).
-    context = Context.merge_metadata(context, %{ash_dispatch_recipient: recipient})
+    # gate can hand it to the checker (`opts[:recipient]`). In `opts`, not
+    # `metadata`: event modules read `context.metadata` and may store it,
+    # and a whole user struct must not travel with it.
+    context = %{context | opts: Map.put(context.opts || %{}, :ash_dispatch_recipient, recipient)}
 
     case create_receipt(context, channel, event_config, recipient) do
       {:ok, :skipped_optional} ->
