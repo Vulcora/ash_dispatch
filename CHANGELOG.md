@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - Unreleased
+
+The release of 0.9.0. The library code is unchanged from 0.9.0, which never
+reached Hex: its publish run stopped on two tests that failed depending on
+timing. Read the 0.9.0 entry below for what the release contains.
+
+### Fixed (test suite)
+
+- **ETS tables are emptied for real between tests.** `Ash.DataLayer.Ets.stop/1`
+  ends the table's owner with `Process.exit/2` and returns before the owner
+  is gone. A test that wrote in that gap wrote into the old table, which
+  was deleted a moment later: a tenant's preference row that the dispatch
+  never read, a notification the unread count never saw. The new test helper
+  `AshDispatch.Test.Ets.stop/1` waits for the owner to exit (a monitor, not
+  a sleep), and the inbox, meeting and actor/tenant fixtures use it.
+
 ## [0.9.0] - Unreleased
 
 A notification centre and per-person preferences in the library: who acted,

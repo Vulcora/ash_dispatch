@@ -280,7 +280,7 @@ defmodule AshDispatch.Dispatch.ActorTenantTest do
         AshDispatch.Test.LegacyReceipt
       )
 
-      on_exit(fn -> Ash.DataLayer.Ets.stop(AshDispatch.Test.LegacyReceipt) end)
+      on_exit(fn -> AshDispatch.Test.Ets.stop(AshDispatch.Test.LegacyReceipt) end)
       [anna, bo] = [user("anna"), user("bo")]
 
       assert {:ok, _} = send_updated([anna, bo], actor: anna)

@@ -215,7 +215,7 @@ defmodule AshDispatch.Test.InboxCase do
             AshDispatch.Test.Inbox.Preference,
             AshDispatch.Test.TransportReceipt
           ] do
-        Ash.DataLayer.Ets.stop(resource)
+        AshDispatch.Test.Ets.stop(resource)
       end
     end)
 
