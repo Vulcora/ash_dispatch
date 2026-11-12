@@ -324,8 +324,11 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
     # Use centralized EventResolver for event lookup
     case EventResolver.find_module(event_id) do
       {:ok, event_module} ->
-        # Load the resource data using the same logic as preview
-        case build_context_from_data(event_id, event_module, context_data, actor) do
+        # Load the resource data using the same logic as preview — in the
+        # action's tenant, which the dispatch gets through `dispatch_opts/1`.
+        tenant = Map.get(opts, :tenant)
+
+        case build_context_from_data(event_id, event_module, context_data, actor, tenant) do
           {:ok, context} ->
             AshDispatch.Dispatcher.dispatch(event_id, context.data, %{}, dispatch_opts(opts))
 
@@ -354,16 +357,20 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
   renderer — and returned in the maps the `:preview` action has always
   returned.
   """
-  def preview_trigger(event_id, context_data, channel_filter, recipient_email, actor) do
+  def preview_trigger(event_id, context_data, channel_filter, recipient_email, actor, opts \\ []) do
+    tenant = Keyword.get(opts, :tenant)
+
     # Use centralized EventResolver for event lookup
     case EventResolver.find_module(event_id) do
       {:ok, event_module} ->
-        with {:ok, source} <- preview_source(event_id, event_module, context_data, actor),
+        with {:ok, source} <-
+               preview_source(event_id, event_module, context_data, actor, tenant),
              {:ok, rendered} <-
                AshDispatch.Preview.render(
                  event_id,
                  source,
-                 preview_opts(channel_filter, recipient_email, actor)
+                 preview_opts(channel_filter, recipient_email, actor) ++
+                   if(tenant, do: [tenant: tenant], else: [])
                ) do
           {:ok, Enum.map(rendered, &to_preview_map/1)}
         end
@@ -378,7 +385,7 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
   # previewed here goes through the same load and `prepare_data/2` as its
   # send. Anything else is resolved the way it always was and previewed as
   # the event's data.
-  defp preview_source(event_id, event_module, context_data, actor) do
+  defp preview_source(event_id, event_module, context_data, actor, tenant) do
     context_data = atomize_keys(context_data || %{})
 
     cond do
@@ -391,7 +398,7 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
 
       true ->
         with {:ok, context} <-
-               build_context_from_data(event_id, event_module, context_data, actor) do
+               build_context_from_data(event_id, event_module, context_data, actor, tenant) do
           {:ok, context.data}
         end
     end
@@ -508,7 +515,7 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
 
   # Note: is_event_applicable_for_user? and build_sample_context are now handled by EventResolver
 
-  defp build_context_from_data(event_id, event_module, context_data, actor) do
+  defp build_context_from_data(event_id, event_module, context_data, actor, tenant) do
     # Normalize context_data keys to atoms (JSON sends string keys)
     context_data = atomize_keys(context_data)
 
@@ -527,7 +534,7 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
               # ID provided - load that specific record
               resource_id = context_data[id_field]
 
-              case load_resource(resource, resource_id, load_opts) do
+              case load_resource(resource, resource_id, load_opts, tenant) do
                 {:ok, record} ->
                   {:ok, %{data_key => record}}
 
@@ -548,7 +555,7 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
                 {:ok, module_sample_data}
               else
                 # Fall back to auto-loading a sample record from DB
-                case load_sample_record(resource, load_opts) do
+                case load_sample_record(resource, load_opts, tenant) do
                   {:ok, record} ->
                     {:ok, %{data_key => record}}
 
@@ -570,7 +577,7 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
 
         :not_found ->
           # Event module without DSL config - load data based on required_resources
-          load_data_from_required_resources(event_module, context_data)
+          load_data_from_required_resources(event_module, context_data, tenant)
       end
 
     case base_data_result do
@@ -583,10 +590,14 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
   end
 
   # Load a sample record from the database for preview purposes
-  defp load_sample_record(resource, load_opts) do
+  defp load_sample_record(resource, load_opts, tenant) do
     domain = Ash.Resource.Info.domain(resource)
 
-    case Ash.read(resource, domain: domain, authorize?: false, load: load_opts, page: [limit: 1]) do
+    read_opts =
+      [domain: domain, authorize?: false, load: load_opts, page: [limit: 1]] ++
+        AshDispatch.Tenancy.opts(resource, tenant)
+
+    case Ash.read(resource, read_opts) do
       {:ok, %{results: [record | _]}} ->
         {:ok, record}
 
@@ -634,16 +645,20 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
      )}
   end
 
-  defp load_resource(resource, id, load_opts) do
+  defp load_resource(resource, id, load_opts, tenant) do
     domain = Ash.Resource.Info.domain(resource)
 
-    case Ash.get(resource, id, domain: domain, authorize?: false, load: load_opts) do
+    get_opts =
+      [domain: domain, authorize?: false, load: load_opts] ++
+        AshDispatch.Tenancy.opts(resource, tenant)
+
+    case Ash.get(resource, id, get_opts) do
       {:ok, record} -> {:ok, record}
       {:error, _} = error -> error
     end
   end
 
-  defp load_data_from_required_resources(event_module, context_data) do
+  defp load_data_from_required_resources(event_module, context_data, tenant) do
     # Use EventResolver for safe callback execution
     resource = EventResolver.resource(event_module)
 
@@ -666,7 +681,13 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
             # ID provided - load that specific record
             resource_id = context_data[id_field]
 
-            case load_resource_with_domain(resource, resource_id, channel_load_opts, domain) do
+            case load_resource_with_domain(
+                   resource,
+                   resource_id,
+                   channel_load_opts,
+                   domain,
+                   tenant
+                 ) do
               {:ok, record} ->
                 {:ok, %{data_key => record}}
 
@@ -687,7 +708,7 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
               {:ok, sample_data}
             else
               # Fall back to loading a sample record from DB
-              case load_sample_record_with_domain(resource, channel_load_opts, domain) do
+              case load_sample_record_with_domain(resource, channel_load_opts, domain, tenant) do
                 {:ok, record} ->
                   {:ok, %{data_key => record}}
 
@@ -734,17 +755,16 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
   end
 
   # Load a sample record with explicit domain
-  defp load_sample_record_with_domain(resource, load_opts, domain) do
+  defp load_sample_record_with_domain(resource, load_opts, domain, tenant) do
     actual_domain =
       domain || (function_exported?(resource, :__domain__, 0) && resource.__domain__())
 
     if actual_domain do
-      case Ash.read(resource,
-             domain: actual_domain,
-             authorize?: false,
-             load: load_opts,
-             page: [limit: 1]
-           ) do
+      read_opts =
+        [domain: actual_domain, authorize?: false, load: load_opts, page: [limit: 1]] ++
+          AshDispatch.Tenancy.opts(resource, tenant)
+
+      case Ash.read(resource, read_opts) do
         {:ok, %{results: [record | _]}} -> {:ok, record}
         {:ok, %{results: []}} -> {:error, :no_records}
         {:ok, [record | _]} -> {:ok, record}
@@ -770,13 +790,18 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
     end)
   end
 
-  defp load_resource_with_domain(resource, id, load_opts, domain) do
+  defp load_resource_with_domain(resource, id, load_opts, domain, tenant) do
     # Use provided domain or try to get from resource
     actual_domain =
       domain || (function_exported?(resource, :__domain__, 0) && resource.__domain__())
 
     if actual_domain do
-      Ash.get(resource, id, domain: actual_domain, authorize?: false, load: load_opts)
+      Ash.get(
+        resource,
+        id,
+        [domain: actual_domain, authorize?: false, load: load_opts] ++
+          AshDispatch.Tenancy.opts(resource, tenant)
+      )
     else
       {:error, "Could not determine domain for resource #{inspect(resource)}"}
     end

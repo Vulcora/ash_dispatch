@@ -57,9 +57,14 @@ defmodule AshDispatch.Calculations.LoadUser do
           user_resource
           |> Ash.Query.filter(id in ^user_ids)
           |> Ash.read!(
-            domain: user_domain,
-            authorize?: Map.get(context, :authorize?, false),
-            actor: Map.get(context, :actor)
+            # The tenant the receipts were read in, when the user resource is
+            # per tenant too. A calculation runs inside its query's context.
+            [
+              domain: user_domain,
+              authorize?: Map.get(context, :authorize?, false),
+              actor: Map.get(context, :actor)
+            ] ++
+              AshDispatch.Tenancy.opts(user_resource, Map.get(context, :tenant))
           )
           |> Enum.map(fn user -> {user.id, user} end)
           |> Map.new()

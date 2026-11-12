@@ -67,6 +67,79 @@ defmodule AshDispatch.Test.PerTenant.PublicReceipt do
   end
 end
 
+defmodule AshDispatch.Test.PerTenant.Booking do
+  @moduledoc """
+  A host record that is itself per tenant, so the reads that are about the
+  HOST's data — a preview of a record, a manual trigger, a channel's `load:` —
+  are tested against a real schema too.
+  """
+  use Ash.Resource,
+    domain: AshDispatch.Test.PerTenant.Domain,
+    data_layer: AshPostgres.DataLayer,
+    extensions: [AshDispatch.Resource]
+
+  postgres do
+    table "pt_bookings"
+    repo(AshDispatch.Test.PerTenant.Repo)
+  end
+
+  multitenancy do
+    strategy :context
+    global? false
+  end
+
+  attributes do
+    uuid_primary_key :id
+    attribute :reference, :string, allow_nil?: false, public?: true
+    attribute :guest_email, :string, allow_nil?: false, public?: true
+  end
+
+  actions do
+    defaults [:read, create: [:reference, :guest_email]]
+  end
+
+  dispatch do
+    event :confirmed,
+      trigger_on: :manual,
+      event_id: "pt_booking.confirmed",
+      module: AshDispatch.Test.PerTenant.BookingConfirmed,
+      channels: [
+        [transport: :in_app, audience: :user]
+      ]
+  end
+end
+
+defmodule AshDispatch.Test.PerTenant.BookingConfirmed do
+  @moduledoc false
+  use AshDispatch.Event
+
+  @impl true
+  def id, do: "pt_booking.confirmed"
+
+  @impl true
+  def resource, do: AshDispatch.Test.PerTenant.Booking
+
+  @impl true
+  def data_key, do: :booking
+
+  @impl true
+  def recipients(%{data: %{booking: booking}}, _channel),
+    do: [%{id: booking.id, email: booking.guest_email}]
+
+  def recipients(_context, _channel), do: []
+
+  @impl true
+  def notification_title(%{data: %{booking: booking}}, _channel),
+    do: "Booking #{booking.reference} confirmed"
+
+  @impl true
+  def notification_message(_context, _channel), do: "See you soon"
+
+  @impl true
+  def subject(%{data: %{booking: booking}}, _channel),
+    do: "Booking #{booking.reference} confirmed"
+end
+
 defmodule AshDispatch.Test.PerTenant.Domain do
   @moduledoc false
   use Ash.Domain, validate_config_inclusion?: false
@@ -76,6 +149,7 @@ defmodule AshDispatch.Test.PerTenant.Domain do
     resource AshDispatch.Test.PerTenant.PublicReceipt
     resource AshDispatch.Test.PerTenant.Notification
     resource AshDispatch.Test.PerTenant.Preference
+    resource AshDispatch.Test.PerTenant.Booking
   end
 end
 
@@ -199,11 +273,16 @@ defmodule AshDispatch.Test.PerTenantCase do
   @otp_app :ash_dispatch_per_tenant_test
   @tenants ["tenant_a", "tenant_b"]
 
-  @per_tenant_resources [PerTenant.Receipt, PerTenant.Notification, PerTenant.Preference]
+  @per_tenant_resources [
+    PerTenant.Receipt,
+    PerTenant.Notification,
+    PerTenant.Preference,
+    PerTenant.Booking
+  ]
 
   @env [
     otp_app: @otp_app,
-    domains: [PerTenant.Events],
+    domains: [PerTenant.Events, PerTenant.Domain],
     delivery_receipt_resource: PerTenant.Receipt,
     notification_resource: PerTenant.Notification,
     preference_resource: PerTenant.Preference,
@@ -245,7 +324,7 @@ defmodule AshDispatch.Test.PerTenantCase do
 
     Enum.each(@env, fn {key, value} -> Application.put_env(:ash_dispatch, key, value) end)
     Application.put_env(:ash_dispatch, :capture_pid, self())
-    Application.put_env(@otp_app, :ash_domains, [PerTenant.Events])
+    Application.put_env(@otp_app, :ash_domains, [PerTenant.Events, PerTenant.Domain])
 
     on_exit(fn ->
       Enum.each(previous, fn
@@ -277,6 +356,23 @@ defmodule AshDispatch.Test.PerTenantCase do
   end
 
   def meeting(title \\ "Planning"), do: %{id: Ash.UUID.generate(), title: title}
+
+  @doc "Creates a booking inside a tenant — a host record in a real schema."
+  def booking!(tenant, attrs \\ %{}) do
+    PerTenant.Booking
+    |> Ash.Changeset.for_create(
+      :create,
+      Map.merge(
+        %{
+          reference: "B-#{System.unique_integer([:positive])}",
+          guest_email: "guest-#{System.unique_integer([:positive])}@example.com"
+        },
+        attrs
+      )
+    )
+    |> Ash.Changeset.set_tenant(tenant)
+    |> Ash.create!(authorize?: false)
+  end
 
   @doc """
   Sends a manual event inside `tenant`. In-app channels only unless

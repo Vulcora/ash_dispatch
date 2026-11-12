@@ -131,7 +131,8 @@ defmodule AshDispatch.Preview do
   - `:actor` - the actor the event sees, as on an action-triggered send. On
     a manual event it becomes `context.actor`, as `Dispatcher.dispatch/4`'s
     `:actor` does
-  - `:tenant` - the tenant the event sees (`context.tenant`)
+  - `:tenant` - the tenant the event sees (`context.tenant`), and the schema a
+    `{:record, id}` is read from when the resource is per tenant (since 0.9.4)
   - `:authorize?` - read the record (`{:record, id}`, or the fallback for
     `:sample`) with authorization, as `:actor`. Defaults to `false`, as for the
     ManualTrigger resource, which is guarded by its own policies
@@ -547,7 +548,7 @@ defmodule AshDispatch.Preview do
       domain: Ash.Resource.Info.domain(resource),
       actor: Keyword.get(opts, :actor),
       authorize?: Keyword.get(opts, :authorize?, false)
-    ]
+    ] ++ AshDispatch.Tenancy.opts(resource, Keyword.get(opts, :tenant))
   end
 
   # ── Channels ────────────────────────────────────────────────────────

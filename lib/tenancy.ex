@@ -144,6 +144,18 @@ defmodule AshDispatch.Tenancy do
   end
 
   @doc """
+  Sets the tenant on a query, when its resource is multitenant and the tenant
+  is not `nil`. Returns the query untouched otherwise.
+  """
+  @spec set_query(Ash.Query.t(), term()) :: Ash.Query.t()
+  def set_query(query, tenant)
+  def set_query(query, nil), do: query
+
+  def set_query(%Ash.Query{resource: resource} = query, tenant) do
+    if multitenant?(resource), do: Ash.Query.set_tenant(query, tenant), else: query
+  end
+
+  @doc """
   The changeset for an update of `record`, in the tenant the record was read
   with. The seam every status transition goes through.
   """

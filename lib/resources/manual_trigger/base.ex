@@ -172,7 +172,8 @@ defmodule AshDispatch.Resources.ManualTrigger.Base do
                      context_data,
                      Helpers.build_channel_filter(audience, transport),
                      recipient_email,
-                     context.actor
+                     context.actor,
+                     tenant: context.tenant
                    ) do
               records =
                 Enum.map(previews, fn preview_data ->

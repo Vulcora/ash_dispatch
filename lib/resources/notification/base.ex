@@ -75,6 +75,11 @@ defmodule AshDispatch.Resources.Notification.Base do
             {field, value}, query -> Ash.Query.filter(query, ^Ash.Expr.ref(field) == ^value)
           end)
         end)
+        # The SCHEMA this runs in, when this resource is per tenant. Set on the
+        # query, not only on the bulk update: `Ash.bulk_update/4` validates the
+        # query it is given, and a query without a tenant is refused before the
+        # options are read.
+        |> AshDispatch.Tenancy.set_query(context.tenant)
         |> then(fn query ->
           # A notification without a tenant (every row from before 0.9.0, and
           # every dispatch without `:tenant`) belongs to the person, and is
