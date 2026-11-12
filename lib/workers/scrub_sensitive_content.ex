@@ -34,6 +34,14 @@ defmodule AshDispatch.Workers.ScrubSensitiveContent do
       # Optional retention windows (hours):
       config :ash_dispatch, scrub_after_hours: 24, scrub_stranded_after_hours: 168
 
+  ## Per tenant
+
+  When receipts are stored per tenant (`multitenancy: :context`), the scheduled
+  job reads `config :ash_dispatch, tenants:` and enqueues one pass per tenant,
+  each scrubbing its own schema. Without that configuration nothing can be
+  scrubbed, and the worker says so once rather than reporting success every
+  five minutes. See `AshDispatch.Tenancy.Cron`.
+
   ## Scheduling
 
       config :my_app, Oban,
@@ -66,7 +74,22 @@ defmodule AshDispatch.Workers.ScrubSensitiveContent do
   def marker, do: @marker
 
   @impl Oban.Worker
-  def perform(_job) do
+  def perform(%Oban.Job{args: args}) do
+    case AshDispatch.Tenancy.Cron.plan(args) do
+      {:run, tenant} -> scrub(tenant)
+      {:fan_out, tenants} -> AshDispatch.Tenancy.Cron.fan_out(__MODULE__, tenants)
+      :no_tenants -> AshDispatch.Tenancy.Cron.no_tenants(__MODULE__)
+    end
+  end
+
+  def perform(_job), do: scrub(nil)
+
+  # The `prefix:` is the whole of this worker's tenancy, and it is the bug this
+  # release had to fix: the query is raw Ecto against a table NAME, so without
+  # a prefix every run read the repo's default schema. For a host with
+  # per-tenant receipts that meant the scrub found nothing, reported success,
+  # and left one-time tokens and reset links in the tenant schemas for good.
+  defp scrub(tenant) do
     case sensitive_event_ids() do
       [] ->
         :ok
@@ -77,13 +100,23 @@ defmodule AshDispatch.Workers.ScrubSensitiveContent do
         {count, _} =
           Config.repo().update_all(
             scrub_query(receipt_table(), event_ids, cutoff, stranded_cutoff),
-            []
+            [],
+            prefix_opts(tenant)
           )
 
-        if count > 0, do: Logger.info("ScrubSensitiveContent: scrubbed #{count} receipt bodies")
+        if count > 0,
+          do:
+            Logger.info(
+              "ScrubSensitiveContent: scrubbed #{count} receipt bodies" <>
+                if(tenant, do: " in #{tenant}", else: "")
+            )
+
         :ok
     end
   end
+
+  defp prefix_opts(nil), do: []
+  defp prefix_opts(tenant), do: [prefix: AshDispatch.Tenancy.key(tenant)]
 
   @doc false
   # The two limits: `{cutoff, stranded_cutoff}`. The cap is never shorter than
