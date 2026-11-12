@@ -17,6 +17,18 @@ defmodule AshDispatch.Test.TransportReceipt do
     private? true
   end
 
+  # Reports the tenant every read is run with, so a test can assert that this
+  # resource — which declares no multitenancy — is never given one. Writes are
+  # covered differently: Ash records a tenant it was given in the returned
+  # struct's metadata, and a `change` of its own would make these actions
+  # non-atomic. Inert unless `AshDispatch.Test.TenantSpy.watch/0` ran.
+  preparations do
+    prepare fn query, _context ->
+      AshDispatch.Test.TenantSpy.saw(:read, query.action && query.action.name, query.tenant)
+      query
+    end
+  end
+
   attributes do
     uuid_primary_key :id
 
