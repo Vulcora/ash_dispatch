@@ -107,6 +107,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Before, such a backend had to choose between reporting a send that never
   happened and a failure that would be retried five times.
 
+### Added (installer)
+
+- **`mix ash_dispatch.install` writes the Oban configuration it used to
+  print.** Four releases printed "give Oban these queues and these two
+  scheduled workers" in a closing notice and left it at that (BACKLOG 1); a
+  host that missed the notice never retried a failed delivery and never
+  emptied a sensitive body, silently, which is the whole problem with a
+  notice. The installer now writes `queues: [default: 10, emails: 10, sms: 5,
+  webhooks: 5]` and a `Oban.Plugins.Cron` entry for
+  `RetryFailedDeliveries` and `ScrubSensitiveContent`.
+
+  It adds only what is missing. A queue size the host chose is kept; a cron
+  schedule the host moved for one of our workers is kept and not duplicated
+  (entries are compared by worker, not by schedule); an existing Cron plugin
+  gets the missing entries, and a plugins list without one gets ours beside
+  the host's. A plugins list shaped in a way the installer does not recognise
+  is left untouched, and the notice still says what is needed.
+- **A Preference resource**, `MyApp.Notifications.Preference`, built on
+  `AshDispatch.Resources.Preference.Base`, listed in the Notifications domain
+  and wired up (`preference_resource:`, `user_preference:
+  AshDispatch.UserPreference.Resource`). A new install gets working
+  preferences instead of a checker pointed at a table nobody created. It needs
+  PostgreSQL 15 (`NULLS NOT DISTINCT`), which the closing notice says.
+- **`config :ash_dispatch, retry_queue:`** — the queue
+  `AshDispatch.Workers.RetryFailedDeliveries` runs in, read at runtime.
+  **Still `:default`**: moving it to `:emails` would stop the retries of a host
+  whose Oban has no `:emails` entry for it, without notice, so that waits for
+  0.10.0. A `queue:` in the cron entry wins over it.
+
+### Fixed (installer)
+
+- **The installer can be run twice.** Every module it generates went through
+  `Igniter.Project.Module.create_module/3`, which fails the run when the file
+  is already there, so a second run stopped on "File already exists" before it
+  did anything — and a host that wanted to re-run it after adding a repo or a
+  user resource could not. A module that exists is now left alone, the inbox
+  route is added only when the router does not already have it, and every
+  config write was already additive. `mix ash_dispatch.install` twice over is
+  a no-op.
+
 ### Changed
 
 - **`skip_email_delivery` is now read in one place**, as

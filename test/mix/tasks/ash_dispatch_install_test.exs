@@ -4,7 +4,14 @@ defmodule Mix.Tasks.AshDispatch.InstallTest do
   # copy of itself, and the resources used modules that do not exist. These
   # tests pin the properties that were broken. The CI job `installer` runs it
   # in a real project and compiles the result.
-  use ExUnit.Case, async: true
+  #
+  # Not async: while Igniter formats the files it writes, it evaluates the test
+  # project's `config/config.exs` INTO THE REAL application environment and
+  # restores it afterwards. Two such files running at the same time take each
+  # other's values for the originals and restore them for good - which reached
+  # the rest of the suite as a `:preference_resource` pointing at a module that
+  # does not exist here.
+  use ExUnit.Case, async: false
 
   import Igniter.Test
 

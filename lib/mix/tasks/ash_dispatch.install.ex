@@ -15,12 +15,16 @@ defmodule Mix.Tasks.AshDispatch.Install.Docs do
 
     This installer will:
     - Add AshDispatch configuration to config files
-    - Create Notification and DeliveryReceipt resources
+    - Create Notification, DeliveryReceipt and Preference resources
     - Create Notifications and Deliveries domains
     - Add domains to your :ash_domains configuration
+    - Give Oban the queues and the two scheduled workers AshDispatch needs
     - Create a RecipientResolver module for declarative audience resolution
     - Set up email layout templates
     - Optionally set up Phoenix channel for real-time updates
+
+    It is safe to run twice: nothing it has already written is written again,
+    and a value you have set yourself is never changed.
 
     ## Example
 
@@ -96,8 +100,10 @@ if Code.ensure_loaded?(Igniter) do
       |> Igniter.Project.Formatter.import_dep(:ash_dispatch)
       |> configure_ash_dispatch(otp_app, app_module, repo)
       |> configure_test(otp_app)
+      |> configure_oban(otp_app)
       |> create_notification_resource(app_module, repo, user_resource, typescript?)
       |> create_delivery_receipt_resource(app_module, repo, user_resource, typescript?)
+      |> create_preference_resource(app_module, repo, typescript?)
       |> create_notifications_domain(app_module)
       |> create_deliveries_domain(app_module)
       |> add_domains_to_config(otp_app, app_module)
@@ -116,16 +122,130 @@ if Code.ensure_loaded?(Igniter) do
     # The resource keys are how the runtime finds the resources generated
     # below (`Config.notification_resource/0` and friends return `nil`
     # otherwise), and `:repo` is read directly for Oban job lookups.
+    #
+    # `configure_new/5` throughout: a value the host has already set is never
+    # changed, which is also what makes a second run of the installer a no-op.
     defp configure_ash_dispatch(igniter, otp_app, app_module, repo) do
       [
         otp_app: otp_app,
         repo: repo,
         notification_resource: Module.concat([app_module, Notifications, Notification]),
-        delivery_receipt_resource: Module.concat([app_module, Deliveries, DeliveryReceipt])
+        delivery_receipt_resource: Module.concat([app_module, Deliveries, DeliveryReceipt]),
+        preference_resource: Module.concat([app_module, Notifications, Preference]),
+        user_preference: AshDispatch.UserPreference.Resource
       ]
       |> Enum.reduce(igniter, fn {key, value}, igniter ->
         Igniter.Project.Config.configure_new(igniter, "config.exs", :ash_dispatch, [key], value)
       end)
+    end
+
+    # ============================================
+    # Oban: the queues and the two scheduled workers
+    # ============================================
+
+    # Every queue the library's workers name, and the cron entries without
+    # which a failed delivery is never tried again and a sensitive body is
+    # never emptied. The installer printed this and left it to the reader for
+    # four releases (BACKLOG 1); a host that missed it lost mail silently.
+    @queues [default: 10, emails: 10, sms: 5, webhooks: 5]
+
+    @crontab [
+      ~s({"*/5 * * * *", AshDispatch.Workers.RetryFailedDeliveries}),
+      ~s({"0 * * * *", AshDispatch.Workers.ScrubSensitiveContent})
+    ]
+
+    defp configure_oban(igniter, otp_app) do
+      igniter
+      |> Igniter.Project.Config.configure(
+        "config.exs",
+        otp_app,
+        [Oban, :queues],
+        @queues,
+        updater: &add_missing_queues/1
+      )
+      |> Igniter.Project.Config.configure(
+        "config.exs",
+        otp_app,
+        [Oban, :plugins],
+        {:code, Sourceror.parse_string!("[" <> cron_plugin() <> "]")},
+        updater: &add_missing_cron/1
+      )
+    end
+
+    defp cron_plugin do
+      """
+      {Oban.Plugins.Cron,
+       crontab: [
+         #{Enum.join(@crontab, ",\n     ")}
+       ]}
+      """
+    end
+
+    # A queue the host already lists keeps the size the host gave it: a
+    # concurrency someone chose is a decision, not a gap to fill.
+    defp add_missing_queues(zipper) do
+      Enum.reduce_while(@queues, {:ok, zipper}, fn {name, size}, {:ok, zipper} ->
+        case Igniter.Code.Keyword.set_keyword_key(zipper, name, size, &{:ok, &1}) do
+          {:ok, zipper} -> {:cont, {:ok, zipper}}
+          _other -> {:halt, :error}
+        end
+      end)
+    end
+
+    # The host already has plugins. Find their Cron entry and add only the
+    # workers it is missing — a schedule the host chose for one of ours is
+    # left exactly as it is, which is why the comparison is on the worker and
+    # not on the whole entry. No Cron plugin at all: append ours beside
+    # theirs. Anything shaped in a way we do not recognise is left alone
+    # (`:error` means "change nothing"), and the closing notice still says
+    # what is needed.
+    defp add_missing_cron(zipper) do
+      case Igniter.Code.List.move_to_list_item(zipper, &cron_plugin?/1) do
+        {:ok, cron} ->
+          add_crontab_entries(cron)
+
+        :error ->
+          Igniter.Code.List.append_new_to_list(
+            zipper,
+            Sourceror.parse_string!(cron_plugin())
+          )
+      end
+    end
+
+    defp cron_plugin?(zipper) do
+      Igniter.Code.Tuple.tuple?(zipper) and
+        Igniter.Code.Tuple.elem_equals?(zipper, 0, Oban.Plugins.Cron)
+    end
+
+    defp add_crontab_entries(cron) do
+      with {:ok, opts} <- Igniter.Code.Tuple.tuple_elem(cron, 1),
+           {:ok, crontab} <- Igniter.Code.Keyword.get_key(opts, :crontab) do
+        Enum.reduce_while(@crontab, {:ok, crontab}, fn entry, {:ok, zipper} ->
+          entry = Sourceror.parse_string!(entry)
+
+          case Igniter.Code.List.append_new_to_list(zipper, entry, &same_worker?/2) do
+            {:ok, zipper} -> {:cont, {:ok, zipper}}
+            _other -> {:halt, :error}
+          end
+        end)
+      else
+        _ -> :error
+      end
+    end
+
+    # Two crontab entries are "the same" when they name the same worker,
+    # whatever schedule or options they carry. Both sides go through
+    # `tuple_elem/2` rather than being destructured: Sourceror parses a
+    # two-element tuple as `{:{}, meta, [_, _]}` so it can hold metadata, and
+    # a pattern on `{schedule, worker}` therefore never matched — which made
+    # every run append the entries again.
+    defp same_worker?(existing, new) do
+      with {:ok, mine} <- Igniter.Code.Tuple.tuple_elem(Sourceror.Zipper.zip(new), 1),
+           {:ok, theirs} <- Igniter.Code.Tuple.tuple_elem(existing, 1) do
+        Igniter.Code.Common.nodes_equal?(theirs, Sourceror.Zipper.node(mine))
+      else
+        _ -> false
+      end
     end
 
     defp configure_test(igniter, otp_app) do
@@ -200,7 +320,18 @@ if Code.ensure_loaded?(Igniter) do
       #{relationships}
       """
 
-      Igniter.Project.Module.create_module(igniter, module_name, content)
+      create_module(igniter, module_name, content)
+    end
+
+    # `create_module/3` fails the run when the file is already there
+    # (`on_exists: :error`, and it takes no options), so the installer could
+    # not be run twice: the second run reported "File already exists" and
+    # stopped. A module that exists is the host's now — skip it.
+    defp create_module(igniter, module_name, content) do
+      case Igniter.Project.Module.module_exists(igniter, module_name) do
+        {true, igniter} -> igniter
+        {false, igniter} -> Igniter.Project.Module.create_module(igniter, module_name, content)
+      end
     end
 
     defp create_delivery_receipt_resource(igniter, app_module, repo, user_resource, typescript?) do
@@ -225,7 +356,34 @@ if Code.ensure_loaded?(Igniter) do
       #{typescript_section(typescript?, "DeliveryReceipt")}
       """
 
-      Igniter.Project.Module.create_module(igniter, module_name, content)
+      create_module(igniter, module_name, content)
+    end
+
+    # Rows per (tenant, person or the tenant's default, event or category,
+    # transport). Generated because `user_preference:` above points at
+    # `AshDispatch.UserPreference.Resource`, which reads this resource: a new
+    # install gets working preferences instead of a checker configured to read
+    # a table nobody created.
+    defp create_preference_resource(igniter, app_module, repo, typescript?) do
+      module_name = Module.concat([app_module, Notifications, Preference])
+
+      content = """
+      @moduledoc \"\"\"
+      Per-person notification preferences: who wants which event, on which
+      transport. The person beats the tenant's default, the tenant beats the
+      event's own.
+
+      Generated by `mix ash_dispatch.install`.
+      \"\"\"
+
+      use AshDispatch.Resources.Preference.Base,
+        repo: #{inspect(repo)},
+        domain: #{inspect(Module.concat(app_module, Notifications))}#{typescript_extension(typescript?)}
+
+      #{typescript_section(typescript?, "NotificationPreference")}
+      """
+
+      create_module(igniter, module_name, content)
     end
 
     defp typescript_extension(true), do: ",\n  extensions: [AshTypescript.Resource]"
@@ -248,11 +406,12 @@ if Code.ensure_loaded?(Igniter) do
 
     defp create_notifications_domain(igniter, app_module) do
       module_name = Module.concat(app_module, Notifications)
-      resource_name = Module.concat([app_module, Notifications, Notification])
+      notification = Module.concat([app_module, Notifications, Notification])
+      preference = Module.concat([app_module, Notifications, Preference])
 
       content = """
       @moduledoc \"\"\"
-      Domain for in-app notifications.
+      Domain for in-app notifications and notification preferences.
 
       Generated by `mix ash_dispatch.install`.
       \"\"\"
@@ -260,11 +419,12 @@ if Code.ensure_loaded?(Igniter) do
       use Ash.Domain
 
       resources do
-        resource #{inspect(resource_name)}
+        resource #{inspect(notification)}
+        resource #{inspect(preference)}
       end
       """
 
-      Igniter.Project.Module.create_module(igniter, module_name, content)
+      create_module(igniter, module_name, content)
     end
 
     defp create_deliveries_domain(igniter, app_module) do
@@ -285,7 +445,7 @@ if Code.ensure_loaded?(Igniter) do
       end
       """
 
-      Igniter.Project.Module.create_module(igniter, module_name, content)
+      create_module(igniter, module_name, content)
     end
 
     defp add_domains_to_config(igniter, otp_app, app_module) do
@@ -411,7 +571,7 @@ if Code.ensure_loaded?(Igniter) do
       """
 
       igniter
-      |> Igniter.Project.Module.create_module(resolver_module, content)
+      |> create_module(resolver_module, content)
       |> Igniter.Project.Config.configure_new(
         "config.exs",
         :ash_dispatch,
@@ -655,7 +815,7 @@ if Code.ensure_loaded?(Igniter) do
       end
       """
 
-      Igniter.Project.Module.create_module(igniter, channel_module, content)
+      create_module(igniter, channel_module, content)
     end
 
     defp create_inbox_controller(igniter, web_module, _otp_app) do
@@ -691,19 +851,30 @@ if Code.ensure_loaded?(Igniter) do
       end
       """
 
-      Igniter.Project.Module.create_module(igniter, controller_module, content)
+      create_module(igniter, controller_module, content)
     end
+
+    @socket_token_path "/api/inbox/socket-token"
 
     defp add_inbox_routes(igniter, web_module) do
       route_code = """
         # AshDispatch inbox API
-        get "/api/inbox/socket-token", InboxApiController, :socket_token
+        get "#{@socket_token_path}", InboxApiController, :socket_token
       """
 
-      Igniter.Libs.Phoenix.append_to_scope(igniter, "/", route_code,
-        arg2: web_module,
-        placement: :after
-      )
+      # `append_to_scope/4` appends unconditionally, so a second run of the
+      # installer would add the route a second time. The router is read first
+      # and left alone when it already has it.
+      {igniter, router} = Igniter.Libs.Phoenix.select_router(igniter)
+
+      if router && route_present?(igniter, router) do
+        igniter
+      else
+        Igniter.Libs.Phoenix.append_to_scope(igniter, "/", route_code,
+          arg2: web_module,
+          placement: :after
+        )
+      end
     rescue
       _ ->
         Igniter.add_notice(
@@ -716,6 +887,16 @@ if Code.ensure_loaded?(Igniter) do
               get "/api/inbox/socket-token", InboxApiController, :socket_token
           """
         )
+    end
+
+    defp route_present?(igniter, router) do
+      case Igniter.Project.Module.find_module(igniter, router) do
+        {:ok, {_igniter, source, _zipper}} ->
+          String.contains?(Rewrite.Source.get(source, :content), @socket_token_path)
+
+        _ ->
+          false
+      end
     end
 
     defp configure_counter_broadcast(igniter, _otp_app, web_module) do
@@ -851,9 +1032,6 @@ if Code.ensure_loaded?(Igniter) do
     # Final Notice
     # ============================================
 
-    # The notice is text for a person to copy; the app's name is theirs to fill in.
-    defp otp_app_placeholder, do: "my_app"
-
     defp add_final_notice(igniter, app_module, found_repo, user_resource) do
       repo_notice =
         if found_repo do
@@ -893,6 +1071,7 @@ if Code.ensure_loaded?(Igniter) do
 
       Created:
         - #{inspect(Module.concat([app_module, Notifications, Notification]))}
+        - #{inspect(Module.concat([app_module, Notifications, Preference]))}
         - #{inspect(Module.concat(app_module, Notifications))} (domain)
         - #{inspect(Module.concat([app_module, Deliveries, DeliveryReceipt]))}
         - #{inspect(Module.concat(app_module, Deliveries))} (domain)#{resolver_line}
@@ -905,12 +1084,15 @@ if Code.ensure_loaded?(Igniter) do
          mix ash.codegen add_ash_dispatch
          mix ash.migrate
 
-      2. Give Oban the queues and the two scheduled workers. Without the
-         scheduled workers a failed delivery is never tried again, and the
-         bodies of sensitive messages are never emptied - and nothing tells you:
+         The preference resource needs PostgreSQL 15 or later (its scope
+         identity is NULLS NOT DISTINCT). Delete it and the
+         `preference_resource:`/`user_preference:` lines if you keep
+         preferences somewhere else.
 
-         config :#{otp_app_placeholder()}, Oban,
-           queues: [default: 10, emails: 10, sms: 5, webhooks: 5],
+      2. Oban now has the queues and the two scheduled workers, written into
+         config/config.exs:
+
+           queues: [default: 10, emails: 10, sms: 5, webhooks: 5]
            plugins: [
              {Oban.Plugins.Cron,
               crontab: [
@@ -918,6 +1100,11 @@ if Code.ensure_loaded?(Igniter) do
                 {"0 * * * *", AshDispatch.Workers.ScrubSensitiveContent}
               ]}
            ]
+
+         Queues and schedules you had already set were left as they were, so
+         check that both workers are in fact scheduled: without them a failed
+         delivery is never tried again and the bodies of sensitive messages
+         are never emptied - and nothing tells you.
 
       3. Add events to your resources:
 

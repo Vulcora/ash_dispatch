@@ -157,6 +157,8 @@ config :my_app, Oban,
   ]
 ```
 
+Since 0.9.3 `mix ash_dispatch.install` writes this for you — queues and both scheduled workers — adding only what is missing and never changing a value you had set. To run the retries in the queue your mail runs in, so pausing that queue pauses them too: `config :ash_dispatch, retry_queue: :emails`.
+
 Optional hardening, both new in 0.5.4: `AshDispatch.WebhookHandlers.Resend.verify/3` verifies the Svix signature on Resend webhooks before you process them, and `AshDispatch.Workers.ScrubSensitiveContent` (cron) blanks stored bodies of events declaring `metadata: [sensitive_content: true]` — for OTP codes and reset links that should not live in the database forever. See [Delivery Receipts](lib/documentation/topics/delivery-receipts.md).
 
 ### Whether deliveries really go out

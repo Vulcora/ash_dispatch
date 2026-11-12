@@ -701,6 +701,25 @@ defmodule AshDispatch.Config do
   end
 
   @doc """
+  The Oban queue `AshDispatch.Workers.RetryFailedDeliveries` runs in.
+
+  Defaults to `:default`, which is what every release before 0.9.3 used and
+  what 0.9.x keeps: a host whose Oban has no `:emails` entry for it would
+  otherwise stop retrying failed deliveries without notice.
+
+  Set it to the queue your mail runs in, so pausing or scaling that queue
+  pauses or scales the retries with it:
+
+      config :ash_dispatch, retry_queue: :emails
+
+  A `queue:` in the cron entry wins over this.
+  """
+  @spec retry_queue() :: atom()
+  def retry_queue do
+    Application.get_env(:ash_dispatch, :retry_queue, :default)
+  end
+
+  @doc """
   Whether to compile templates at build time.
 
   Defaults to `false`.
