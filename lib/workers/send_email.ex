@@ -534,7 +534,13 @@ defmodule AshDispatch.Workers.SendEmail do
 
   defp load_notification(receipt) do
     if receipt.notification_id do
-      case Ash.get(Config.notification_resource(), receipt.notification_id, authorize?: false) do
+      # In the receipt's own tenant: the notification it is linked to was
+      # created in the same schema, and another tenant's would answer the
+      # `skip_if_read` question about somebody else's reading.
+      resource = Config.notification_resource()
+      opts = [authorize?: false] ++ Tenancy.opts(resource, Tenancy.of(receipt))
+
+      case Ash.get(resource, receipt.notification_id, opts) do
         {:ok, notification} -> {:ok, notification}
         error -> error
       end
