@@ -203,7 +203,7 @@ defmodule AshDispatch.Workers.SendEmail do
       {:error, reason} ->
         # Mark as failed (will be retried by Oban)
         ReceiptStatus.mark_failed(receipt, reason)
-        Logger.error("Email failed for receipt #{receipt.id}: #{inspect(reason)}")
+        Logger.error("Email failed for receipt #{receipt.id}: #{AshDispatch.Log.reason(reason)}")
         {:error, reason}
     end
   end
@@ -360,9 +360,8 @@ defmodule AshDispatch.Workers.SendEmail do
         # No backend configured - mock success for now
         Logger.info("""
         [MOCK] Would send email:
-        To: #{email_params.to}
+        To: #{AshDispatch.Log.recipient(email_params.to)}
         From: #{inspect(email_params.from)}
-        Subject: #{email_params.subject}
         """)
 
         {:ok, %{id: "mock_#{System.unique_integer()}", mock: true}}

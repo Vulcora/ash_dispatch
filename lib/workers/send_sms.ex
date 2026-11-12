@@ -147,7 +147,7 @@ defmodule AshDispatch.Workers.SendSMS do
         # The backend never got to mark it — do it here, or the receipt strands
         # in :sending, where no cron picks it up.
         ReceiptStatus.mark_failed(receipt, reason)
-        Logger.error("SMS failed for receipt #{receipt.id}: #{inspect(reason)}")
+        Logger.error("SMS failed for receipt #{receipt.id}: #{AshDispatch.Log.reason(reason)}")
         {:error, reason}
     end
   rescue

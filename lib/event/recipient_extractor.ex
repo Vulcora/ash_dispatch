@@ -307,7 +307,7 @@ defmodule AshDispatch.Event.RecipientExtractor do
   defp extract_field(recipient, field_spec) do
     raise """
     Invalid field specification: #{inspect(field_spec)}
-    Recipient: #{inspect(recipient)}
+    Recipient: #{AshDispatch.Log.recipient(recipient)}
 
     Valid formats:
     - :field_name

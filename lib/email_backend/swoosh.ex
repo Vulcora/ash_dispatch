@@ -61,6 +61,8 @@ defmodule AshDispatch.EmailBackend.Swoosh do
 
   alias AshDispatch.Config
 
+  alias AshDispatch.Log
+
   require Logger
 
   # swoosh is optional; without it this backend returns an error instead of
@@ -123,9 +125,8 @@ defmodule AshDispatch.EmailBackend.Swoosh do
     Logger.debug("""
     Sending email via Swoosh:
       Mailer: #{inspect(mailer)}
-      To: #{inspect(to)}
+      To: #{Log.recipient(to)}
       From: #{inspect(from)}
-      Subject: #{subject}
     """)
 
     # Build Swoosh email
@@ -168,8 +169,7 @@ defmodule AshDispatch.EmailBackend.Swoosh do
         Logger.info("""
         Email sent successfully via Swoosh
           Message ID: #{message_id}
-          To: #{inspect(to)}
-          Subject: #{subject}
+          To: #{Log.recipient(to)}
         """)
 
         {:ok, %{id: message_id, provider: :swoosh}}
@@ -177,9 +177,8 @@ defmodule AshDispatch.EmailBackend.Swoosh do
       {:error, reason} ->
         Logger.error("""
         Failed to send email via Swoosh
-          To: #{inspect(to)}
-          Subject: #{subject}
-          Error: #{inspect(reason)}
+          To: #{Log.recipient(to)}
+          Error: #{Log.reason(reason)}
         """)
 
         {:error, reason}
@@ -188,9 +187,8 @@ defmodule AshDispatch.EmailBackend.Swoosh do
     error ->
       Logger.error("""
       Exception while sending email via Swoosh
-        To: #{inspect(to)}
-        Subject: #{subject}
-        Error: #{inspect(error)}
+        To: #{Log.recipient(to)}
+        Error: #{Log.reason(error)}
       """)
 
       {:error, error}

@@ -195,7 +195,7 @@ defmodule AshDispatch.Transports.InApp do
         Logger.warning("""
         Skipping in-app notification creation: no user_id
         Event: #{context.event_id}
-        Recipient: #{receipt.recipient}
+        Recipient: #{AshDispatch.Log.recipient(receipt.recipient)}
 
         In-app notifications require a valid user_id. This receipt will be skipped.
         """)

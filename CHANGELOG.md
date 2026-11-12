@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Recipients are masked in the log, and subjects are no longer logged.** The
+  Swoosh backend wrote the full address and the subject line at info on every
+  send; the dispatcher, the in-app transport and the workers wrote recipients
+  and provider errors that quote the address back; the Resend handler wrote a
+  whole webhook payload when it could not read one. A recipient is now written
+  as `a***@example.com` or `***4567`, errors have addresses masked inside them,
+  and a payload is logged by its shape only. New setting
+  `config :ash_dispatch, log_recipients: :redacted | :none | :full`; `:full`
+  restores the old lines for local development. Search the log by receipt id,
+  which every delivery line carries. See `AshDispatch.Log`.
+
 ### Fixed
 
 - **An email whose job was interrupted is sent when the job runs again.** The

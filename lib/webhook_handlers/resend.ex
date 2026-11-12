@@ -199,17 +199,21 @@ defmodule AshDispatch.WebhookHandlers.Resend do
           {:error, :not_found}
       end
     else
-      Logger.warning("Resend webhook missing email_id: #{inspect(params)}")
+      Logger.warning("Resend webhook missing email_id (type: #{inspect(params["type"])})")
       {:error, :missing_email_id}
     end
   end
 
   def process_webhook(params) do
-    Logger.warning("Resend webhook invalid format: #{inspect(params)}")
+    Logger.warning("Resend webhook invalid format (keys: #{inspect(webhook_keys(params))})")
     {:error, :invalid_format}
   end
 
   # Private functions
+
+  # A webhook payload holds the recipient's address; the log gets its shape only.
+  defp webhook_keys(%{} = params), do: params |> Map.keys() |> Enum.sort()
+  defp webhook_keys(_other), do: :not_a_map
 
   defp delivery_receipt_resource do
     Application.get_env(:ash_dispatch, :delivery_receipt_resource) ||

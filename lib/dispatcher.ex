@@ -643,7 +643,7 @@ defmodule AshDispatch.Dispatcher do
             Event: #{context.event_id}
             Transport: #{channel.transport}
             Audience: #{channel.audience}
-            Recipient: #{inspect(recipient)}
+            Recipient: #{AshDispatch.Log.recipient(recipient)}
             Receipt ID: #{updated_receipt.id}
             Status: #{updated_receipt.status}
             """)
@@ -916,7 +916,7 @@ defmodule AshDispatch.Dispatcher do
         Failed to extract recipient identifier — SKIPPING THIS RECIPIENT
         Transport: #{channel.transport}
         Audience: #{channel.audience}
-        Recipient: #{inspect(recipient)}
+        Recipient: #{AshDispatch.Log.recipient(recipient)}
         Error: #{inspect(error)}
         """)
 
@@ -957,7 +957,7 @@ defmodule AshDispatch.Dispatcher do
       Failed to extract recipient name (continuing with nil)
       Transport: #{channel.transport}
       Audience: #{channel.audience}
-      Recipient: #{inspect(recipient)}
+      Recipient: #{AshDispatch.Log.recipient(recipient)}
       Error: #{inspect(error)}
       """)
 
