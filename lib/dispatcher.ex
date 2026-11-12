@@ -30,6 +30,8 @@ defmodule AshDispatch.Dispatcher do
   alias AshDispatch.Config
   alias AshDispatch.Context
   alias AshDispatch.ChannelResolver
+  alias AshDispatch.Delivery
+  alias AshDispatch.EligibleRecipient
   alias AshDispatch.EventResolver
   alias AshDispatch.Naming
   alias AshDispatch.Event.RecipientExtractor
@@ -605,11 +607,37 @@ defmodule AshDispatch.Dispatcher do
       transport: channel.transport,
       audience: channel.audience,
       user_id: extract_user_id_from_recipient(recipient),
+      recipient: nil,
       content: %{},
       status: :pending,
       metadata: %{}
     }
 
+    # A recipient who must not be reached is not reached over `:broadcast`
+    # either — their browser is still subscribed to their topic. There is no
+    # receipt to record it on (these transports have none by design, which is
+    # what `skip_receipt?: true` means), so the log line is the record.
+    case EligibleRecipient.resolve_verdict(
+           pseudo_receipt,
+           context,
+           channel,
+           event_config,
+           recipient
+         ) do
+      {:skip, reason} ->
+        Logger.info(
+          "#{channel.transport} not dispatched for #{context.event_id} " <>
+            "(#{channel.audience}): #{reason}"
+        )
+
+        {:ok, :skipped_ineligible}
+
+      :send ->
+        deliver_without_receipt(pseudo_receipt, context, channel, event_config)
+    end
+  end
+
+  defp deliver_without_receipt(pseudo_receipt, context, channel, event_config) do
     case dispatch_to_transport(pseudo_receipt, context, channel, event_config) do
       {:ok, _} ->
         Logger.debug("Broadcast dispatched: #{context.event_id} to #{channel.audience}")
@@ -636,26 +664,40 @@ defmodule AshDispatch.Dispatcher do
         {:ok, :skipped_optional}
 
       {:ok, receipt} ->
-        case dispatch_to_transport(receipt, context, channel, event_config) do
-          {:ok, updated_receipt} ->
-            Logger.debug("""
-            Event dispatched successfully
-            Event: #{context.event_id}
-            Transport: #{channel.transport}
-            Audience: #{channel.audience}
-            Recipient: #{AshDispatch.Log.recipient(recipient)}
-            Receipt ID: #{updated_receipt.id}
-            Status: #{updated_receipt.status}
-            """)
+        # The receipt is written before this is asked, and that is deliberate:
+        # a recipient who must not be reached leaves a `:skipped` receipt
+        # holding the letter that was written for them, rather than vanishing
+        # from the fan-out without a trace.
+        case EligibleRecipient.resolve_verdict(receipt, context, channel, event_config, recipient) do
+          {:skip, reason} ->
+            {:ok, Delivery.hold(receipt, reason)}
 
-            # Broadcast counters if configured (once per recipient)
-            broadcast_counters(context, channel, event_config)
-
-            {:ok, updated_receipt}
-
-          {:error, error} ->
-            {:error, error}
+          :send ->
+            deliver_receipt(receipt, context, channel, event_config, recipient)
         end
+
+      {:error, error} ->
+        {:error, error}
+    end
+  end
+
+  defp deliver_receipt(receipt, context, channel, event_config, recipient) do
+    case dispatch_to_transport(receipt, context, channel, event_config) do
+      {:ok, updated_receipt} ->
+        Logger.debug("""
+        Event dispatched successfully
+        Event: #{context.event_id}
+        Transport: #{channel.transport}
+        Audience: #{channel.audience}
+        Recipient: #{AshDispatch.Log.recipient(recipient)}
+        Receipt ID: #{updated_receipt.id}
+        Status: #{updated_receipt.status}
+        """)
+
+        # Broadcast counters if configured (once per recipient)
+        broadcast_counters(context, channel, event_config)
+
+        {:ok, updated_receipt}
 
       {:error, error} ->
         {:error, error}

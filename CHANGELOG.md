@@ -45,6 +45,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `"delivery_dry_run"`, `"delivery_not_allowed"`, see
   `AshDispatch.DeliveryMode.reason/1`) are stable, so they can be counted.
   *Upgrade:* nothing.
+- **A check for whether a recipient may be reached at all**, which a mandatory
+  event does not override. `metadata: [user_configurable: false]` walks past the
+  preference check on purpose — a password reset is not a marketing choice — but
+  that override was total: a closed account, a barred user or an address that
+  was never verified still got the letter, because nothing in the library had
+  ever been told that some recipients must not be reached whatever the message
+  is.
+
+  ```elixir
+  config :ash_dispatch, eligible_recipient: MyApp.Notifications.Eligibility
+  ```
+
+  A module implementing `AshDispatch.EligibleRecipient` (or `{module,
+  function}`, `{module, function, args}`, or a two-argument function). It is
+  asked **when the recipients are resolved** and **again at the moment of
+  sending**: a delivery can wait in a queue for hours — `delay:`, a retry, a
+  stranded job rescued later — and the answer may have changed while it waited.
+  An ineligible recipient gets a `:skipped` receipt carrying
+  `"recipient_ineligible"` (with the host's own reason appended), never a silent
+  drop: the receipt holds the letter that was written for them and says why it
+  was held back. A check that raises, cannot be called or answers something
+  other than `true` / `:ok` / `{:ok, true}` holds the delivery back and says so
+  in the log — the question is whether a person may be contacted, and a host
+  that cannot answer it has not said yes. `:broadcast` and `:oban` have no
+  receipt to record a verdict on, so an ineligible recipient is simply not
+  dispatched to and the log line is the record. *Upgrade:* nothing — without the
+  setting nothing is asked.
 - **A backend may answer that it did not send.** `{:skip, reason}` (or
   `{:skipped, reason}`) from an email or SMS backend leaves the receipt
   `:skipped` with the reason — a third outcome next to `:sent` and `:failed`,

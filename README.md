@@ -185,6 +185,29 @@ A held-back delivery is `:skipped`, never `:failed` and never reported as sent, 
 
 `config :ash_dispatch, skip_email_delivery: true` still works and still writes the reason it always wrote; it now means `delivery_mode: [email: :blocked]`.
 
+### Whether a recipient may be reached at all
+
+A preference is what a person *wants*, and a mandatory event (`metadata: [user_configurable: false]`) overrides it on purpose. A closed account is a different question, and until 0.9.3 the library had no way to ask it. Now it does (`AshDispatch.EligibleRecipient`):
+
+```elixir
+config :ash_dispatch, eligible_recipient: MyApp.Notifications.Eligibility
+
+defmodule MyApp.Notifications.Eligibility do
+  @behaviour AshDispatch.EligibleRecipient
+
+  @impl true
+  def eligible?(_recipient, opts) do
+    case MyApp.Accounts.get_user(opts[:user_id]) do
+      {:ok, %{deactivated_at: nil, blocked: false}} -> true
+      {:ok, _user} -> {false, "account closed"}
+      _ -> true
+    end
+  end
+end
+```
+
+Asked for every event, mandatory ones included; asked when the recipients are resolved and again at the moment of sending, because an account can be closed while a delayed delivery waits in the queue. An ineligible recipient gets a `:skipped` receipt saying `"recipient_ineligible: account closed"` — never a silent drop. Without the setting, nothing is asked and nothing changes.
+
 ## Quick Example
 
 ```elixir

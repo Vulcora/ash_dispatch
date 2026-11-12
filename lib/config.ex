@@ -508,6 +508,28 @@ defmodule AshDispatch.Config do
     Application.get_env(:ash_dispatch, :preference_gated_audiences, [:user])
   end
 
+  @doc """
+  The host's check for whether a recipient may be reached at all — a closed
+  account, a barred user, an unverified address.
+
+  A module implementing `AshDispatch.EligibleRecipient`, `{module, function}`,
+  `{module, function, extra_args}`, or a two-argument function. `nil` (the
+  default) asks nothing.
+
+  Unlike a preference, this applies to mandatory events too. See
+  `AshDispatch.EligibleRecipient`.
+
+  ## Example
+
+      config :ash_dispatch,
+        eligible_recipient: MyApp.Notifications.Eligibility
+  """
+  @spec eligible_recipient() ::
+          module() | {module(), atom()} | {module(), atom(), list()} | fun() | nil
+  def eligible_recipient do
+    Application.get_env(:ash_dispatch, :eligible_recipient)
+  end
+
   # ============================================================================
   # Integrations
   # ============================================================================
