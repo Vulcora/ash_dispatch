@@ -94,11 +94,12 @@ defmodule AshDispatch.Resources.ManualTrigger do
         description "Optional user ID to filter events based on user state (e.g., only show confirmation if not confirmed)"
       end
 
-      prepare fn query, _context ->
+      prepare fn query, context ->
         user_id = Ash.Query.get_argument(query, :user_id)
 
-        # Load user if provided (using configured Ash resource)
-        user = if user_id, do: load_user(user_id), else: nil
+        # Load user if provided (using configured Ash resource), in the
+        # action's tenant when the user resource is per tenant.
+        user = if user_id, do: load_user(user_id, context.tenant), else: nil
 
         # Get all registered events from AshDispatch config
         events = list_available_events(user)
@@ -181,7 +182,8 @@ defmodule AshDispatch.Resources.ManualTrigger do
                context_data,
                channel_filter,
                recipient_email,
-               context.actor
+               context.actor,
+               tenant: context.tenant
              ) do
           {:ok, previews} ->
             # Convert to embedded resource structs
@@ -352,12 +354,16 @@ defmodule AshDispatch.Resources.ManualTrigger do
 
   # Private helper functions
 
-  defp load_user(user_id) do
+  defp load_user(user_id, tenant) do
     user_resource = Config.user_resource()
     user_domain = Config.user_domain()
 
     if user_resource && user_domain do
-      case Ash.get(user_resource, user_id, domain: user_domain, authorize?: false) do
+      get_opts =
+        [domain: user_domain, authorize?: false] ++
+          AshDispatch.Tenancy.opts(user_resource, tenant)
+
+      case Ash.get(user_resource, user_id, get_opts) do
         {:ok, user} -> user
         _ -> nil
       end

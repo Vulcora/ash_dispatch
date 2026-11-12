@@ -43,6 +43,8 @@ defmodule AshDispatch.ReceiptStatus do
       end
   """
 
+  alias AshDispatch.Tenancy
+
   @doc """
   Marks a receipt as "sending" (delivery in progress).
 
@@ -56,8 +58,9 @@ defmodule AshDispatch.ReceiptStatus do
   @spec mark_sending(struct()) :: {:ok, struct()} | {:error, Ash.Changeset.t()}
   def mark_sending(receipt) do
     receipt
-    |> Ash.Changeset.for_update(:mark_sending, %{})
+    |> changeset(:mark_sending)
     |> Ash.update(authorize?: false)
+    |> remember(receipt)
   end
 
   @doc """
@@ -77,17 +80,19 @@ defmodule AshDispatch.ReceiptStatus do
   @spec mark_sent(struct(), map()) :: struct()
   def mark_sent(receipt, provider_response) when is_map(provider_response) do
     receipt
-    |> Ash.Changeset.for_update(:mark_sent, %{
+    |> changeset(:mark_sent, %{
       provider_id: provider_response[:id] || provider_response["id"],
       provider_response: provider_response
     })
     |> Ash.update!(authorize?: false)
+    |> remember(receipt)
   end
 
   def mark_sent(receipt, _provider_response) do
     receipt
-    |> Ash.Changeset.for_update(:mark_sent, %{})
+    |> changeset(:mark_sent)
     |> Ash.update!(authorize?: false)
+    |> remember(receipt)
   end
 
   @doc """
@@ -111,8 +116,9 @@ defmodule AshDispatch.ReceiptStatus do
       end
 
     receipt
-    |> Ash.Changeset.for_update(:mark_failed, %{error_message: error_message})
+    |> changeset(:mark_failed, %{error_message: error_message})
     |> Ash.update!(authorize?: false)
+    |> remember(receipt)
   end
 
   @doc """
@@ -135,8 +141,9 @@ defmodule AshDispatch.ReceiptStatus do
   @spec mark_skipped(struct(), String.t()) :: struct()
   def mark_skipped(receipt, reason) when is_binary(reason) do
     receipt
-    |> Ash.Changeset.for_update(:skip, %{error_message: reason})
+    |> changeset(:skip, %{error_message: reason})
     |> Ash.update!(authorize?: false)
+    |> remember(receipt)
   end
 
   @doc """
@@ -149,8 +156,9 @@ defmodule AshDispatch.ReceiptStatus do
   @spec skip(struct(), String.t()) :: {:ok, struct()} | {:error, term()}
   def skip(receipt, reason) when is_binary(reason) do
     receipt
-    |> Ash.Changeset.for_update(:skip, %{error_message: reason})
+    |> changeset(:skip, %{error_message: reason})
     |> Ash.update(authorize?: false)
+    |> remember(receipt)
   end
 
   @doc """
@@ -177,8 +185,9 @@ defmodule AshDispatch.ReceiptStatus do
       end
 
     receipt
-    |> Ash.Changeset.for_update(:schedule, attrs)
+    |> changeset(:schedule, attrs)
     |> Ash.update!(authorize?: false)
+    |> remember(receipt)
   end
 
   @doc """
@@ -211,7 +220,24 @@ defmodule AshDispatch.ReceiptStatus do
   @spec mark_failed_permanent(struct(), String.t()) :: struct()
   def mark_failed_permanent(receipt, error_message) when is_binary(error_message) do
     receipt
-    |> Ash.Changeset.for_update(:mark_failed_permanent, %{error_message: error_message})
+    |> changeset(:mark_failed_permanent, %{error_message: error_message})
     |> Ash.update!(authorize?: false)
+    |> remember(receipt)
   end
+
+  # Every transition in this module goes through these two, which is the whole
+  # of its tenancy: the update happens in the schema the receipt was read from,
+  # and the receipt that comes back still knows which one that was, so the next
+  # transition lands in the same place. "The tenant came from the receipt we
+  # are updating" is then true by construction rather than by discipline, and
+  # none of the eight functions above needed a new argument.
+  defp changeset(receipt, action, attrs \\ %{}) do
+    Tenancy.changeset_for_update(receipt, action, attrs)
+  end
+
+  defp remember({:ok, updated}, original),
+    do: {:ok, Tenancy.remember(updated, Tenancy.of(original))}
+
+  defp remember({:error, _} = error, _original), do: error
+  defp remember(%{} = updated, original), do: Tenancy.remember(updated, Tenancy.of(original))
 end

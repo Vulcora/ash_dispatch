@@ -42,7 +42,12 @@ defmodule AshDispatch.Notifier.CounterHandler do
   @spec broadcast(Ash.Notifier.Notification.t(), keyword() | map()) :: :ok
   def broadcast(%Ash.Notifier.Notification{} = notification, config) do
     record = notification.data
-    opts = config_to_opts(config)
+    # The action's tenant: a count of a per-tenant resource has to happen in
+    # the schema the action ran in, and the notifier is the only place that
+    # knows it.
+    tenant = notification.changeset && notification.changeset.tenant
+
+    opts = config_to_opts(config) ++ [ash_dispatch_tenant: tenant]
     broadcast_counter(record, opts)
   end
 
@@ -65,6 +70,7 @@ defmodule AshDispatch.Notifier.CounterHandler do
     filter_by_record = Keyword.get(opts, :filter_by_record)
 
     recipients = resolve_recipients_for_counter(record, audience, opts)
+    tenant = Keyword.get(opts, :ash_dispatch_tenant)
 
     authorize? = Keyword.get(opts, :authorize?, true)
     scope = Keyword.get(opts, :scope)
@@ -101,7 +107,11 @@ defmodule AshDispatch.Notifier.CounterHandler do
 
           query = apply_filter_by_record(query, record, filter_by_record)
 
-          Ash.count!(query, authorize?: authorize?, actor: recipient)
+          Ash.count!(
+            query,
+            [authorize?: authorize?, actor: recipient] ++
+              AshDispatch.Tenancy.opts(resource, tenant)
+          )
         rescue
           e ->
             Logger.error(
@@ -168,10 +178,13 @@ defmodule AshDispatch.Notifier.CounterHandler do
     end
   end
 
-  defp load_and_traverse_path(record, path) do
+  defp load_and_traverse_path(record, path, tenant \\ nil) do
     {relationships, [_final_field]} = Enum.split(path, -1)
 
-    case Ash.load(record, relationships, authorize?: false) do
+    load_opts =
+      [authorize?: false] ++ AshDispatch.Tenancy.opts(record.__struct__, tenant)
+
+    case Ash.load(record, relationships, load_opts) do
       {:ok, loaded_record} ->
         value = get_nested_value(loaded_record, path)
         {:ok, value}

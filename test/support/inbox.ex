@@ -31,6 +31,15 @@ defmodule AshDispatch.Test.Inbox.Notification do
     repo: AshDispatch.Test.Setup.Repo,
     domain: AshDispatch.Test.Inbox.Domain,
     data_layer: Ash.DataLayer.Ets
+
+  # See `AshDispatch.Test.TransportReceipt`: reports the tenant every read is
+  # given, so a test can prove it is never given one.
+  preparations do
+    prepare fn query, _context ->
+      AshDispatch.Test.TenantSpy.saw(:read, query.action && query.action.name, query.tenant)
+      query
+    end
+  end
 end
 
 defmodule AshDispatch.Test.Inbox.Preference do

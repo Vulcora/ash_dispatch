@@ -115,8 +115,6 @@ defmodule AshDispatch.Transports.Preferences do
   end
 
   defp skip(receipt) do
-    receipt
-    |> Ash.Changeset.for_update(:skip, %{error_message: @skalet})
-    |> Ash.update!(authorize?: false)
+    AshDispatch.ReceiptStatus.mark_skipped(receipt, @skalet)
   end
 end

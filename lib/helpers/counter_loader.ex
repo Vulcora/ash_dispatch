@@ -97,6 +97,9 @@ defmodule AshDispatch.Helpers.CounterLoader do
   ## Options
 
   - `:domains` - List of Ash domains to search for resources (defaults to all configured domains)
+  - `:tenant` - the tenant to count in. Needed when the counted resources, or
+    the user resource, are per tenant; ignored for those that are not.
+    Since 0.9.4
 
   ## Examples
 
@@ -114,9 +117,10 @@ defmodule AshDispatch.Helpers.CounterLoader do
   """
   def load_counters_for_user(user_id, opts \\ []) do
     domains = Keyword.get(opts, :domains, get_all_domains())
+    tenant = Keyword.get(opts, :tenant)
 
     # Load user record to check audiences
-    user = load_user(user_id)
+    user = load_user(user_id, tenant)
 
     # Discover all counter definitions from resources
     counter_definitions = discover_counter_definitions(domains)
@@ -129,7 +133,7 @@ defmodule AshDispatch.Helpers.CounterLoader do
 
     # Execute queries and build counter map
     Enum.reduce(relevant_counters, %{}, fn counter, acc ->
-      count = execute_counter_query(counter, user_id, user)
+      count = execute_counter_query(counter, user_id, user, tenant)
       # Use counter_name if set, otherwise fall back to the DSL name
       name = counter.counter_name || counter.name
       Map.put(acc, name, count)
@@ -173,14 +177,14 @@ defmodule AshDispatch.Helpers.CounterLoader do
     Config.domains()
   end
 
-  defp load_user(user_id) do
+  defp load_user(user_id, tenant) do
     user_module = Config.user_module()
 
     if user_module do
       user_module
       |> Ash.Query.new()
       |> Ash.Query.filter(id == ^user_id)
-      |> Ash.read_one!(authorize?: false)
+      |> Ash.read_one!([authorize?: false] ++ AshDispatch.Tenancy.opts(user_module, tenant))
     else
       Logger.warning("[CounterLoader] No user_module configured")
       nil
@@ -258,7 +262,7 @@ defmodule AshDispatch.Helpers.CounterLoader do
   # - scope: expr(...) → apply Ash expression with actor context
   # - user_id_path: [...] → legacy sugar for simple scoping
   # - aggregate: :name → use Ash aggregate instead of query_filter
-  defp execute_counter_query(counter, user_id, actor) do
+  defp execute_counter_query(counter, user_id, actor, tenant) do
     # Use specified resource or fall back to the resource that defined the counter
     resource = counter.resource
 
@@ -272,10 +276,10 @@ defmodule AshDispatch.Helpers.CounterLoader do
 
     # Check if using aggregate instead of query_filter
     if counter.aggregate do
-      execute_aggregate_counter(resource, counter.aggregate, query_actor, authorize?)
+      execute_aggregate_counter(resource, counter.aggregate, query_actor, authorize?, tenant)
     else
       # Pass both actor (for scope) and query_actor (for authorization)
-      execute_query_filter_counter(counter, user_id, actor, query_actor, authorize?)
+      execute_query_filter_counter(counter, user_id, actor, query_actor, authorize?, tenant)
     end
   rescue
     error ->
@@ -289,12 +293,14 @@ defmodule AshDispatch.Helpers.CounterLoader do
   end
 
   # Execute counter using Ash aggregate
-  defp execute_aggregate_counter(resource, aggregate_name, actor, authorize?) do
+  defp execute_aggregate_counter(resource, aggregate_name, actor, authorize?, tenant) do
     result =
       resource
       |> Ash.Query.new()
       |> Ash.Query.load(aggregate_name)
-      |> Ash.read_one(actor: actor, authorize?: authorize?)
+      |> Ash.read_one(
+        [actor: actor, authorize?: authorize?] ++ AshDispatch.Tenancy.opts(resource, tenant)
+      )
 
     case result do
       {:ok, nil} -> 0
@@ -319,7 +325,7 @@ defmodule AshDispatch.Helpers.CounterLoader do
   #
   # Note: audience is about WHO receives the broadcast, not about query scoping.
   # A :partner audience might still want user-scoped data if scope/user_id_path is set.
-  defp execute_query_filter_counter(counter, user_id, actor, query_actor, authorize?) do
+  defp execute_query_filter_counter(counter, user_id, actor, query_actor, authorize?, tenant) do
     resource = counter.resource
     scope = Map.get(counter, :scope)
 
@@ -361,7 +367,11 @@ defmodule AshDispatch.Helpers.CounterLoader do
           query
       end
 
-    Ash.count!(query, actor: query_actor, authorize?: authorize?)
+    Ash.count!(
+      query,
+      [actor: query_actor, authorize?: authorize?] ++
+        AshDispatch.Tenancy.opts(counter.resource, tenant)
+    )
   end
 
   # Apply query_filter handling list values with `in` (matching BroadcastCounterUpdate).

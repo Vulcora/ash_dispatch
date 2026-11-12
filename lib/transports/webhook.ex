@@ -85,6 +85,7 @@ defmodule AshDispatch.Transports.Webhook do
   """
 
   alias AshDispatch.Channel
+  alias AshDispatch.Tenancy
   alias AshDispatch.Transports.Preferences
   alias AshDispatch.UserPreference
   alias AshDispatch.Workers.SendWebhook
@@ -122,13 +123,15 @@ defmodule AshDispatch.Transports.Webhook do
     metadata = metadata(channel)
     body = Jason.encode!(envelope(receipt, context, channel, metadata))
 
-    job_args = %{
-      receipt_id: receipt.id,
-      webhook_url: url,
-      # `raw_body` is the signed representation; the worker sends it verbatim.
-      raw_body: body,
-      headers: request_headers(url, body, metadata)
-    }
+    job_args =
+      %{
+        "receipt_id" => receipt.id,
+        "webhook_url" => url,
+        # `raw_body` is the signed representation; the worker sends it verbatim.
+        "raw_body" => body,
+        "headers" => request_headers(url, body, metadata)
+      }
+      |> put_tenant(Tenancy.of(receipt))
 
     # Schedule BEFORE the insert. From the moment the job is in the queue a
     # worker can pick it up — and with `Oban, testing: :inline` it already runs
@@ -136,10 +139,7 @@ defmodule AshDispatch.Transports.Webhook do
     # receipt that has become `:sending`, `:sent` or `:failed`, and `schedule`
     # only goes from `:pending`. The result is a raised
     # `NoMatchingTransition` in the middle of a successful delivery.
-    scheduled =
-      receipt
-      |> Ash.Changeset.for_update(:schedule, %{})
-      |> Ash.update!(authorize?: false)
+    scheduled = AshDispatch.ReceiptStatus.mark_scheduled(receipt)
 
     case job_args |> SendWebhook.new() |> Oban.insert() do
       {:ok, _job} ->
@@ -154,15 +154,18 @@ defmodule AshDispatch.Transports.Webhook do
         Logger.error("Failed to enqueue webhook job: #{inspect(reason)}")
 
         updated =
-          scheduled
-          |> Ash.Changeset.for_update(:mark_failed, %{
-            error_message: "Failed to enqueue: #{inspect(reason)}"
-          })
-          |> Ash.update!(authorize?: false)
+          AshDispatch.ReceiptStatus.mark_failed(
+            scheduled,
+            "Failed to enqueue: #{inspect(reason)}"
+          )
 
         {:ok, updated}
     end
   end
+
+  # The worker reads the receipt by id, so the job says which schema it is in.
+  defp put_tenant(args, nil), do: args
+  defp put_tenant(args, tenant), do: Map.put(args, "tenant", Tenancy.key(tenant))
 
   @doc """
   The JSON-serialisable envelope this transport POSTs.
@@ -303,9 +306,11 @@ defmodule AshDispatch.Transports.Webhook do
   # hold is stale, and reporting `:scheduled` for something already `:failed`
   # would be exactly the silent green the receipts exist to prevent.
   defp current(receipt) do
-    case AshDispatch.Config.delivery_receipt_resource()
-         |> Ash.get(receipt.id, authorize?: false) do
-      {:ok, farsk} -> farsk
+    resource = AshDispatch.Config.delivery_receipt_resource()
+    tenant = AshDispatch.Tenancy.of(receipt)
+
+    case Ash.get(resource, receipt.id, [authorize?: false] ++ Tenancy.opts(resource, tenant)) do
+      {:ok, farsk} -> AshDispatch.Tenancy.remember(farsk, tenant)
       _ -> receipt
     end
   end
@@ -362,11 +367,6 @@ defmodule AshDispatch.Transports.Webhook do
   defp stringify_keys(other), do: other
 
   defp skip(receipt, message) do
-    updated =
-      receipt
-      |> Ash.Changeset.for_update(:skip, %{error_message: message})
-      |> Ash.update!(authorize?: false)
-
-    {:ok, updated}
+    {:ok, AshDispatch.ReceiptStatus.mark_skipped(receipt, message)}
   end
 end

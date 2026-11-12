@@ -80,6 +80,7 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
     max_attempts: 1
 
   alias AshDispatch.Config
+  alias AshDispatch.Tenancy
   alias AshDispatch.Workers.Stranded
 
   require Ash.Query
@@ -108,7 +109,15 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
   - `{:error, reason}` if the query itself fails
   """
   @impl Oban.Worker
-  def perform(%Oban.Job{}) do
+  def perform(%Oban.Job{args: args}) do
+    case AshDispatch.Tenancy.Cron.plan(args) do
+      {:run, tenant} -> run(tenant)
+      {:fan_out, tenants} -> AshDispatch.Tenancy.Cron.fan_out(__MODULE__, tenants)
+      :no_tenants -> AshDispatch.Tenancy.Cron.no_tenants(__MODULE__)
+    end
+  end
+
+  defp run(tenant) do
     max_retries = get_config(:max_retries, @default_max_retries)
     retry_delay_minutes = get_config(:retry_delay_minutes, @default_retry_delay_minutes)
 
@@ -119,9 +128,11 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
       "RetryFailedDeliveries: Starting retry job (max_retries=#{max_retries}, delay=#{retry_delay_minutes}m)"
     )
 
-    # Query for eligible failed receipts
+    # Query for eligible failed receipts, in this pass's tenant
+    resource = Config.delivery_receipt_resource()
+
     query =
-      Config.delivery_receipt_resource()
+      resource
       |> Ash.Query.filter(status == :failed)
       |> Ash.Query.filter(retry_count < ^max_retries)
       |> Ash.Query.filter(is_nil(last_retry_at) or last_retry_at < ^cutoff_time)
@@ -132,10 +143,11 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
     # Receipts stranded in :scheduled are swept FIRST, so anything rescued in
     # this pass is already `:failed` when the query below runs and gets its
     # retry immediately instead of waiting a further cycle.
-    sweep_stranded()
+    sweep_stranded(tenant)
 
-    case Ash.read(query, authorize?: false) do
+    case Ash.read(query, [authorize?: false] ++ Tenancy.opts(resource, tenant)) do
       {:ok, receipts} ->
+        receipts = Enum.map(receipts, &Tenancy.remember(&1, tenant))
         count = length(receipts)
 
         if count > 0 do
@@ -180,20 +192,21 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
   Errors are logged and swallowed: a sweep that cannot read must not take the
   ordinary retry pass down with it.
   """
-  @spec sweep_stranded() :: :ok
-  def sweep_stranded do
+  @spec sweep_stranded(term()) :: :ok
+  def sweep_stranded(tenant \\ nil) do
     stuck_after =
       get_config(:stranded_stuck_after_minutes, Stranded.default_stuck_after_minutes())
 
     stale_after = get_config(:stranded_stale_after_hours, Stranded.default_stale_after_hours())
+    resource = Config.delivery_receipt_resource()
 
     query =
-      Config.delivery_receipt_resource()
+      resource
       |> Ash.Query.filter(status == :scheduled)
       |> Ash.Query.limit(100)
       |> Ash.Query.sort(inserted_at: :asc)
 
-    case Ash.read(query, authorize?: false) do
+    case Ash.read(query, [authorize?: false] ++ Tenancy.opts(resource, tenant)) do
       {:ok, []} ->
         :ok
 
@@ -202,7 +215,7 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
 
         tally =
           receipts
-          |> Enum.map(&handle_stranded(&1, opts))
+          |> Enum.map(&handle_stranded(Tenancy.remember(&1, tenant), opts))
           |> Enum.frequencies()
 
         if Map.get(tally, :leave, 0) != length(receipts) do
@@ -286,8 +299,11 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
          |> Ash.Changeset.new()
          |> Ash.Changeset.set_context(%{ash_dispatch_enqueue?: false})
          |> Ash.Changeset.for_update(:retry, %{})
+         |> Tenancy.set(Tenancy.of(receipt))
          |> Ash.update(authorize?: false) do
       {:ok, updated_receipt} ->
+        updated_receipt = Tenancy.remember(updated_receipt, Tenancy.of(receipt))
+
         case enqueue_worker(updated_receipt, is_final_retry) do
           {:ok, :already_handled} ->
             # Transport handled the full lifecycle synchronously (e.g. in_app
@@ -377,7 +393,7 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
 
   defp mark_failed(receipt, error_message) do
     receipt
-    |> Ash.Changeset.for_update(:mark_failed, %{error_message: error_message})
+    |> Tenancy.changeset_for_update(:mark_failed, %{error_message: error_message})
     |> Ash.update(authorize?: false)
     |> case do
       {:ok, _updated} ->
@@ -398,7 +414,7 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
     )
 
     receipt
-    |> Ash.Changeset.for_update(:mark_failed_permanent, %{error_message: error_message})
+    |> Tenancy.changeset_for_update(:mark_failed_permanent, %{error_message: error_message})
     |> Ash.update(authorize?: false)
     |> case do
       {:ok, _updated} ->

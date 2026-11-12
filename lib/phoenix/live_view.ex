@@ -44,7 +44,14 @@ if Code.ensure_loaded?(Phoenix.LiveView) do
     - `:user` - where the user is in the assigns: an atom or a path, e.g.
       `[:current_scope, :user]`. Default `:current_user`
     - `:tenant` - where the tenant is in the assigns (atom or path), to count
-      only that tenant's notifications. Default: not filtered
+      only that tenant's notifications. Default: not filtered.
+
+      Since 0.9.4 this means one of two things, and which one is the
+      notification resource's business: for a resource built with
+      `multitenancy: :context` it is the SCHEMA the count is read from, and for
+      one in the public schema it is the `tenant` COLUMN the count filters on
+      (where a notification without a tenant belongs to the person and is
+      counted in every tenant). A LiveView passes it the same way either way
     - `:assign` - the assign holding the count. Default `:unread_notifications`
 
     ## Requirements

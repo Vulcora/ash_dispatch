@@ -41,6 +41,38 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
   - `:table` - Postgres table name. Defaults to `"delivery_receipts"`. Override
     when the consumer app needs ash_dispatch resources under a separate
     namespace (e.g., `table: "dispatch_delivery_receipts"`).
+  - `:multitenancy` - `:context` puts receipts in one schema per tenant (since
+    0.9.4); see below. Absent, the resource declares no multitenancy and
+    nothing in the library ever mentions a tenant to it.
+  - `:tenant_column` - `true` adds a nullable `tenant` column (since 0.9.4),
+    for a host that keeps receipts in the public schema and still wants to know
+    which tenant a receipt was for.
+
+  ## Per-tenant receipts (0.9.4)
+
+      use AshDispatch.Resources.DeliveryReceipt.Base,
+        repo: MyApp.Repo,
+        domain: MyApp.Deliveries,
+        notification_resource: MyApp.Notifications.Notification,
+        multitenancy: :context
+
+  declares
+
+      multitenancy do
+        strategy :context
+        global? false
+      end
+
+  so every read and write of a receipt happens in the tenant's own Postgres
+  schema. `global? false` is deliberate: a dispatch without a tenant then
+  fails loudly instead of writing to `public`, because two homes for receipts
+  is how a receipt stops being an audit trail. A host with both tenant-scoped
+  and system-wide events wants `multitenancy: {:context, global?: true}` — or,
+  more likely, public receipts and `tenant_column: true`.
+
+  Switching this on needs a migration of your own (`mix ash.codegen`), and
+  `config :ash_dispatch, tenants:` so the cron workers can find the tenants.
+  See `AshDispatch.Tenancy` and `AshDispatch.Tenants`.
   """
 
   defmacro __using__(opts) do
@@ -60,6 +92,34 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
     table = Keyword.get(opts, :table, "delivery_receipts")
     all_extensions = [AshStateMachine] ++ extra_extensions
 
+    # 0.9.4. Absent — which is every host before it — the resource declares no
+    # multitenancy, and `AshDispatch.Tenancy.opts/2` therefore never hands it a
+    # tenant: the DSL below is byte-for-byte what 0.9.3 generated.
+    multitenancy_block = AshDispatch.Tenancy.Base.block(Keyword.get(opts, :multitenancy))
+    tenant_column? = Keyword.get(opts, :tenant_column, false) == true
+    tenant_attribute = AshDispatch.Tenancy.Base.attribute(tenant_column?)
+
+    create_accept =
+      [
+        :event_id,
+        :transport,
+        :user_id,
+        :actor_id,
+        :notification_id,
+        :audience,
+        :recipient,
+        :subject,
+        :body_text,
+        :body_html,
+        :content,
+        :oban_job_id,
+        :provider_id,
+        :provider_response,
+        :source_type,
+        :source_id,
+        :locale
+      ] ++ if tenant_column?, do: [:tenant], else: []
+
     quote do
       use Ash.Resource,
         domain: unquote(domain),
@@ -67,6 +127,8 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
         authorizers: [Ash.Policy.Authorizer],
         extensions: unquote(all_extensions),
         notifiers: unquote(extra_notifiers)
+
+      unquote(multitenancy_block)
 
       postgres do
         table unquote(table)
@@ -259,6 +321,10 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
           public?: true,
           description: "Locale used for template rendering (e.g., 'en', 'sv')"
 
+        # `tenant_column: true` only (0.9.4). Nothing is emitted otherwise, so
+        # a host that does not ask for it needs no migration.
+        unquote(tenant_attribute)
+
         timestamps(public?: true)
       end
 
@@ -323,25 +389,11 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
         defaults [:read, :destroy]
 
         create :create do
-          accept [
-            :event_id,
-            :transport,
-            :user_id,
-            :actor_id,
-            :notification_id,
-            :audience,
-            :recipient,
-            :subject,
-            :body_text,
-            :body_html,
-            :content,
-            :oban_job_id,
-            :provider_id,
-            :provider_response,
-            :source_type,
-            :source_id,
-            :locale
-          ]
+          # `:tenant` is in the list only with `tenant_column: true`. The
+          # dispatcher sends it with `skip_unknown_inputs`, so a receipt
+          # resource without the column - its own, or this base without the
+          # option - ignores it.
+          accept unquote(create_accept)
         end
 
         read :list_all do

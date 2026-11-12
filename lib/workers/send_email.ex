@@ -99,6 +99,7 @@ defmodule AshDispatch.Workers.SendEmail do
   alias AshDispatch.ContentMap
   alias AshDispatch.Delivery
   alias AshDispatch.ReceiptStatus
+  alias AshDispatch.Tenancy
   alias AshDispatch.Transports.Email
   alias AshDispatch.Workers.ScrubSensitiveContent
 
@@ -138,10 +139,14 @@ defmodule AshDispatch.Workers.SendEmail do
 
     Logger.info("Processing email job for receipt #{receipt_id}")
 
-    # Fetch receipt (bypass authorization - workers run as system)
-    case Config.delivery_receipt_resource() |> Ash.get(receipt_id, authorize?: false) do
+    # Fetch receipt (bypass authorization - workers run as system), in the
+    # tenant the job names.
+    case AshDispatch.Tenancy.Job.receipt(args) do
       {:ok, receipt} ->
         process_email(receipt, args, job.attempt)
+
+      {:cancel, reason} ->
+        {:cancel, reason}
 
       {:error, error} ->
         Logger.error("Failed to fetch receipt #{receipt_id}: #{inspect(error)}")
@@ -155,8 +160,9 @@ defmodule AshDispatch.Workers.SendEmail do
   # exist only in that job's args — without this, every retried email
   # silently loses its attachments (broken inline images included).
   def new_for_receipt(receipt) do
-    %{receipt_id: receipt.id}
+    %{"receipt_id" => receipt.id}
     |> maybe_put_original_attachments(receipt)
+    |> AshDispatch.Tenancy.Job.put_tenant(receipt)
     |> new()
   end
 
@@ -164,7 +170,7 @@ defmodule AshDispatch.Workers.SendEmail do
     case Config.repo().get(Oban.Job, job_id) do
       %Oban.Job{args: %{"attachments" => attachments}}
       when is_list(attachments) and attachments != [] ->
-        Map.put(args, :attachments, attachments)
+        Map.put(args, "attachments", attachments)
 
       _ ->
         args
@@ -385,6 +391,20 @@ defmodule AshDispatch.Workers.SendEmail do
         end
     end
     |> Map.new(fn {name, value} -> {to_string(name), value} end)
+    |> put_tenant_tag(receipt)
+  end
+
+  # `config :ash_dispatch, webhook_tenant_tag: true`: the tenant rides out with
+  # the message so a provider that echoes headers can say which tenant a
+  # webhook is about. Added here rather than stored on the receipt, so a retry
+  # and a "send now" carry it too — the receipt knows its own tenant.
+  defp put_tenant_tag(headers, receipt) do
+    with true <- Config.webhook_tenant_tag?(),
+         tenant when is_binary(tenant) <- AshDispatch.Tenancy.key(Tenancy.of(receipt)) do
+      Map.put(headers, AshDispatch.WebhookHandlers.Resend.tenant_header(), tenant)
+    else
+      _ -> headers
+    end
   end
 
   # Only when there are any, so a backend written before 0.8.6 is called with
@@ -514,7 +534,13 @@ defmodule AshDispatch.Workers.SendEmail do
 
   defp load_notification(receipt) do
     if receipt.notification_id do
-      case Ash.get(Config.notification_resource(), receipt.notification_id, authorize?: false) do
+      # In the receipt's own tenant: the notification it is linked to was
+      # created in the same schema, and another tenant's would answer the
+      # `skip_if_read` question about somebody else's reading.
+      resource = Config.notification_resource()
+      opts = [authorize?: false] ++ Tenancy.opts(resource, Tenancy.of(receipt))
+
+      case Ash.get(resource, receipt.notification_id, opts) do
         {:ok, notification} -> {:ok, notification}
         error -> error
       end

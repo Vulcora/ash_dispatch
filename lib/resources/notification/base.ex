@@ -40,6 +40,11 @@ defmodule AshDispatch.Resources.Notification.Base do
   - `:table` - Postgres table name. Defaults to `"notifications"`. Override
     when the consumer app already owns that table for a legacy notification
     system and ash_dispatch needs to coexist (e.g., `table: "dispatch_notifications"`).
+  - `:multitenancy` - `:context` puts notifications in one schema per tenant
+    (since 0.9.4). Absent, the resource declares no multitenancy and nothing in
+    the library ever mentions a tenant to it. The `tenant` ATTRIBUTE below is a
+    different thing and is always there: it says which tenant a notification
+    belongs to, in one table. See the Tenancy guide.
   """
 
   @doc false
@@ -75,6 +80,11 @@ defmodule AshDispatch.Resources.Notification.Base do
             {field, value}, query -> Ash.Query.filter(query, ^Ash.Expr.ref(field) == ^value)
           end)
         end)
+        # The SCHEMA this runs in, when this resource is per tenant. Set on the
+        # query, not only on the bulk update: `Ash.bulk_update/4` validates the
+        # query it is given, and a query without a tenant is refused before the
+        # options are read.
+        |> AshDispatch.Tenancy.set_query(context.tenant)
         |> then(fn query ->
           # A notification without a tenant (every row from before 0.9.0, and
           # every dispatch without `:tenant`) belongs to the person, and is
@@ -89,13 +99,18 @@ defmodule AshDispatch.Resources.Notification.Base do
         end)
 
       result =
-        Ash.bulk_update(query, action, %{},
-          actor: context.actor,
-          authorize?: false,
-          context: %{ash_dispatch_bulk: true},
-          return_errors?: true,
-          # Use stream strategy to ensure changes are triggered
-          strategy: :stream
+        Ash.bulk_update(
+          query,
+          action,
+          %{},
+          [
+            actor: context.actor,
+            authorize?: false,
+            context: %{ash_dispatch_bulk: true},
+            return_errors?: true,
+            # Use stream strategy to ensure changes are triggered
+            strategy: :stream
+          ] ++ AshDispatch.Tenancy.opts(__MODULE__, context.tenant)
         )
 
       case result do
@@ -140,6 +155,11 @@ defmodule AshDispatch.Resources.Notification.Base do
     # AshDispatch.Resource provides counter broadcasting DSL
     all_extensions = [AshDispatch.Resource] ++ extra_extensions
 
+    # 0.9.4. Absent, the resource declares no multitenancy and the DSL below
+    # is what 0.9.3 generated; the `tenant` COLUMN has been here since 0.9.0
+    # either way, and the two are different things.
+    multitenancy_block = AshDispatch.Tenancy.Base.block(Keyword.get(opts, :multitenancy))
+
     quote do
       # The authorizer MUST be present: without one, `authorize?: true` is a
       # no-op and every read returns the whole table. Notifications are
@@ -162,6 +182,7 @@ defmodule AshDispatch.Resources.Notification.Base do
       require Ash.Query
       require Ash.Expr
 
+      unquote(multitenancy_block)
       unquote(postgres_block)
 
       policies do
@@ -272,11 +293,14 @@ defmodule AshDispatch.Resources.Notification.Base do
           argument :tenant, :string, allow_nil?: true
 
           run fn input, context ->
+            # The action's own tenant, when this resource is per tenant: a
+            # count must not reach across schemas, and `:tenant` as an ARGUMENT
+            # is the column filter, which is a different question.
+            opts = [actor: context.actor] ++ AshDispatch.Tenancy.opts(__MODULE__, context.tenant)
+
             __MODULE__
-            |> Ash.Query.for_read(:unread, %{tenant: input.arguments[:tenant]},
-              actor: context.actor
-            )
-            |> Ash.count(actor: context.actor)
+            |> Ash.Query.for_read(:unread, %{tenant: input.arguments[:tenant]}, opts)
+            |> Ash.count(opts)
           end
         end
 

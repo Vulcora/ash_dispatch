@@ -701,6 +701,75 @@ defmodule AshDispatch.Config do
   end
 
   @doc """
+  Whether an outgoing email carries its tenant as an `X-AshDispatch-Tenant`
+  header, so a provider that echoes headers back can say which tenant a
+  webhook is about.
+
+  Off by default, and worth leaving off unless you verify the provider's
+  signature (`AshDispatch.WebhookHandlers.Resend.verify/3`): without that the
+  tag is a value a stranger chose, and the tenant it names is a Postgres
+  schema. It is also a header the recipient can read, so it must never say
+  more than the tenant key.
+
+  A per-tenant webhook endpoint (`process_webhook(params, tenant: ...)`) needs
+  none of this and is the better answer. See
+  `AshDispatch.WebhookHandlers.Resend`.
+
+  ## Example
+
+      config :ash_dispatch, webhook_tenant_tag: true
+  """
+  @spec webhook_tenant_tag?() :: boolean()
+  def webhook_tenant_tag? do
+    Application.get_env(:ash_dispatch, :webhook_tenant_tag, false) == true
+  end
+
+  @doc """
+  Where the library finds out which tenants exist — a module implementing
+  `AshDispatch.Tenants`, `{module, function}`, `{module, function, args}`, or a
+  zero-argument function.
+
+  Needed only when receipts are stored per tenant: the cron workers and the
+  scrub work across tenants, and a tenant arriving from outside (a provider's
+  webhook tag) is checked against this before it is allowed near a query.
+
+  ## Example
+
+      config :ash_dispatch, tenants: MyApp.Tenants
+  """
+  @spec tenants() :: module() | {module(), atom()} | {module(), atom(), list()} | fun() | nil
+  def tenants do
+    Application.get_env(:ash_dispatch, :tenants)
+  end
+
+  @doc """
+  What the send job carries: `:full` (the rendered message in the job's args,
+  as before) or `:minimal` (ids only; the worker reads the message from the
+  receipt).
+
+  **Defaults to `:minimal` when receipts are stored per tenant**, and to
+  `:full` otherwise — `oban_jobs` is one table in the public schema, so for a
+  host with per-tenant receipts the job args would be the one place a tenant's
+  rendered message leaves its schema. For a host on public receipts the default
+  cannot change inside 0.9.x.
+
+  An event declaring `metadata: [sensitive_content: true]` has been `:minimal`
+  since 0.8.7 whatever this says.
+
+  ## Example
+
+      config :ash_dispatch, job_args: :minimal
+  """
+  @spec job_args() :: :full | :minimal
+  def job_args do
+    case Application.get_env(:ash_dispatch, :job_args) do
+      :minimal -> :minimal
+      :full -> :full
+      _ -> if AshDispatch.Tenancy.receipts_per_tenant?(), do: :minimal, else: :full
+    end
+  end
+
+  @doc """
   The Oban queue `AshDispatch.Workers.RetryFailedDeliveries` runs in.
 
   Defaults to `:default`, which is what every release before 0.9.3 used and

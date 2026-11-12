@@ -409,12 +409,16 @@ defmodule AshDispatch.Event.Helpers do
           filter
         end
 
-      # Query without select restriction - RecipientExtractor needs access to configured fields
+      # Query without select restriction - RecipientExtractor needs access to configured fields.
+      # In the dispatch's tenant when the user resource is per tenant.
       result =
         user_module
         |> Ash.Query.new()
         |> apply_filter(resolved_filter)
-        |> Ash.read(authorize?: false)
+        |> Ash.read(
+          [authorize?: false] ++
+            AshDispatch.Tenancy.opts(user_module, context && Map.get(context, :tenant))
+        )
 
       case result do
         {:ok, users} ->

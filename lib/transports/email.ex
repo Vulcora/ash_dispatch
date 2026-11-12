@@ -61,6 +61,7 @@ defmodule AshDispatch.Transports.Email do
   alias AshDispatch.Channel
   alias AshDispatch.Config
   alias AshDispatch.EventResolver
+  alias AshDispatch.Tenancy
 
   alias AshDispatch.Transports.Preferences
 
@@ -146,16 +147,36 @@ defmodule AshDispatch.Transports.Email do
   # `oban_jobs` until the Pruner removes the job. No scrub reaches them. An event
   # must therefore never put a live secret in `attachments/2` or
   # `default_email_attachments`: keep the secret in the body.
+  #
+  # Since 0.9.4 `config :ash_dispatch, job_args: :minimal` asks for that shape
+  # for EVERY event, and it is the default when receipts are stored per tenant:
+  # `oban_jobs` is one table in the public schema, so the args would otherwise
+  # be the one place a tenant's rendered message leaves its schema.
+  #
+  # The tenant itself travels in the args — it has to, or the worker cannot find
+  # the receipt. A job enqueued before 0.9.4 carries no `"tenant"` key, reads
+  # back as `nil`, and behaves exactly as it did, which is what makes this safe
+  # to deploy while jobs are in flight.
   def job_args(receipt, context, channel) do
-    if sensitive?(context.event_id) do
-      %{
-        "receipt_id" => receipt.id,
-        "event_id" => context.event_id,
-        "attachments" => resolve_attachments(context, channel)
-      }
-    else
-      full_job_args(receipt, context, channel)
-    end
+    args =
+      if minimal_args?(context.event_id) do
+        %{
+          "receipt_id" => receipt.id,
+          "event_id" => context.event_id,
+          "attachments" => resolve_attachments(context, channel)
+        }
+      else
+        full_job_args(receipt, context, channel)
+      end
+
+    put_unless_nil(args, "tenant", AshDispatch.Tenancy.key(Map.get(context, :tenant)))
+  end
+
+  @doc false
+  # Whether this event's job carries ids only. Sensitive events always have
+  # (0.8.7); `job_args: :minimal` extends it to the rest.
+  def minimal_args?(event_id) do
+    sensitive?(event_id) or Config.job_args() == :minimal
   end
 
   @doc false
@@ -277,14 +298,13 @@ defmodule AshDispatch.Transports.Email do
   defp update_receipt_with_job(receipt, result, _channel) do
     case result do
       {:ok, job} ->
-        # Refetch to get current state (may have changed in inline mode)
-        case Ash.get(receipt.__struct__, receipt.id, authorize?: false) do
+        # Refetch to get current state (may have changed in inline mode) — from
+        # the schema the receipt was written to.
+        case reread(receipt) do
           {:ok, current_receipt} ->
             if current_receipt.status in [:pending] do
               # Only schedule if still pending
-              current_receipt
-              |> Ash.Changeset.for_update(:schedule, %{oban_job_id: job.id})
-              |> Ash.update!(authorize?: false)
+              AshDispatch.ReceiptStatus.mark_scheduled(current_receipt, oban_job_id: job.id)
             else
               # Already processed (inline mode) - just return current state
               Logger.debug(
@@ -300,9 +320,19 @@ defmodule AshDispatch.Transports.Email do
         end
 
       {:error, reason} ->
-        receipt
-        |> Ash.Changeset.for_update(:mark_failed, %{error_message: inspect(reason)})
-        |> Ash.update!(authorize?: false)
+        AshDispatch.ReceiptStatus.mark_failed(receipt, inspect(reason))
+    end
+  end
+
+  # The receipt as it is now, in its own tenant, still knowing which one that
+  # is so the transition that follows lands there too.
+  defp reread(receipt) do
+    resource = receipt.__struct__
+    tenant = AshDispatch.Tenancy.of(receipt)
+
+    case Ash.get(resource, receipt.id, [authorize?: false] ++ Tenancy.opts(resource, tenant)) do
+      {:ok, current} -> {:ok, Tenancy.remember(current, tenant)}
+      other -> other
     end
   end
 

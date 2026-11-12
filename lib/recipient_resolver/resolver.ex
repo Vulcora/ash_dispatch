@@ -93,7 +93,7 @@ defmodule AshDispatch.RecipientResolver.Resolver do
         resolve_from_resource(config.from_resource, resource)
 
       config.query ->
-        resolve_by_query(config.query, resolver_module.__user_resource__())
+        resolve_by_query(config.query, resolver_module.__user_resource__(), context)
 
       config.path ->
         resolve_by_path(config.path, resource)
@@ -382,8 +382,12 @@ defmodule AshDispatch.RecipientResolver.Resolver do
   ## Example
 
       resolve_by_query([role: :admin, is_active: true], MyApp.Accounts.User)
+
+  The context's tenant is used when the user resource is per tenant: an
+  audience resolved from the wrong schema is either empty or somebody else's
+  people. Since 0.9.4.
   """
-  def resolve_by_query(filter, user_resource) when is_list(filter) do
+  def resolve_by_query(filter, user_resource, context \\ nil) when is_list(filter) do
     # Dispatch is a side-channel — recipient resolution must NEVER raise
     # into the caller. `Ash.read` returns `{:ok, _} | {:error, _}` for
     # normal Ash error paths, but two failure modes raise through the
@@ -409,7 +413,11 @@ defmodule AshDispatch.RecipientResolver.Resolver do
         |> Ash.Query.filter_input(filter)
         |> scope_to_recipient_fields(user_resource)
 
-      case Ash.read(query, authorize?: false) do
+      read_opts =
+        [authorize?: false] ++
+          AshDispatch.Tenancy.opts(user_resource, context && Map.get(context, :tenant))
+
+      case Ash.read(query, read_opts) do
         {:ok, users} ->
           users
 

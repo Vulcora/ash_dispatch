@@ -71,7 +71,6 @@ defmodule AshDispatch.Workers.SendWebhook do
     queue: :webhooks,
     max_attempts: 5
 
-  alias AshDispatch.Config
   alias AshDispatch.Delivery
   alias AshDispatch.ReceiptStatus
 
@@ -111,10 +110,14 @@ defmodule AshDispatch.Workers.SendWebhook do
 
     Logger.info("Processing webhook job for receipt #{receipt_id}")
 
-    # Fetch receipt (bypass authorization - workers run as system)
-    case Config.delivery_receipt_resource() |> Ash.get(receipt_id, authorize?: false) do
+    # Fetch receipt (bypass authorization - workers run as system), in the
+    # tenant the job names.
+    case AshDispatch.Tenancy.Job.receipt(args) do
       {:ok, receipt} ->
         process_webhook(receipt, args)
+
+      {:cancel, reason} ->
+        {:cancel, reason}
 
       {:error, error} ->
         Logger.error("Failed to fetch receipt #{receipt_id}: #{inspect(error)}")
