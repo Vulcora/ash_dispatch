@@ -116,7 +116,7 @@ defmodule AshDispatch.Workers.SendEmail do
   - `{:cancel, reason}` when a sensitive event has no body left to send
   """
   @impl Oban.Worker
-  def perform(%Oban.Job{args: args}) do
+  def perform(%Oban.Job{args: args} = job) do
     receipt_id = args["receipt_id"]
 
     Logger.info("Processing email job for receipt #{receipt_id}")
@@ -124,7 +124,7 @@ defmodule AshDispatch.Workers.SendEmail do
     # Fetch receipt (bypass authorization - workers run as system)
     case Config.delivery_receipt_resource() |> Ash.get(receipt_id, authorize?: false) do
       {:ok, receipt} ->
-        process_email(receipt, args)
+        process_email(receipt, args, job.attempt)
 
       {:error, error} ->
         Logger.error("Failed to fetch receipt #{receipt_id}: #{inspect(error)}")
@@ -184,7 +184,31 @@ defmodule AshDispatch.Workers.SendEmail do
 
   # Private functions
 
-  defp process_email(receipt, args) do
+  # A receipt in `:sending` on a second or later attempt is this job's own
+  # unfinished work. On a first attempt it is somebody else's.
+  defp interrupted_attempt?(%{status: :sending}, attempt)
+       when is_integer(attempt) and attempt > 1,
+       do: true
+
+  defp interrupted_attempt?(_receipt, _attempt), do: false
+
+  # Hands the receipt to the backend and records the outcome.
+  defp deliver(receipt, args) do
+    case send_email(receipt, args) do
+      {:ok, provider_response} ->
+        ReceiptStatus.mark_sent(receipt, provider_response)
+        Logger.info("Email sent successfully for receipt #{receipt.id}")
+        :ok
+
+      {:error, reason} ->
+        # Mark as failed (will be retried by Oban)
+        ReceiptStatus.mark_failed(receipt, reason)
+        Logger.error("Email failed for receipt #{receipt.id}: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  defp process_email(receipt, args, attempt) do
     # Early exit for terminal states - handles duplicate job scenarios gracefully
     # This can happen when "send now" creates a new job while original is processing
     if receipt.status in [:sent, :skipped, :failed_permanent] do
@@ -204,33 +228,35 @@ defmodule AshDispatch.Workers.SendEmail do
         # Mark as sending - handle race condition gracefully
         case ReceiptStatus.mark_sending(receipt) do
           {:ok, receipt} ->
-            # Send email (pass receipt for field fallback)
-            case send_email(receipt, args) do
-              {:ok, provider_response} ->
-                # Mark as sent
-                ReceiptStatus.mark_sent(receipt, provider_response)
-                Logger.info("Email sent successfully for receipt #{receipt.id}")
-                :ok
-
-              {:error, reason} ->
-                # Mark as failed (will be retried by Oban)
-                ReceiptStatus.mark_failed(receipt, reason)
-                Logger.error("Email failed for receipt #{receipt.id}: #{inspect(reason)}")
-                {:error, reason}
-            end
+            deliver(receipt, args)
 
           {:error, %Ash.Error.Invalid{errors: errors}} ->
-            # Check if it's a state machine transition error (duplicate job scenario)
-            if Enum.any?(errors, &match?(%AshStateMachine.Errors.NoMatchingTransition{}, &1)) do
-              Logger.info(
-                "Receipt #{receipt.id} state transition conflict (likely duplicate job), completing as success"
-              )
+            cond do
+              not Enum.any?(errors, &match?(%AshStateMachine.Errors.NoMatchingTransition{}, &1)) ->
+                # Some other validation error - let Oban retry
+                Logger.error("Receipt #{receipt.id} update failed: #{inspect(errors)}")
+                {:error, errors}
 
-              :ok
-            else
-              # Some other validation error - let Oban retry
-              Logger.error("Receipt #{receipt.id} update failed: #{inspect(errors)}")
-              {:error, errors}
+              interrupted_attempt?(receipt, attempt) ->
+                # This job has run before and got as far as `:sending`, then
+                # stopped without a result: the node went down, or the job was
+                # killed and Oban's lifeline put it back. Nothing else is
+                # sending this receipt - the job is unique per receipt - so
+                # completing here would lose the email for good. Send it.
+                Logger.warning(
+                  "Receipt #{receipt.id} was left in :sending by an earlier attempt of this job, sending now"
+                )
+
+                deliver(receipt, args)
+
+              true ->
+                # A first attempt that finds the receipt in a state it cannot
+                # leave: another job got there first.
+                Logger.info(
+                  "Receipt #{receipt.id} state transition conflict (likely duplicate job), completing as success"
+                )
+
+                :ok
             end
 
           {:error, reason} ->

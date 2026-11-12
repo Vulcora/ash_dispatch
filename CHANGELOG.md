@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **An email whose job was interrupted is sent when the job runs again.** The
+  worker marks the receipt `:sending` before it calls the backend. If the job
+  then stopped without a result - the node went down, or the job was killed
+  and Oban's lifeline put it back - the next run found the receipt in
+  `:sending`, could not move it to `:sending` again, read that as "another job
+  has this" and completed successfully. Nothing was sent, no error was logged
+  above info, and the receipt stayed in `:sending` for good. The worker now
+  looks at the job's attempt: a receipt in `:sending` on a second or later
+  attempt is this job's own unfinished work, and is sent. On a first attempt it
+  still belongs to another job and is left alone. No resource or migration
+  changes. An email can now be sent twice if the earlier attempt reached the
+  provider but died before recording it; that is the price of not losing it.
+
 ## [0.9.1] - Unreleased
 
 The release of 0.9.0. The library code is unchanged from 0.9.0, which never

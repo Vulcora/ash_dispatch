@@ -8,5 +8,6 @@ defmodule AshDispatch.Test.Domain do
     resource AshDispatch.Test.DeliveryReceipt
     resource AshDispatch.Test.TransportReceipt
     resource AshDispatch.Test.LegacyReceipt
+    resource AshDispatch.Test.StrictReceipt
   end
 end
