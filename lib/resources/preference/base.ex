@@ -94,6 +94,9 @@ defmodule AshDispatch.Resources.Preference.Base do
 
     authorizers = if policies?, do: [Ash.Policy.Authorizer], else: []
 
+    # 0.9.4; see `AshDispatch.Tenancy.Base`. Absent, nothing is emitted.
+    multitenancy_block = AshDispatch.Tenancy.Base.block(Keyword.get(opts, :multitenancy))
+
     postgres_block =
       if postgres? do
         quote do
@@ -131,6 +134,7 @@ defmodule AshDispatch.Resources.Preference.Base do
       require Ash.Query
       require Ash.Expr
 
+      unquote(multitenancy_block)
       unquote(postgres_block)
       unquote(policies_block)
 

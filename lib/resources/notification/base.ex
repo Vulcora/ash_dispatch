@@ -140,6 +140,11 @@ defmodule AshDispatch.Resources.Notification.Base do
     # AshDispatch.Resource provides counter broadcasting DSL
     all_extensions = [AshDispatch.Resource] ++ extra_extensions
 
+    # 0.9.4. Absent, the resource declares no multitenancy and the DSL below
+    # is what 0.9.3 generated; the `tenant` COLUMN has been here since 0.9.0
+    # either way, and the two are different things.
+    multitenancy_block = AshDispatch.Tenancy.Base.block(Keyword.get(opts, :multitenancy))
+
     quote do
       # The authorizer MUST be present: without one, `authorize?: true` is a
       # no-op and every read returns the whole table. Notifications are
@@ -162,6 +167,7 @@ defmodule AshDispatch.Resources.Notification.Base do
       require Ash.Query
       require Ash.Expr
 
+      unquote(multitenancy_block)
       unquote(postgres_block)
 
       policies do
