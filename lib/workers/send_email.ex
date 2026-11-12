@@ -99,6 +99,7 @@ defmodule AshDispatch.Workers.SendEmail do
   alias AshDispatch.ContentMap
   alias AshDispatch.Delivery
   alias AshDispatch.ReceiptStatus
+  alias AshDispatch.Tenancy
   alias AshDispatch.Transports.Email
   alias AshDispatch.Workers.ScrubSensitiveContent
 
@@ -390,6 +391,20 @@ defmodule AshDispatch.Workers.SendEmail do
         end
     end
     |> Map.new(fn {name, value} -> {to_string(name), value} end)
+    |> put_tenant_tag(receipt)
+  end
+
+  # `config :ash_dispatch, webhook_tenant_tag: true`: the tenant rides out with
+  # the message so a provider that echoes headers can say which tenant a
+  # webhook is about. Added here rather than stored on the receipt, so a retry
+  # and a "send now" carry it too — the receipt knows its own tenant.
+  defp put_tenant_tag(headers, receipt) do
+    with true <- Config.webhook_tenant_tag?(),
+         tenant when is_binary(tenant) <- AshDispatch.Tenancy.key(Tenancy.of(receipt)) do
+      Map.put(headers, AshDispatch.WebhookHandlers.Resend.tenant_header(), tenant)
+    else
+      _ -> headers
+    end
   end
 
   # Only when there are any, so a backend written before 0.8.6 is called with

@@ -701,6 +701,30 @@ defmodule AshDispatch.Config do
   end
 
   @doc """
+  Whether an outgoing email carries its tenant as an `X-AshDispatch-Tenant`
+  header, so a provider that echoes headers back can say which tenant a
+  webhook is about.
+
+  Off by default, and worth leaving off unless you verify the provider's
+  signature (`AshDispatch.WebhookHandlers.Resend.verify/3`): without that the
+  tag is a value a stranger chose, and the tenant it names is a Postgres
+  schema. It is also a header the recipient can read, so it must never say
+  more than the tenant key.
+
+  A per-tenant webhook endpoint (`process_webhook(params, tenant: ...)`) needs
+  none of this and is the better answer. See
+  `AshDispatch.WebhookHandlers.Resend`.
+
+  ## Example
+
+      config :ash_dispatch, webhook_tenant_tag: true
+  """
+  @spec webhook_tenant_tag?() :: boolean()
+  def webhook_tenant_tag? do
+    Application.get_env(:ash_dispatch, :webhook_tenant_tag, false) == true
+  end
+
+  @doc """
   Where the library finds out which tenants exist — a module implementing
   `AshDispatch.Tenants`, `{module, function}`, `{module, function, args}`, or a
   zero-argument function.

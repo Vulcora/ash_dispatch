@@ -50,6 +50,15 @@ defmodule AshDispatch.WebhookHandlers.Resend do
 
   require Logger
 
+  @doc """
+  The header an outgoing message carries its tenant in, with
+  `config :ash_dispatch, webhook_tenant_tag: true`. Public so a host can read
+  it back out of a provider's payload itself.
+  """
+  @tenant_header "X-AshDispatch-Tenant"
+  @spec tenant_header() :: String.t()
+  def tenant_header, do: @tenant_header
+
   # plug_crypto is an optional dependency. Webhooks arrive through Plug, which
   # depends on it, so any app that can receive one has it.
   @compile {:no_warn_undefined, Plug.Crypto}
@@ -164,6 +173,38 @@ defmodule AshDispatch.WebhookHandlers.Resend do
     - `type` - Event type (e.g., "email.opened")
     - `created_at` - ISO 8601 timestamp
     - `data` - Event-specific data including `email_id`
+  - `opts`:
+    - `:tenant` - the tenant whose receipts this request is about. **Required
+      when receipts are stored per tenant**, because a provider webhook arrives
+      with a message id and nothing else. Since 0.9.4
+
+  ## Per-tenant receipts
+
+  A webhook has to say which schema to look in, and it cannot be trusted to.
+  Three ways, in the order to prefer them:
+
+  1. **A per-tenant endpoint.** Your router already knows how to put a tenant
+     in a path - `post "/webhooks/resend/:tenant"` - and you pass it here:
+
+         Resend.process_webhook(params, tenant: conn.params["tenant"])
+
+     Nothing depends on what the provider echoes back, so it works for every
+     provider. This is the recommended setup.
+  2. **A provider tag.** With `config :ash_dispatch, webhook_tenant_tag: true`
+     the outgoing message carries an `X-AshDispatch-Tenant` header, and this
+     function will read it back out of the payload. Only switch it on behind
+     `verify/3`: without a verified signature the tag is a value a stranger
+     chose, and the tenant it names is a Postgres schema. It is also a header
+     the recipient can see, so it must never say more than the tenant key.
+  3. **Public receipts with `tenant_column: true`**, where webhooks work
+     unchanged.
+
+  Whichever it is, the tenant is held against `AshDispatch.Tenants` before any
+  query, and the receipt is then looked up **inside** that tenant. A webhook
+  that names a tenant its receipt was not sent from therefore finds nothing:
+  the id exists in one schema only. Nothing is fanned out across schemas
+  looking for it - that would turn one indexed read into one per tenant, in the
+  one place in the library an outsider can trigger work.
 
   ## Returns
 
@@ -171,43 +212,124 @@ defmodule AshDispatch.WebhookHandlers.Resend do
   - `{:error, :not_found}` - Delivery receipt not found for email_id
   - `{:error, :missing_email_id}` - Webhook missing email_id field
   - `{:error, :invalid_format}` - Webhook payload invalid
+  - `{:error, :unknown_tenant}` - The request named a tenant this host does not
+    recognise, or carried a tag that cannot be checked. Nothing was read
   - `{:error, reason}` - Other error
   """
-  def process_webhook(%{"type" => event_type, "data" => data} = params) do
+  def process_webhook(params, opts \\ [])
+
+  def process_webhook(%{"type" => event_type, "data" => data} = params, opts) do
     email_id = Map.get(data, "email_id")
     created_at = parse_timestamp(Map.get(params, "created_at"))
 
     Logger.info("Processing Resend webhook: #{event_type} for email_id=#{email_id}")
 
-    if email_id do
-      # Find delivery receipt by provider_id (Resend email ID)
-      result =
-        delivery_receipt_resource()
-        |> Ash.Query.for_read(:get_by_provider_id, %{provider_id: email_id})
-        |> Ash.read_one(authorize?: false)
-
-      case result do
-        {:ok, %{} = receipt} ->
-          update_receipt_from_event(receipt, event_type, created_at, data)
-
-        {:ok, nil} ->
-          Logger.warning("Resend webhook: delivery receipt not found for email_id=#{email_id}")
-          {:error, :not_found}
-
-        {:error, _} ->
-          Logger.warning("Resend webhook: delivery receipt not found for email_id=#{email_id}")
-          {:error, :not_found}
-      end
+    with {:ok, tenant} <- tenant_for(data, opts),
+         true <- not is_nil(email_id) do
+      find_and_update(email_id, tenant, event_type, created_at, data)
     else
-      Logger.warning("Resend webhook missing email_id (type: #{inspect(params["type"])})")
-      {:error, :missing_email_id}
+      false ->
+        Logger.warning("Resend webhook missing email_id (type: #{inspect(params["type"])})")
+        {:error, :missing_email_id}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
-  def process_webhook(params) do
+  def process_webhook(params, _opts) do
     Logger.warning("Resend webhook invalid format (keys: #{inspect(webhook_keys(params))})")
     {:error, :invalid_format}
   end
+
+  defp find_and_update(email_id, tenant, event_type, created_at, data) do
+    resource = delivery_receipt_resource()
+
+    result =
+      resource
+      |> Ash.Query.for_read(:get_by_provider_id, %{provider_id: email_id})
+      |> Ash.read_one([authorize?: false] ++ AshDispatch.Tenancy.opts(resource, tenant))
+
+    case result do
+      {:ok, %{} = receipt} ->
+        receipt
+        |> AshDispatch.Tenancy.remember(tenant)
+        |> update_receipt_from_event(event_type, created_at, data)
+
+      {:ok, nil} ->
+        Logger.warning("Resend webhook: delivery receipt not found for email_id=#{email_id}")
+        {:error, :not_found}
+
+      {:error, _} ->
+        Logger.warning("Resend webhook: delivery receipt not found for email_id=#{email_id}")
+        {:error, :not_found}
+    end
+  end
+
+  # Which tenant this request may read. An explicit `:tenant` comes from the
+  # host's own router and is checked only against a typo; a tag out of the
+  # payload comes from outside and is refused unless the host can confirm it.
+  defp tenant_for(data, opts) do
+    case Keyword.get(opts, :tenant) do
+      nil -> payload_tenant(data)
+      tenant -> check(tenant, allow_unchecked?: true)
+    end
+  end
+
+  defp payload_tenant(data) do
+    if AshDispatch.Config.webhook_tenant_tag?() do
+      case header_value(Map.get(data, "headers"), @tenant_header) do
+        nil -> {:ok, nil}
+        tenant -> check(tenant, allow_unchecked?: false)
+      end
+    else
+      {:ok, nil}
+    end
+  end
+
+  defp check(tenant, opts) do
+    case AshDispatch.Tenants.check(tenant) do
+      :ok ->
+        {:ok, tenant}
+
+      {:error, :not_configured} ->
+        if Keyword.fetch!(opts, :allow_unchecked?) do
+          {:ok, tenant}
+        else
+          Logger.error(
+            "Resend webhook: the payload names tenant #{inspect(tenant)} and :tenants is not " <>
+              "configured, so it cannot be checked. Refusing to read it."
+          )
+
+          {:error, :unknown_tenant}
+        end
+
+      {:error, :unknown_tenant} ->
+        Logger.error(
+          "Resend webhook: refusing tenant #{inspect(tenant)} — this host does not recognise it."
+        )
+
+        {:error, :unknown_tenant}
+    end
+  end
+
+  # Resend echoes custom headers as a list of `%{"name" => _, "value" => _}`;
+  # a map is accepted too, because a gateway in between may normalise them.
+  defp header_value(headers, name) when is_list(headers) do
+    Enum.find_value(headers, fn
+      %{"name" => n, "value" => v} -> if downcase(n) == downcase(name), do: v
+      {n, v} -> if downcase(n) == downcase(name), do: v
+      _ -> nil
+    end)
+  end
+
+  defp header_value(headers, name) when is_map(headers) do
+    Enum.find_value(headers, fn {n, v} -> if downcase(n) == downcase(name), do: v end)
+  end
+
+  defp header_value(_headers, _name), do: nil
+
+  defp downcase(value), do: value |> to_string() |> String.downcase()
 
   # Private functions
 
@@ -231,7 +353,7 @@ defmodule AshDispatch.WebhookHandlers.Resend do
     attrs = build_update_attrs(event_type, timestamp, data)
 
     receipt
-    |> Ash.Changeset.for_update(:record_webhook_event, attrs)
+    |> AshDispatch.Tenancy.changeset_for_update(:record_webhook_event, attrs)
     |> Ash.update(authorize?: false)
   end
 
