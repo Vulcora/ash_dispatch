@@ -145,6 +145,21 @@ defmodule Mix.Tasks.AshDispatch.InstallTest do
     end
   end
 
+  test "the closing notice names the queues and both scheduled workers" do
+    igniter = install()
+
+    for needed <- [
+          "AshDispatch.Workers.RetryFailedDeliveries",
+          "AshDispatch.Workers.ScrubSensitiveContent",
+          "emails:",
+          "sms:",
+          "webhooks:",
+          "Oban.Plugins.Cron"
+        ] do
+      assert_has_notice(igniter, &(&1 =~ needed))
+    end
+  end
+
   test "without a user resource: no resolver, and a notice saying how to add one" do
     igniter = install([], user: false)
 

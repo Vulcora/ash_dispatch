@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - The installer asked for `oban ~> 2.0`; the library needs `~> 2.12`.
+- The installer's closing notice now shows the Oban queues and the two
+  scheduled workers to add. They were left out, and a host without them never
+  retries a failed delivery and never empties a sensitive body - silently.
+  The installer still does not write this configuration itself.
 - The documentation's module groups listed three modules that do not exist.
 - The changelog called published versions "Unreleased".
 

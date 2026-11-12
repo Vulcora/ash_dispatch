@@ -851,6 +851,9 @@ if Code.ensure_loaded?(Igniter) do
     # Final Notice
     # ============================================
 
+    # The notice is text for a person to copy; the app's name is theirs to fill in.
+    defp otp_app_placeholder, do: "my_app"
+
     defp add_final_notice(igniter, app_module, found_repo, user_resource) do
       repo_notice =
         if found_repo do
@@ -902,7 +905,21 @@ if Code.ensure_loaded?(Igniter) do
          mix ash.codegen add_ash_dispatch
          mix ash.migrate
 
-      2. Add events to your resources:
+      2. Give Oban the queues and the two scheduled workers. Without the
+         scheduled workers a failed delivery is never tried again, and the
+         bodies of sensitive messages are never emptied - and nothing tells you:
+
+         config :#{otp_app_placeholder()}, Oban,
+           queues: [default: 10, emails: 10, sms: 5, webhooks: 5],
+           plugins: [
+             {Oban.Plugins.Cron,
+              crontab: [
+                {"*/5 * * * *", AshDispatch.Workers.RetryFailedDeliveries},
+                {"0 * * * *", AshDispatch.Workers.ScrubSensitiveContent}
+              ]}
+           ]
+
+      3. Add events to your resources:
 
          defmodule #{inspect(app_module)}.Orders.Order do
            use Ash.Resource,
@@ -921,10 +938,10 @@ if Code.ensure_loaded?(Igniter) do
            end
          end
 
-      3. Generate email templates (if using email channel):
+      4. Generate email templates (if using email channel):
          mix ash.codegen
 
-      4. (Optional) Generate TypeScript SDK:
+      5. (Optional) Generate TypeScript SDK:
          mix ash_dispatch.gen
 
       📚 Documentation: https://hexdocs.pm/ash_dispatch
