@@ -79,6 +79,10 @@ defmodule AshDispatch.Delivery.DeliveryModeTransportsTest do
           do: Application.delete_env(:ash_dispatch, key),
           else: Application.put_env(:ash_dispatch, key, value)
       end
+
+      # The receipts this file writes are not another file's business, and
+      # `stop/1` waits for the table's owner to be gone (the 0.9.1 fix).
+      AshDispatch.Test.Ets.stop(TransportReceipt)
     end)
 
     for key <- @keys, do: Application.delete_env(:ash_dispatch, key)

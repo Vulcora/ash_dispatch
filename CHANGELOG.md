@@ -99,7 +99,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   event out; a gate that raises, cannot be called or answers something else
   closes, logs an error and still leaves the records. A gate decides delivery,
   not side effects: `generate_send_variables/2` has already run when it is
-  asked. *Upgrade:* nothing — an event without a gate is never asked.
+  asked. *Upgrade:* nothing — an event without a gate is never asked. One thing
+  to check: the callback is found with `function_exported?(module, :gate, 1)`,
+  so an event module that happens to define a `gate/1` of its own now gates its
+  event. Rename it, or have it return `true`.
 - **A backend may answer that it did not send.** `{:skip, reason}` (or
   `{:skipped, reason}`) from an email or SMS backend leaves the receipt
   `:skipped` with the reason — a third outcome next to `:sent` and `:failed`,
@@ -155,6 +158,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   email only, and it beats a *global* `delivery_mode` — a host that had it
   switched on does not start mailing people by setting `delivery_mode: :live`.
   An explicit `delivery_mode: [email: ...]` beats it. *Upgrade:* nothing.
+- **One place decides whether a delivery goes out**, `AshDispatch.Delivery`,
+  called by the three send workers and — for the delivery mode alone — by the
+  two transports that deliver synchronously. The gate, the eligibility check
+  and the mode are asked in that order, so a receipt held back says why in
+  terms of the message and the person first, and only then in terms of the
+  host. A test pins that every send point asks.
+
+### Not in this release
+
+- **The tenant through the whole flow.** Every read the library makes is still
+  made without a tenant: a host with `multitenancy strategy :context` and a
+  schema per tenant writes its receipts into `public`, and
+  `ScrubSensitiveContent` never reaches a tenant schema at all. Designed, with
+  the work plan and all 86 reads that have no tenant today, in
+  `docs/design/0.9.4-tenancy.md`. It is a patch's worth of work and it needs
+  per-tenant test fixtures the suite does not have yet.
+- The receipt's own `tenant` column (BACKLOG 10) is part of that design, not of
+  this release: it is a new column, so it waits for the release that has a
+  reason to ask hosts for a migration.
 
 ## [0.9.2] - 2026-11-12
 
