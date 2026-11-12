@@ -109,6 +109,7 @@ defmodule AshDispatch.MixProject do
         "lib/documentation/topics/recipient-resolution.md",
         "lib/documentation/topics/recipient-extractor.md",
         "lib/documentation/topics/user-preferences.md",
+        "lib/documentation/topics/tenancy.md",
         "lib/documentation/topics/oban-configuration.md",
         "lib/documentation/topics/previews-and-testing.md",
         # DSL Reference
@@ -142,6 +143,12 @@ defmodule AshDispatch.MixProject do
           AshDispatch.EligibleRecipient,
           AshDispatch.Gate,
           AshDispatch.Gate.Info
+        ],
+        Tenancy: [
+          AshDispatch.Tenancy,
+          AshDispatch.Tenants,
+          AshDispatch.Tenancy.Cron,
+          AshDispatch.Tenancy.Job
         ],
         Transports: [
           AshDispatch.Transports.Email,

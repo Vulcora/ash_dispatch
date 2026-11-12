@@ -81,6 +81,7 @@ end
 - [TypeScript SDK](lib/documentation/topics/typescript-sdk.md) - Generated React hooks, components, and Zustand store
 - [Priority Levels](lib/documentation/topics/priority.md) - Urgent, standard, informational — context-aware delivery gating
 - [User Preferences](lib/documentation/topics/user-preferences.md)
+- [Tenancy](lib/documentation/topics/tenancy.md) - receipts, notifications and preferences per tenant
 - [Recipient Resolution](lib/documentation/topics/recipient-resolution.md)
 - [Configuration](lib/documentation/topics/configuration.md)
 - [App Integration](lib/documentation/topics/app-integration.md)
@@ -209,6 +210,26 @@ end
 ```
 
 Asked for every event, mandatory ones included; asked when the recipients are resolved and again at the moment of sending, because an account can be closed while a delayed delivery waits in the queue. An ineligible recipient gets a `:skipped` receipt saying `"recipient_ineligible: account closed"` — never a silent drop. Without the setting, nothing is asked and nothing changes.
+
+### One schema per tenant
+
+A host with Ash `multitenancy strategy :context` can put the library's own rows in the tenant's schema (new in 0.9.4; see the [Tenancy](lib/documentation/topics/tenancy.md) guide):
+
+```elixir
+use AshDispatch.Resources.DeliveryReceipt.Base,
+  repo: MyApp.Repo,
+  domain: MyApp.Deliveries,
+  notification_resource: MyApp.Notifications.Notification,
+  multitenancy: :context
+
+config :ash_dispatch, tenants: MyApp.Tenants
+```
+
+The tenant is then carried through dispatch → the Oban job's args → the resolver → the send → the receipt → the provider webhook → the cron (one pass per tenant) → previews. A dispatch without a tenant is refused rather than written to `public`, a tenant that arrives from outside is checked against your `AshDispatch.Tenants` before it reaches a query, and `job_args: :minimal` keeps rendered bodies out of `oban_jobs`, which is one table for every tenant.
+
+For a host that keeps receipts in one schema but wants to know which tenant each was for, `tenant_column: true` adds a nullable `tenant` column instead.
+
+**A host that does nothing sees nothing of this**: a resource without `multitenancy:` is never handed a tenant, which the suite asserts rather than claims.
 
 ### A gate on the event
 

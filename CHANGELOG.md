@@ -7,6 +7,112 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Release candidate
+
+**The per-tenant path below wants a run in a real multi-tenant application
+before this is called final.** Nothing in it is reachable without switching it
+on, and the compatibility half is held to the whole 0.9.3 suite plus a test
+that fails if any resource without multitenancy is ever handed a tenant — but
+"two tenants in a test database" is not the same as a production schema per
+customer, a `mix ash.codegen` against real tables, or a cron fan-out over a few
+hundred tenants. A first host should watch those three.
+
+### Added
+
+- **The tenant through the whole flow.** The library knew what a tenant was
+  since 0.8.8 and stored one since 0.9.0, but every read and write it made, it
+  made without one. A host with `multitenancy strategy :context` and one
+  Postgres schema per tenant therefore wrote its receipts into `public`, and
+  `ScrubSensitiveContent` never reached a tenant schema at all.
+
+  ```elixir
+  use AshDispatch.Resources.DeliveryReceipt.Base,
+    repo: MyApp.Repo,
+    domain: MyApp.Deliveries,
+    notification_resource: MyApp.Notifications.Notification,
+    multitenancy: :context
+
+  config :ash_dispatch, tenants: MyApp.Tenants
+  ```
+
+  `multitenancy: :context` on `DeliveryReceipt.Base`, `Notification.Base` and
+  `Preference.Base` declares `strategy :context` with `global? false`, and the
+  tenant is then carried dispatch → the Oban job's args → the recipient
+  resolver → the send → the receipt → the provider webhook → the cron → the
+  preview. `{:context, global?: true}` is there for a host with both
+  tenant-scoped and system-wide events. Needs a migration of your own and
+  `:tenants`; see the new [Tenancy](tenancy.html) guide, which is also the
+  upgrade guide.
+- **`AshDispatch.Tenants`** — the one question the library cannot answer for
+  itself. A host implements `c:AshDispatch.Tenants.all/0` (and
+  `c:AshDispatch.Tenants.known?/1` when `all/0` is too expensive to ask per
+  webhook); `{module, function}`, `{module, function, args}` and a
+  zero-argument function work too. Needed when receipts are per tenant: the two
+  scheduled workers run across tenants, and a tenant that arrives **from
+  outside** is held against it before it reaches a query, because a tenant is a
+  Postgres schema name.
+- **`tenant_column: true`** on `DeliveryReceipt.Base` — a nullable `tenant`
+  column for a host that keeps receipts in one schema and still wants to know
+  which tenant each was for (BACKLOG 10). `Notification.Base` and
+  `Preference.Base` have had the column since 0.9.0; this is the receipt's.
+- **`config :ash_dispatch, job_args: :minimal`** — the send job carries ids,
+  not the rendered message, and the worker reads the message from the receipt
+  (the shape a sensitive event has had since 0.8.7). **The default when
+  receipts are per tenant**, because `oban_jobs` is one table in the public
+  schema and the args would otherwise be the one place a tenant's letter leaves
+  its own. `:full`, today's shape, stays the default for everyone else: that
+  default cannot change inside 0.9.x.
+- **`:tenant` on the functions a host calls** — `NotificationLoader.load_recent/2`,
+  `unread_count/1`, `mark_as_read/2`, `CounterLoader.load_counters_for_user/2`,
+  `Preview.render/3`, `WebhookHandlers.Resend.process_webhook/2`. For a
+  per-tenant resource it is the schema; for one in the public schema it is the
+  `tenant` column, which is what it has always meant. Which one is the
+  resource's business, so a host passes it once either way.
+- **`config :ash_dispatch, webhook_tenant_tag: true`** — an
+  `X-AshDispatch-Tenant` header on outgoing mail, read back out of a provider's
+  webhook payload. Off by default and only worth switching on behind
+  `Resend.verify/3`: without a verified signature the tag is a value a stranger
+  chose. A per-tenant webhook endpoint
+  (`process_webhook(params, tenant: ...)`) needs none of it and is the better
+  answer.
+
+### Fixed
+
+- **`ScrubSensitiveContent` reached no tenant schema at all.** Its query is raw
+  Ecto against a table *name*, so without a prefix every run read the repo's
+  default schema: for a host with per-tenant receipts the scrub found nothing,
+  reported success, and left one-time tokens and reset links in the tenant
+  schemas for good. It now scrubs with a prefix, once per tenant. (Flagged in
+  the 0.9.4 design; the test for it fails without the fix.)
+- **The `skip_if_read` policy asked the wrong schema.** `SendEmail` reads the
+  in-app notification a letter is linked to; without a tenant that is either
+  nothing or another tenant's reading.
+
+### Changed
+
+- **A dispatch with no tenant into per-tenant receipts is refused**, once per
+  channel, naming the two ways to give it one. Not a fallback to `public`: a
+  receipt in the wrong schema is worse than no receipt, because it looks like
+  one. Only reachable by opting in.
+- **A tenant that comes back from storage or from outside is checked.** An Oban
+  job naming a tenant the host does not recognise is cancelled before any
+  query, as is one whose schema does not exist — neither will fix itself on the
+  second attempt. A job for tenant A edited to say tenant B finds nothing: the
+  receipt id exists in one schema only. For a host without tenants a missing
+  table is still a deploy that went wrong, and Oban still retries it.
+- **The scheduled workers fan out instead of working.** With per-tenant
+  receipts the crontab entry reads the host's tenants and enqueues one job per
+  tenant, so a tenant whose pass fails fails its own job while the others run,
+  and the work spreads across the queue. The crontab entry itself does not
+  change. With no `:tenants` configured the workers say so once per VM rather
+  than reporting success every five minutes.
+- **One module decides whether a tenant is mentioned to Ash at all**
+  (`AshDispatch.Tenancy`), and it asks the resource, never the presence of a
+  tenant: Ash tolerates a tenant on a resource without multitenancy, and a
+  library should not rely on being ignored. *Upgrade:* nothing — `opts/2`
+  answers `[]` for every resource a host had before this release, which is what
+  makes the whole of this additive.
+
 ## [0.9.3] - 2026-11-12
 
 ### Added

@@ -19,6 +19,13 @@ The suite is self-contained: it needs no database and no consuming app.
   never run.
 - `mix ash_dispatch.install` is exercised with Igniter's test project
   (`test/mix/tasks/`).
+- The per-tenant tests (`test/tenancy/`, tagged `:postgres`) are the exception
+  to "no database": `strategy :context` IS a Postgres schema prefix, so they
+  create two real schemas and generate each resource's table from its own
+  attributes and identities (`AshDispatch.Test.Schema`). Without
+  `ASH_DISPATCH_TEST_DATABASE_URL` they are excluded, and what is left still
+  covers the compatibility half — that a resource without multitenancy is never
+  handed a tenant.
 
 ## What CI runs
 
