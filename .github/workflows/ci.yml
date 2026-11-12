@@ -8,10 +8,16 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    # For the tests tagged :postgres: SQL only means something when it runs.
+    # Both versions hosts run on: 15 is the floor for Preference.Base, and the
+    # SQL in the :postgres tests only means something when it runs.
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ["16", "17"]
+    name: test (PostgreSQL ${{ matrix.postgres }})
     services:
       postgres:
-        image: postgres:16
+        image: postgres:${{ matrix.postgres }}
         env:
           POSTGRES_PASSWORD: postgres
         ports:

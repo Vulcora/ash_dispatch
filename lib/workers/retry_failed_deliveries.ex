@@ -8,6 +8,17 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
   - Either haven't been retried yet OR last retry was > retry_delay_minutes ago
   - Are not permanently failed (:failed_permanent)
 
+  ## Queue
+
+  The worker runs in `:default`. To run it where the email workers run - so a
+  host that pauses or scales the `:emails` queue pauses or scales the retries
+  with it - name the queue in the cron entry:
+
+      {"*/5 * * * *", AshDispatch.Workers.RetryFailedDeliveries, queue: :emails}
+
+  The default stays `:default` in 0.9.x, because a host without an `:emails`
+  entry for it would otherwise stop retrying without notice.
+
   For each eligible receipt:
   1. Re-enqueues appropriate Oban worker (SendEmail for now)
   2. Updates receipt status to :scheduled

@@ -51,7 +51,7 @@ if Code.ensure_loaded?(Igniter) do
     def info(_argv, _composing_task) do
       %Igniter.Mix.Task.Info{
         group: :ash,
-        installs: [{:ash, "~> 3.0"}, {:oban, "~> 2.0"}],
+        installs: [{:ash, "~> 3.0"}, {:oban, "~> 2.12"}],
         example: __MODULE__.Docs.example(),
         schema: [
           phoenix: :boolean,

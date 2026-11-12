@@ -20,7 +20,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   restores the old lines for local development. Search the log by receipt id,
   which every delivery line carries. See `AshDispatch.Log`.
 
+### Removed
+
+- `priv/native/cl44_nif.so`, a compiled binary that was committed by mistake.
+  Nothing loaded it and it was never part of the Hex package, but it came
+  along with a git dependency.
+
 ### Fixed
+
+- The installer asked for `oban ~> 2.0`; the library needs `~> 2.12`.
+- The documentation's module groups listed three modules that do not exist.
+- The changelog called published versions "Unreleased".
+
+### Fixed (delivery)
 
 - **An email whose job was interrupted is sent when the job runs again.** The
   worker marks the receipt `:sending` before it calls the backend. If the job
@@ -35,7 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   changes. An email can now be sent twice if the earlier attempt reached the
   provider but died before recording it; that is the price of not losing it.
 
-## [0.9.1] - Unreleased
+## [0.9.1] - 2026-11-06
 
 The release of 0.9.0. The library code is unchanged from 0.9.0, which never
 reached Hex: its publish run stopped on two tests that failed depending on
@@ -51,7 +63,7 @@ timing. Read the 0.9.0 entry below for what the release contains.
   `AshDispatch.Test.Ets.stop/1` waits for the owner to exit (a monitor, not
   a sleep), and the inbox, meeting and actor/tenant fixtures use it.
 
-## [0.9.0] - Unreleased
+## [0.9.0] - never published; released as 0.9.1
 
 A notification centre and per-person preferences in the library: who acted,
 what a person wants, what a tenant defaults to, what can never be switched
@@ -160,7 +172,7 @@ CI's floor job runs on 1.17.
 - The dependency round BACKLOG 9 meant the Elixir floor to travel with: the
   floor is raised, the library update pass is still open.
 
-## [0.8.8] - Unreleased
+## [0.8.8] - 2026-11-06
 
 Fixes and opt-in additions only: no migration, and an app on `~> 0.8.7`
 reaches the same people as before unless it turns something on.

@@ -126,6 +126,7 @@ defmodule AshDispatch.MixProject do
           AshDispatch.Event.RecipientExtractor,
           AshDispatch.Dispatcher,
           AshDispatch.Context,
+          AshDispatch.Log,
           AshDispatch.Channel
         ],
         "Previews & Templates": [
@@ -136,7 +137,6 @@ defmodule AshDispatch.MixProject do
           AshDispatch.TemplateError
         ],
         Transports: [
-          AshDispatch.Transports,
           AshDispatch.Transports.Email,
           AshDispatch.Transports.InApp,
           AshDispatch.Transports.SMS,
@@ -145,8 +145,6 @@ defmodule AshDispatch.MixProject do
           AshDispatch.Transports.Slack
         ],
         "Email Backend": [
-          AshDispatch.EmailBackend,
-          AshDispatch.EmailBackend.Mock,
           AshDispatch.EmailBackend.Swoosh
         ],
         Workers: [
