@@ -56,6 +56,10 @@ defmodule AshDispatch.Resources.Preference.Base do
   - `:policies?` - include the library's policies (default `true`), see below
   - `:data_layer` - defaults to `AshPostgres.DataLayer`; `Ash.DataLayer.Ets`
     works for tests (the `postgres` block is then left out)
+  - `:multitenancy` - `:context` puts preference rows in one schema per tenant
+    (since 0.9.4). The `tenant` column keeps working either way — for a
+    per-tenant resource it is a redundant copy of what the schema says, and the
+    library writes and filters both. See the Tenancy guide
 
   ## Policies
 

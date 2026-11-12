@@ -40,6 +40,11 @@ defmodule AshDispatch.Resources.Notification.Base do
   - `:table` - Postgres table name. Defaults to `"notifications"`. Override
     when the consumer app already owns that table for a legacy notification
     system and ash_dispatch needs to coexist (e.g., `table: "dispatch_notifications"`).
+  - `:multitenancy` - `:context` puts notifications in one schema per tenant
+    (since 0.9.4). Absent, the resource declares no multitenancy and nothing in
+    the library ever mentions a tenant to it. The `tenant` ATTRIBUTE below is a
+    different thing and is always there: it says which tenant a notification
+    belongs to, in one table. See the Tenancy guide.
   """
 
   @doc false
