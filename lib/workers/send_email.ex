@@ -65,6 +65,22 @@ defmodule AshDispatch.Workers.SendEmail do
           {:ok, %{id: "provider_message_id"}}
         end
       end
+
+  Three answers are understood:
+
+  - `{:ok, provider_response}` — sent. The receipt becomes `:sent`.
+  - `{:skip, reason}` (or `{:skipped, reason}`) — deliberately not sent. The
+    receipt becomes `:skipped` and carries the reason, and the job is a
+    success: a suppression list, an address the provider refuses, a rule of the
+    host's own. Since 0.9.3.
+  - `{:error, reason}` — failed. The receipt becomes `:failed` and Oban retries.
+
+  ## Whether anything is sent at all
+
+  `AshDispatch.DeliveryMode` is read before the backend is called, so a host on
+  `:blocked`, `:dry_run` or an allow-list gets a `:skipped` receipt holding the
+  letter that was not sent. `config :ash_dispatch, skip_email_delivery: true`
+  still works and means the same as `delivery_mode: [email: :blocked]`.
   """
 
   use Oban.Worker,
@@ -81,6 +97,7 @@ defmodule AshDispatch.Workers.SendEmail do
 
   alias AshDispatch.Config
   alias AshDispatch.ContentMap
+  alias AshDispatch.Delivery
   alias AshDispatch.ReceiptStatus
   alias AshDispatch.Transports.Email
   alias AshDispatch.Workers.ScrubSensitiveContent
@@ -193,6 +210,13 @@ defmodule AshDispatch.Workers.SendEmail do
   defp interrupted_attempt?(_receipt, _attempt), do: false
 
   # Hands the receipt to the backend and records the outcome.
+  #
+  # A backend may answer that it did not send: `{:skip, reason}` (or
+  # `{:skipped, reason}`) leaves the receipt `:skipped`, which is a third
+  # outcome next to `:sent` and `:failed`. A provider that refuses an address
+  # it has on a suppression list, or a backend of the host's own that knows
+  # this letter must not go out, should say so rather than report a send that
+  # did not happen or a failure that will be retried five times.
   defp deliver(receipt, args) do
     case send_email(receipt, args) do
       {:ok, provider_response} ->
@@ -200,12 +224,28 @@ defmodule AshDispatch.Workers.SendEmail do
         Logger.info("Email sent successfully for receipt #{receipt.id}")
         :ok
 
+      skipped when skipped in [:skip, :skipped] ->
+        skip_from_backend(receipt, "backend did not send")
+
+      {skipped, reason} when skipped in [:skip, :skipped] ->
+        skip_from_backend(receipt, reason)
+
       {:error, reason} ->
         # Mark as failed (will be retried by Oban)
         ReceiptStatus.mark_failed(receipt, reason)
         Logger.error("Email failed for receipt #{receipt.id}: #{AshDispatch.Log.reason(reason)}")
         {:error, reason}
     end
+  end
+
+  # The receipt is `:sending` here (the backend was called), so this is a skip
+  # at the end of the path rather than one of `Delivery`'s holds — but it is
+  # recorded the same way, and the job is a success: nothing was lost.
+  defp skip_from_backend(receipt, reason) do
+    reason = if is_binary(reason), do: reason, else: inspect(reason)
+    ReceiptStatus.mark_skipped(receipt, reason)
+    Logger.info("Email not sent by the backend for receipt #{receipt.id}: #{reason}")
+    :ok
   end
 
   defp process_email(receipt, args, attempt) do
@@ -218,9 +258,10 @@ defmodule AshDispatch.Workers.SendEmail do
 
       :ok
     else
-      # Check skip_email_delivery config first (dev mode)
-      # Then check skip_if_read policy and user preferences
-      with :continue <- check_skip_email_delivery(),
+      # The delivery mode first (`:blocked`, `:dry_run`, an allow-list, or the
+      # older `skip_email_delivery`), then the skip_if_read policy and the
+      # user's preferences.
+      with :continue <- check_delivery(receipt),
            :continue <- check_email_backend_configured(),
            :continue <- check_skip_if_read_policy(receipt),
            :send <- check_user_preferences(receipt),
@@ -426,12 +467,13 @@ defmodule AshDispatch.Workers.SendEmail do
   # Fallback to configured default
   defp parse_from_field(_), do: Config.default_from_email()
 
-  # Check if email delivery is disabled (dev mode)
-  defp check_skip_email_delivery do
-    if Config.skip_email_delivery?() do
-      {:skip, "email delivery disabled (dev mode)"}
-    else
-      :continue
+  # May this letter really go out? `AshDispatch.Delivery` answers for every
+  # transport; `skip_email_delivery: true` is read as "email is blocked" and
+  # keeps the reason it has always written on the receipt.
+  defp check_delivery(receipt) do
+    case Delivery.verdict(receipt) do
+      :send -> :continue
+      {:skip, reason} -> {:skip, reason}
     end
   end
 

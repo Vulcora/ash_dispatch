@@ -140,6 +140,20 @@ defmodule AshDispatch.ReceiptStatus do
   end
 
   @doc """
+  `mark_skipped/2` without the bang: `{:ok, receipt}` or `{:error, reason}`.
+
+  For a caller that must not be taken down by a receipt in a state `:skip`
+  cannot leave — `AshDispatch.Delivery.hold/2` records a held-back delivery
+  from paths where the receipt may be `:failed` or already terminal.
+  """
+  @spec skip(struct(), String.t()) :: {:ok, struct()} | {:error, term()}
+  def skip(receipt, reason) when is_binary(reason) do
+    receipt
+    |> Ash.Changeset.for_update(:skip, %{error_message: reason})
+    |> Ash.update(authorize?: false)
+  end
+
+  @doc """
   Marks a receipt as "scheduled" (job enqueued for later delivery).
 
   Optionally stores the Oban job ID for tracking.

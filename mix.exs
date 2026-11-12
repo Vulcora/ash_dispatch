@@ -136,6 +136,10 @@ defmodule AshDispatch.MixProject do
           AshDispatch.StrictTemplates,
           AshDispatch.TemplateError
         ],
+        "Delivery policy": [
+          AshDispatch.Delivery,
+          AshDispatch.DeliveryMode
+        ],
         Transports: [
           AshDispatch.Transports.Email,
           AshDispatch.Transports.InApp,

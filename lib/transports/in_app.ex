@@ -40,6 +40,7 @@ defmodule AshDispatch.Transports.InApp do
   import AshDispatch.ContentMap
 
   alias AshDispatch.Config
+  alias AshDispatch.Delivery
 
   alias AshDispatch.Transports.Preferences
 
@@ -65,10 +66,19 @@ defmodule AshDispatch.Transports.InApp do
     # evaluates one verdict per person — reading `context.user` here applied
     # the event subject's verdict to all N.
     Preferences.with_consent(receipt, context, channel, event_config, fn ->
-      invalidates = event_config[:invalidates] || []
-      result = create_notification_for_receipt(receipt, context, channel, invalidates)
+      # In-app delivery is synchronous, so this IS the moment of sending: the
+      # delivery mode is read here rather than in a worker. A `:dry_run` host
+      # renders the notification and creates no row.
+      case Delivery.mode_verdict(receipt) do
+        {:skip, reason} ->
+          {:ok, Delivery.hold(receipt, reason)}
 
-      {:ok, update_receipt_with_notification(receipt, result)}
+        :send ->
+          invalidates = event_config[:invalidates] || []
+          result = create_notification_for_receipt(receipt, context, channel, invalidates)
+
+          {:ok, update_receipt_with_notification(receipt, result)}
+      end
     end)
   rescue
     error ->

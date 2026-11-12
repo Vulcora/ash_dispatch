@@ -159,6 +159,32 @@ config :my_app, Oban,
 
 Optional hardening, both new in 0.5.4: `AshDispatch.WebhookHandlers.Resend.verify/3` verifies the Svix signature on Resend webhooks before you process them, and `AshDispatch.Workers.ScrubSensitiveContent` (cron) blanks stored bodies of events declaring `metadata: [sensitive_content: true]` — for OTP codes and reset links that should not live in the database forever. See [Delivery Receipts](lib/documentation/topics/delivery-receipts.md).
 
+### Whether deliveries really go out
+
+One setting answers that for every transport — email, SMS, push, in-app and webhooks alike (new in 0.9.3; see `AshDispatch.DeliveryMode`):
+
+```elixir
+# config/dev.exs — render and record everything, send nothing
+config :ash_dispatch, delivery_mode: :dry_run
+
+# config/staging.exs — the team can be mailed, nobody else
+config :ash_dispatch,
+  delivery_mode: [
+    default: :blocked,
+    email: {:allow_list, ["ops@example.com", "@example.test"]},
+    in_app: :live
+  ]
+```
+
+- `:live` — send. **The default**; a host that sets nothing is unaffected.
+- `:blocked` — never send. The receipt is `:skipped` and says it was held back.
+- `:dry_run` — render, create the receipt, enqueue the job, run the worker, send nothing. The receipt holds the letter that would have gone out.
+- `{:allow_list, [...]}` — send only to these recipients; everyone else is treated as blocked. Entries match an exact address, a domain (`"@example.test"`), a phone prefix (`"+4670"`), an explicit prefix (`"team-*"`) or `"*"`.
+
+A held-back delivery is `:skipped`, never `:failed` and never reported as sent, and the reason is one of `"delivery_blocked"`, `"delivery_dry_run"` or `"delivery_not_allowed"` so it can be counted.
+
+`config :ash_dispatch, skip_email_delivery: true` still works and still writes the reason it always wrote; it now means `delivery_mode: [email: :blocked]`.
+
 ## Quick Example
 
 ```elixir

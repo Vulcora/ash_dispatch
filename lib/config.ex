@@ -641,6 +641,11 @@ defmodule AshDispatch.Config do
 
   Defaults to `false`.
 
+  Since 0.9.3 this is the email-shaped corner of `delivery_mode/0`: it is read
+  as `delivery_mode: [email: :blocked]` and keeps the reason it has always
+  written on the receipt. It covers email only — use `:delivery_mode` to hold
+  back SMS, push, in-app and webhooks as well.
+
   ## Example
 
       # config/dev.exs
@@ -650,6 +655,27 @@ defmodule AshDispatch.Config do
   @spec skip_email_delivery?() :: boolean()
   def skip_email_delivery? do
     Application.get_env(:ash_dispatch, :skip_email_delivery, false)
+  end
+
+  @doc """
+  Whether deliveries really go out, per transport.
+
+  `:live` (the default), `:blocked`, `:dry_run`, `{:allow_list, [...]}`, or a
+  keyword list per transport. See `AshDispatch.DeliveryMode` for the full
+  reading, including how `skip_email_delivery` maps onto it.
+
+  ## Example
+
+      # config/staging.exs — the team can be mailed, nobody else
+      config :ash_dispatch,
+        delivery_mode: [
+          default: :blocked,
+          email: {:allow_list, ["@example.test"]}
+        ]
+  """
+  @spec delivery_mode() :: term()
+  def delivery_mode do
+    Application.get_env(:ash_dispatch, :delivery_mode)
   end
 
   @doc """

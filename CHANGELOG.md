@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **One delivery mode for every transport.** `skip_email_delivery` held back
+  email and nothing else: a staging host with it switched on still sent the
+  text messages, posted the webhooks and pushed to the browsers. New setting
+  `config :ash_dispatch, delivery_mode:`, read by email, SMS, push, in-app and
+  webhook (and by `:slack` and `:discord`, which travel the same worker):
+
+  - `:live` — send. **The default**, so a host that sets nothing sees no change.
+  - `:blocked` — never send. The receipt is `:skipped` and records that it was
+    held back, and why.
+  - `:dry_run` — render, create the receipt, enqueue the job, run the worker,
+    and send nothing. The receipt holds the letter that would have gone out.
+  - `{:allow_list, ["ops@example.com", "@example.test", "+4670"]}` — only these
+    recipients are really sent to; everyone else is treated as blocked. An
+    entry matches an exact address, a domain, a phone prefix, an explicit
+    prefix (`"team-*"`) or `"*"`. A recipient it cannot read never matches.
+
+  Per transport with a keyword list, `:default` for the rest:
+
+  ```elixir
+  config :ash_dispatch,
+    delivery_mode: [
+      default: :blocked,
+      email: {:allow_list, ["@example.test"]},
+      in_app: :live
+    ]
+  ```
+
+  The mode is read at the moment of sending — in the send workers, and
+  immediately before the write for the transports that deliver synchronously —
+  so a held-back delivery still has its receipt and its job, which is what
+  makes `:dry_run` worth running. `:broadcast` and `:oban` are not covered:
+  they reach a topic and a queue in the same system, not a person, and have no
+  receipt to record a hold on. The reasons (`"delivery_blocked"`,
+  `"delivery_dry_run"`, `"delivery_not_allowed"`, see
+  `AshDispatch.DeliveryMode.reason/1`) are stable, so they can be counted.
+  *Upgrade:* nothing.
+- **A backend may answer that it did not send.** `{:skip, reason}` (or
+  `{:skipped, reason}`) from an email or SMS backend leaves the receipt
+  `:skipped` with the reason — a third outcome next to `:sent` and `:failed`,
+  for an address on a provider's suppression list or a rule of the host's own.
+  Before, such a backend had to choose between reporting a send that never
+  happened and a failure that would be retried five times.
+
+### Changed
+
+- **`skip_email_delivery` is now read in one place**, as
+  `delivery_mode: [email: :blocked]`. It keeps the reason it has always written
+  on the receipt (`"email delivery disabled (dev mode)"`), it still covers
+  email only, and it beats a *global* `delivery_mode` — a host that had it
+  switched on does not start mailing people by setting `delivery_mode: :live`.
+  An explicit `delivery_mode: [email: ...]` beats it. *Upgrade:* nothing.
+
 ## [0.9.2] - 2026-11-12
 
 ### Changed

@@ -72,6 +72,7 @@ defmodule AshDispatch.Workers.SendWebhook do
     max_attempts: 5
 
   alias AshDispatch.Config
+  alias AshDispatch.Delivery
   alias AshDispatch.ReceiptStatus
 
   require Logger
@@ -96,6 +97,13 @@ defmodule AshDispatch.Workers.SendWebhook do
 
   - `:ok` on success (2xx response)
   - `{:error, reason}` on failure (Oban will retry)
+
+  ## Whether anything is sent at all
+
+  `AshDispatch.DeliveryMode` is read before the request is built, so a host on
+  `:blocked`, `:dry_run` or an allow-list gets a `:skipped` receipt and no HTTP
+  call. The allow-list is matched against the receipt's recipient — for a
+  `:webhook` channel that is the receiver, not the URL.
   """
   @impl Oban.Worker
   def perform(%Oban.Job{args: args}) do
@@ -117,6 +125,17 @@ defmodule AshDispatch.Workers.SendWebhook do
   # Private functions
 
   defp process_webhook(receipt, args) do
+    case Delivery.verdict(receipt) do
+      {:skip, reason} ->
+        Delivery.hold(receipt, reason)
+        :ok
+
+      :send ->
+        post(receipt, args)
+    end
+  end
+
+  defp post(receipt, args) do
     # Mark as sending
     {:ok, receipt} = ReceiptStatus.mark_sending(receipt)
 
