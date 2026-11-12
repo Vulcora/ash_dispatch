@@ -139,7 +139,9 @@ defmodule AshDispatch.MixProject do
         "Delivery policy": [
           AshDispatch.Delivery,
           AshDispatch.DeliveryMode,
-          AshDispatch.EligibleRecipient
+          AshDispatch.EligibleRecipient,
+          AshDispatch.Gate,
+          AshDispatch.Gate.Info
         ],
         Transports: [
           AshDispatch.Transports.Email,

@@ -138,6 +138,7 @@ Defines an event that is automatically dispatched when specified actions occur.
 | `content` | `keyword_list \| map` | `[]` | ❌ | Content configuration (subject, titles, messages) |
 | `metadata` | `keyword_list \| map` | `[]` | ❌ | Event metadata (notification type, user configurable, etc.) |
 | `invalidates` | `[string]` | `[]` | ❌ | Frontend query keys to invalidate when notification is received |
+| `gate` | `{module, atom} \| {module, atom, list} \| (info -> answer)` | `nil` | ❌ | A condition on the event: does it go out at all? Asked at dispatch and again at send; when closed, a `:skipped` receipt with the reason exists for every channel that would have been used. See [AshDispatch.Gate](AshDispatch.Gate.html) |
 
 ### Examples
 
@@ -175,6 +176,38 @@ dispatch do
     load: [:user, :items]
 end
 ```
+
+#### Event with a gate
+
+A gate decides whether the event goes out at all. It is asked at dispatch and
+again at the moment of sending, which is what makes it work for a delivery that
+waits in a queue:
+
+```elixir
+dispatch do
+  event :reminder,
+    trigger_on: :manual,
+    gate: {MyApp.Bookings, :still_booked?},
+    channels: [
+      [transport: :email, audience: :user, time: {:in, 86_400}],
+      [transport: :in_app, audience: :user]
+    ]
+end
+
+defmodule MyApp.Bookings do
+  def still_booked?(%AshDispatch.Gate.Info{} = info) do
+    case fetch(info.source_id) do
+      {:ok, %{cancelled_at: nil}} -> true
+      {:ok, _booking} -> {false, "the booking was cancelled"}
+      :error -> {false, "the booking is gone"}
+    end
+  end
+end
+```
+
+When the gate is closed, a `:skipped` receipt carrying
+`"event_gate_closed: the booking was cancelled"` exists for both channels. Only
+`true` and `:ok` let the event out, and a gate that raises closes it.
 
 #### Multiple trigger actions
 

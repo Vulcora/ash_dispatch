@@ -389,7 +389,12 @@ defmodule AshDispatch.Dispatcher do
   """
   def dispatch_channel(context, channel, event_config) do
     if channel_should_send?(context, channel, event_config) do
-      do_dispatch_channel(context, channel, event_config)
+      do_dispatch_channel(
+        context,
+        channel,
+        event_config,
+        gate_hold(context, channel, event_config)
+      )
     else
       Logger.debug(
         "Dispatch skipped by should_send?/2: #{context.event_id} (#{channel.transport}/#{channel.audience})"
@@ -399,22 +404,37 @@ defmodule AshDispatch.Dispatcher do
     end
   end
 
-  defp do_dispatch_channel(context, channel, event_config) do
+  # The event's gate (`AshDispatch.Gate`), asked once per channel. A closed
+  # gate does not abort the channel: the recipients are still resolved and
+  # their receipts still written, and then held — "a skipped record for each
+  # channel that would have been used" is the whole point of a gate over a
+  # boolean guard.
+  defp gate_hold(context, channel, event_config) do
+    case AshDispatch.Gate.dispatch_verdict(context, channel, event_config) do
+      :open -> nil
+      {:closed, reason} -> reason
+    end
+  end
+
+  defp do_dispatch_channel(context, channel, event_config, hold) do
     {context, recipients} = recipients_for(context, channel, event_config)
 
     # One preference read for the whole channel instead of one per receipt,
     # when the configured checker can batch (`c:UserPreference.prefetch/2`).
-    AshDispatch.UserPreference.prefetch(
-      Enum.map(recipients, &get_user_id(&1, channel, event_config)),
-      context,
-      channel,
-      event_config
-    )
+    # Nothing is delivered under a hold, so nothing is read for it either.
+    if is_nil(hold) do
+      AshDispatch.UserPreference.prefetch(
+        Enum.map(recipients, &get_user_id(&1, channel, event_config)),
+        context,
+        channel,
+        event_config
+      )
+    end
 
     # Create one receipt per recipient
     results =
       Enum.map(recipients, fn recipient ->
-        dispatch_to_recipient(context, channel, event_config, recipient)
+        dispatch_to_recipient(context, channel, event_config, recipient, hold)
       end)
 
     # Return success if at least one dispatch succeeded
@@ -526,21 +546,26 @@ defmodule AshDispatch.Dispatcher do
     # Apply deduplication - users in the same deduplicate_group get max one notification
     deduplicated_recipients = apply_group_deduplication(recipients_with_channels, event_config)
 
+    # The gate is asked once per channel here too, not once per recipient.
+    holds = Map.new(channels, &{&1, gate_hold(context, &1, event_config)})
+
     deduplicated_recipients
     |> Enum.group_by(fn {_recipient, channel} -> channel end, fn {recipient, _} -> recipient end)
     |> Enum.each(fn {channel, recipients} ->
-      AshDispatch.UserPreference.prefetch(
-        Enum.map(recipients, &get_user_id(&1, channel, event_config)),
-        context,
-        channel,
-        event_config
-      )
+      if is_nil(holds[channel]) do
+        AshDispatch.UserPreference.prefetch(
+          Enum.map(recipients, &get_user_id(&1, channel, event_config)),
+          context,
+          channel,
+          event_config
+        )
+      end
     end)
 
     # Dispatch to each recipient using their associated channel
     Enum.map(deduplicated_recipients, fn {recipient, channel} ->
       channel_context = apply_channel_load(context, channel)
-      dispatch_to_recipient(channel_context, channel, event_config, recipient)
+      dispatch_to_recipient(channel_context, channel, event_config, recipient, holds[channel])
     end)
   end
 
@@ -577,13 +602,16 @@ defmodule AshDispatch.Dispatcher do
     Enum.reverse(result)
   end
 
-  # Private function that dispatches to a specific recipient
-  defp dispatch_to_recipient(context, channel, event_config, recipient) do
+  # Private function that dispatches to a specific recipient.
+  #
+  # `hold` is the event gate's reason when it is closed, `nil` when it is open
+  # (or when the event declares no gate). It is decided once per channel, above.
+  defp dispatch_to_recipient(context, channel, event_config, recipient, hold) do
     # Skip receipt creation for lightweight transports (e.g., :broadcast)
     if skip_receipt_for_transport?(channel.transport) do
-      dispatch_without_receipt(context, channel, event_config, recipient)
+      dispatch_without_receipt(context, channel, event_config, recipient, hold)
     else
-      dispatch_with_receipt(context, channel, event_config, recipient)
+      dispatch_with_receipt(context, channel, event_config, recipient, hold)
     end
   end
 
@@ -599,7 +627,7 @@ defmodule AshDispatch.Dispatcher do
   defp extract_user_id_from_recipient(%{"id" => id}), do: id
   defp extract_user_id_from_recipient(_), do: nil
 
-  defp dispatch_without_receipt(context, channel, event_config, recipient) do
+  defp dispatch_without_receipt(context, channel, event_config, recipient, hold) do
     # Build a minimal pseudo-receipt for the transport (no DB write)
     pseudo_receipt = %{
       id: nil,
@@ -613,29 +641,36 @@ defmodule AshDispatch.Dispatcher do
       metadata: %{}
     }
 
-    # A recipient who must not be reached is not reached over `:broadcast`
-    # either — their browser is still subscribed to their topic. There is no
-    # receipt to record it on (these transports have none by design, which is
-    # what `skip_receipt?: true` means), so the log line is the record.
-    case EligibleRecipient.resolve_verdict(
-           pseudo_receipt,
-           context,
-           channel,
-           event_config,
-           recipient
-         ) do
-      {:skip, reason} ->
+    # A closed gate, or a recipient who must not be reached, stops a
+    # `:broadcast` too — their browser is still subscribed to their topic.
+    # There is no receipt to record it on (these transports have none by
+    # design, which is what `skip_receipt?: true` means), so the log line is
+    # the record.
+    case hold ||
+           hold_reason(
+             EligibleRecipient.resolve_verdict(
+               pseudo_receipt,
+               context,
+               channel,
+               event_config,
+               recipient
+             )
+           ) do
+      reason when is_binary(reason) ->
         Logger.info(
           "#{channel.transport} not dispatched for #{context.event_id} " <>
             "(#{channel.audience}): #{reason}"
         )
 
-        {:ok, :skipped_ineligible}
+        {:ok, :skipped_not_delivered}
 
-      :send ->
+      nil ->
         deliver_without_receipt(pseudo_receipt, context, channel, event_config)
     end
   end
+
+  defp hold_reason({:skip, reason}), do: reason
+  defp hold_reason(:send), do: nil
 
   defp deliver_without_receipt(pseudo_receipt, context, channel, event_config) do
     case dispatch_to_transport(pseudo_receipt, context, channel, event_config) do
@@ -649,7 +684,7 @@ defmodule AshDispatch.Dispatcher do
     end
   end
 
-  defp dispatch_with_receipt(context, channel, event_config, recipient) do
+  defp dispatch_with_receipt(context, channel, event_config, recipient, hold) do
     # The transports see the recipient this receipt is for, so the opt-out
     # gate can hand it to the checker (`opts[:recipient]`). In `opts`, not
     # `metadata`: event modules read `context.metadata` and may store it,
@@ -664,15 +699,28 @@ defmodule AshDispatch.Dispatcher do
         {:ok, :skipped_optional}
 
       {:ok, receipt} ->
-        # The receipt is written before this is asked, and that is deliberate:
-        # a recipient who must not be reached leaves a `:skipped` receipt
-        # holding the letter that was written for them, rather than vanishing
-        # from the fan-out without a trace.
-        case EligibleRecipient.resolve_verdict(receipt, context, channel, event_config, recipient) do
-          {:skip, reason} ->
+        # The receipt is written before either hold is applied, and that is
+        # deliberate: a closed gate or a recipient who must not be reached
+        # leaves a `:skipped` receipt holding the letter that was written,
+        # rather than vanishing from the fan-out without a trace.
+        #
+        # The gate's reason comes first: it is about the event as a whole, so
+        # a host's eligibility check is not run for a letter that is not going
+        # out anyway.
+        case hold ||
+               hold_reason(
+                 EligibleRecipient.resolve_verdict(
+                   receipt,
+                   context,
+                   channel,
+                   event_config,
+                   recipient
+                 )
+               ) do
+          reason when is_binary(reason) ->
             {:ok, Delivery.hold(receipt, reason)}
 
-          :send ->
+          nil ->
             deliver_receipt(receipt, context, channel, event_config, recipient)
         end
 

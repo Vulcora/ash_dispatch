@@ -110,6 +110,52 @@ defmodule AshDispatch.Test.Inbox.Meeting do
       channels: [
         [transport: :in_app, audience: :admin]
       ]
+
+    # A gate on the event decides whether it goes out at all. Two channels, so
+    # a closed gate has to leave a record for each of them.
+    event :reminder,
+      trigger_on: :manual,
+      module: AshDispatch.Test.Inbox.MeetingReminder,
+      gate: {AshDispatch.Test.Inbox.Gates, :open?},
+      channels: [
+        [transport: :in_app, audience: :user],
+        [transport: :email, audience: :user]
+      ]
+
+    # The same, declared as a callback on the event module instead.
+    event :archived,
+      trigger_on: :manual,
+      module: AshDispatch.Test.Inbox.MeetingArchived,
+      channels: [
+        [transport: :in_app, audience: :user]
+      ]
+  end
+end
+
+defmodule AshDispatch.Test.Inbox.Gates do
+  @moduledoc """
+  The gate the `meeting.reminder` fixture declares. It reports every ask to the
+  test process and answers whatever `config :ash_dispatch, :test_gate` says —
+  `:raise` to raise.
+  """
+
+  def open?(info) do
+    report({:gate_asked, info.stage, info.transport})
+    answer()
+  end
+
+  def answer do
+    case Application.get_env(:ash_dispatch, :test_gate, true) do
+      :raise -> raise "the gate's own query blew up"
+      other -> other
+    end
+  end
+
+  def report(message) do
+    case Application.get_env(:ash_dispatch, :capture_pid) do
+      pid when is_pid(pid) -> send(pid, message)
+      _ -> :ok
+    end
   end
 end
 
@@ -156,6 +202,22 @@ end
 defmodule AshDispatch.Test.Inbox.MeetingFlagged do
   @moduledoc false
   use AshDispatch.Test.Inbox.EventHelpers, id: "meeting.flagged"
+end
+
+defmodule AshDispatch.Test.Inbox.MeetingReminder do
+  @moduledoc false
+  use AshDispatch.Test.Inbox.EventHelpers, id: "meeting.reminder"
+end
+
+defmodule AshDispatch.Test.Inbox.MeetingArchived do
+  @moduledoc false
+  use AshDispatch.Test.Inbox.EventHelpers, id: "meeting.archived"
+
+  @impl true
+  def gate(info) do
+    AshDispatch.Test.Inbox.Gates.report({:gate_asked, :callback, info.stage})
+    AshDispatch.Test.Inbox.Gates.answer()
+  end
 end
 
 defmodule AshDispatch.Test.InboxCase do

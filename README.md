@@ -208,6 +208,24 @@ end
 
 Asked for every event, mandatory ones included; asked when the recipients are resolved and again at the moment of sending, because an account can be closed while a delayed delivery waits in the queue. An ineligible recipient gets a `:skipped` receipt saying `"recipient_ineligible: account closed"` — never a silent drop. Without the setting, nothing is asked and nothing changes.
 
+### A gate on the event
+
+An event can declare a condition that decides whether it goes out at all (`AshDispatch.Gate`):
+
+```elixir
+dispatch do
+  event :reminder,
+    trigger_on: :manual,
+    gate: {MyApp.Bookings, :still_booked?},
+    channels: [
+      [transport: :email, audience: :user, time: {:in, 86_400}],
+      [transport: :in_app, audience: :user]
+    ]
+end
+```
+
+Asked at dispatch, once per channel, and **again at the moment of sending** — which is what makes it work for a reminder queued for tomorrow morning and a booking cancelled tonight. When the gate is closed, a `:skipped` receipt with the reason exists for *every channel that would have been used*, so "we never sent it because the booking had been cancelled" is a question the receipts can answer. Only `true` and `:ok` let the event out; a gate that raises does not send and still leaves the record. An event module can implement `gate/1` instead of using the DSL option.
+
 ## Quick Example
 
 ```elixir

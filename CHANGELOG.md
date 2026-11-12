@@ -72,6 +72,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   receipt to record a verdict on, so an ineligible recipient is simply not
   dispatched to and the log line is the record. *Upgrade:* nothing — without the
   setting nothing is asked.
+- **A gate on the event: does it go out at all?** `should_send?/2` answered
+  that with a boolean and left nothing behind — a channel it refused was
+  dropped silently, and afterwards nobody could tell whether the event had been
+  skipped or had never fired. A gate is the same decision with a record and a
+  reason:
+
+  ```elixir
+  event :reminder,
+    trigger_on: :manual,
+    gate: {MyApp.Bookings, :still_booked?},
+    channels: [
+      [transport: :email, audience: :user, time: {:in, 86_400}],
+      [transport: :in_app, audience: :user]
+    ]
+  ```
+
+  `{module, function}`, `{module, function, extra_args}` or a one-argument
+  function, called with an `AshDispatch.Gate.Info` struct; an event module may
+  implement `c:AshDispatch.Event.gate/1` instead, and the DSL option wins over
+  it. Evaluated at dispatch, once per channel, and **again at the moment of
+  sending** — which is what makes it work for a reminder queued for tomorrow
+  morning and a booking cancelled tonight. When it closes, a `:skipped` receipt
+  carrying `"event_gate_closed"` (with the gate's own reason appended) exists
+  for **every channel that would have been used**. Only `true` and `:ok` let the
+  event out; a gate that raises, cannot be called or answers something else
+  closes, logs an error and still leaves the records. A gate decides delivery,
+  not side effects: `generate_send_variables/2` has already run when it is
+  asked. *Upgrade:* nothing — an event without a gate is never asked.
 - **A backend may answer that it did not send.** `{:skip, reason}` (or
   `{:skipped, reason}`) from an email or SMS backend leaves the receipt
   `:skipped` with the reason — a third outcome next to `:sent` and `:failed`,

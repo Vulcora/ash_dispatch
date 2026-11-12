@@ -268,6 +268,42 @@ defmodule AshDispatch.Resource.Dsl do
                 channels: [[transport: :in_app, audience: :user]]
           """
         ],
+        gate: [
+          type: :any,
+          required: false,
+          doc: """
+          A condition on the event: does it go out at all?
+
+          Evaluated at dispatch, once per channel, and **again at the moment of
+          sending** — the second ask is what makes it work for a delayed
+          delivery. When the gate is closed, a `:skipped` receipt exists for
+          every channel that would have been used, each carrying the reason, so
+          "we never sent the reminder because the booking had been cancelled"
+          is a question the receipts can answer.
+
+          ## Examples
+
+              event :reminder,
+                trigger_on: :manual,
+                gate: {MyApp.Bookings, :still_booked?},
+                channels: [[transport: :email, audience: :user, time: {:in, 86_400}]]
+
+              # Extra arguments are appended
+              gate: {MyApp.Gates, :open?, [:billing]}
+
+              # Or a capture
+              gate: &MyApp.Bookings.still_booked?/1
+
+          The function is called with one `AshDispatch.Gate.Info` struct. Only
+          `true` and `:ok` let the event out; `{false, "reason"}` and
+          `{:error, "reason"}` close it with a reason, and a gate that raises
+          closes it too. An event module may implement
+          `c:AshDispatch.Event.gate/1` instead; this option wins over it.
+
+          See `AshDispatch.Gate`. Unlike `should_send_filter`, which drops a
+          channel without a trace, a gate leaves a record.
+          """
+        ],
         template_path: [
           type: :string,
           required: false,

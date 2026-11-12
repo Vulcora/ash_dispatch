@@ -129,6 +129,7 @@ defmodule AshDispatch.EventRegistry do
   - `:channels` - Channel configurations from DSL
   - `:content` - Content configuration from DSL
   - `:metadata` - Metadata configuration from DSL
+  - `:gate` - The event's gate, if it declares one (`AshDispatch.Gate`)
   """
   @spec all_events(atom()) :: [map()]
   def all_events(otp_app) do
@@ -181,7 +182,8 @@ defmodule AshDispatch.EventRegistry do
         channels: event.channels,
         content: event.content,
         metadata: event.metadata,
-        trigger_on: event.trigger_on
+        trigger_on: event.trigger_on,
+        gate: Map.get(event, :gate)
       }
     end)
   rescue
