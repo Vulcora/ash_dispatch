@@ -135,7 +135,10 @@ defmodule AshDispatch.Delivery.DeliveryModeTransportsTest do
   defp send_now(%{transport: :sms} = receipt),
     do: SendSMS.perform(%Oban.Job{args: %{"receipt_id" => receipt.id}})
 
-  defp send_now(%{transport: :webhook} = receipt) do
+  # `:slack` and `:discord` travel the same worker as `:webhook`, and their
+  # receipts carry their own transport — so they read their own mode.
+  defp send_now(%{transport: transport} = receipt)
+       when transport in [:webhook, :slack, :discord] do
     SendWebhook.perform(%Oban.Job{
       args: %{"receipt_id" => receipt.id, "webhook_url" => "https://example.test/hook"}
     })
@@ -151,7 +154,7 @@ defmodule AshDispatch.Delivery.DeliveryModeTransportsTest do
 
   defp context, do: %Context{event_id: "ticket.created", data: %{}}
 
-  @transports [:email, :sms, :webhook, :in_app, :push]
+  @transports [:email, :sms, :webhook, :in_app, :push, :slack, :discord]
 
   describe ":blocked" do
     test "every transport holds back, and no provider is reached" do

@@ -33,6 +33,7 @@ defmodule AshDispatch.Dispatcher do
   alias AshDispatch.Delivery
   alias AshDispatch.EligibleRecipient
   alias AshDispatch.EventResolver
+  alias AshDispatch.Gate
   alias AshDispatch.Naming
   alias AshDispatch.Event.RecipientExtractor
   alias AshDispatch.Helpers.RecordReader
@@ -410,7 +411,7 @@ defmodule AshDispatch.Dispatcher do
   # channel that would have been used" is the whole point of a gate over a
   # boolean guard.
   defp gate_hold(context, channel, event_config) do
-    case AshDispatch.Gate.dispatch_verdict(context, channel, event_config) do
+    case Gate.dispatch_verdict(context, channel, event_config) do
       :open -> nil
       {:closed, reason} -> reason
     end
