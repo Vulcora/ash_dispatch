@@ -157,7 +157,76 @@ config :my_app, Oban,
   ]
 ```
 
+Since 0.9.3 `mix ash_dispatch.install` writes this for you — queues and both scheduled workers — adding only what is missing and never changing a value you had set. To run the retries in the queue your mail runs in, so pausing that queue pauses them too: `config :ash_dispatch, retry_queue: :emails`.
+
 Optional hardening, both new in 0.5.4: `AshDispatch.WebhookHandlers.Resend.verify/3` verifies the Svix signature on Resend webhooks before you process them, and `AshDispatch.Workers.ScrubSensitiveContent` (cron) blanks stored bodies of events declaring `metadata: [sensitive_content: true]` — for OTP codes and reset links that should not live in the database forever. See [Delivery Receipts](lib/documentation/topics/delivery-receipts.md).
+
+### Whether deliveries really go out
+
+One setting answers that for every transport — email, SMS, push, in-app and webhooks alike (new in 0.9.3; see `AshDispatch.DeliveryMode`):
+
+```elixir
+# config/dev.exs — render and record everything, send nothing
+config :ash_dispatch, delivery_mode: :dry_run
+
+# config/staging.exs — the team can be mailed, nobody else
+config :ash_dispatch,
+  delivery_mode: [
+    default: :blocked,
+    email: {:allow_list, ["ops@example.com", "@example.test"]},
+    in_app: :live
+  ]
+```
+
+- `:live` — send. **The default**; a host that sets nothing is unaffected.
+- `:blocked` — never send. The receipt is `:skipped` and says it was held back.
+- `:dry_run` — render, create the receipt, enqueue the job, run the worker, send nothing. The receipt holds the letter that would have gone out.
+- `{:allow_list, [...]}` — send only to these recipients; everyone else is treated as blocked. Entries match an exact address, a domain (`"@example.test"`), a phone prefix (`"+4670"`), an explicit prefix (`"team-*"`) or `"*"`.
+
+A held-back delivery is `:skipped`, never `:failed` and never reported as sent, and the reason is one of `"delivery_blocked"`, `"delivery_dry_run"` or `"delivery_not_allowed"` so it can be counted.
+
+`config :ash_dispatch, skip_email_delivery: true` still works and still writes the reason it always wrote; it now means `delivery_mode: [email: :blocked]`.
+
+### Whether a recipient may be reached at all
+
+A preference is what a person *wants*, and a mandatory event (`metadata: [user_configurable: false]`) overrides it on purpose. A closed account is a different question, and until 0.9.3 the library had no way to ask it. Now it does (`AshDispatch.EligibleRecipient`):
+
+```elixir
+config :ash_dispatch, eligible_recipient: MyApp.Notifications.Eligibility
+
+defmodule MyApp.Notifications.Eligibility do
+  @behaviour AshDispatch.EligibleRecipient
+
+  @impl true
+  def eligible?(_recipient, opts) do
+    case MyApp.Accounts.get_user(opts[:user_id]) do
+      {:ok, %{deactivated_at: nil, blocked: false}} -> true
+      {:ok, _user} -> {false, "account closed"}
+      _ -> true
+    end
+  end
+end
+```
+
+Asked for every event, mandatory ones included; asked when the recipients are resolved and again at the moment of sending, because an account can be closed while a delayed delivery waits in the queue. An ineligible recipient gets a `:skipped` receipt saying `"recipient_ineligible: account closed"` — never a silent drop. Without the setting, nothing is asked and nothing changes.
+
+### A gate on the event
+
+An event can declare a condition that decides whether it goes out at all (`AshDispatch.Gate`):
+
+```elixir
+dispatch do
+  event :reminder,
+    trigger_on: :manual,
+    gate: {MyApp.Bookings, :still_booked?},
+    channels: [
+      [transport: :email, audience: :user, time: {:in, 86_400}],
+      [transport: :in_app, audience: :user]
+    ]
+end
+```
+
+Asked at dispatch, once per channel, and **again at the moment of sending** — which is what makes it work for a reminder queued for tomorrow morning and a booking cancelled tonight. When the gate is closed, a `:skipped` receipt with the reason exists for *every channel that would have been used*, so "we never sent it because the booking had been cancelled" is a question the receipts can answer. Only `true` and `:ok` let the event out; a gate that raises does not send and still leaves the record. An event module can implement `gate/1` instead of using the DSL option.
 
 ## Quick Example
 

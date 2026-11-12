@@ -7,6 +7,179 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-11-12
+
+### Added
+
+- **One delivery mode for every transport.** `skip_email_delivery` held back
+  email and nothing else: a staging host with it switched on still sent the
+  text messages, posted the webhooks and pushed to the browsers. New setting
+  `config :ash_dispatch, delivery_mode:`, read by email, SMS, push, in-app and
+  webhook (and by `:slack` and `:discord`, which travel the same worker):
+
+  - `:live` — send. **The default**, so a host that sets nothing sees no change.
+  - `:blocked` — never send. The receipt is `:skipped` and records that it was
+    held back, and why.
+  - `:dry_run` — render, create the receipt, enqueue the job, run the worker,
+    and send nothing. The receipt holds the letter that would have gone out.
+  - `{:allow_list, ["ops@example.com", "@example.test", "+4670"]}` — only these
+    recipients are really sent to; everyone else is treated as blocked. An
+    entry matches an exact address, a domain, a phone prefix, an explicit
+    prefix (`"team-*"`) or `"*"`. A recipient it cannot read never matches.
+
+  Per transport with a keyword list, `:default` for the rest:
+
+  ```elixir
+  config :ash_dispatch,
+    delivery_mode: [
+      default: :blocked,
+      email: {:allow_list, ["@example.test"]},
+      in_app: :live
+    ]
+  ```
+
+  The mode is read at the moment of sending — in the send workers, and
+  immediately before the write for the transports that deliver synchronously —
+  so a held-back delivery still has its receipt and its job, which is what
+  makes `:dry_run` worth running. `:broadcast` and `:oban` are not covered:
+  they reach a topic and a queue in the same system, not a person, and have no
+  receipt to record a hold on. The reasons (`"delivery_blocked"`,
+  `"delivery_dry_run"`, `"delivery_not_allowed"`, see
+  `AshDispatch.DeliveryMode.reason/1`) are stable, so they can be counted.
+  *Upgrade:* nothing.
+- **A check for whether a recipient may be reached at all**, which a mandatory
+  event does not override. `metadata: [user_configurable: false]` walks past the
+  preference check on purpose — a password reset is not a marketing choice — but
+  that override was total: a closed account, a barred user or an address that
+  was never verified still got the letter, because nothing in the library had
+  ever been told that some recipients must not be reached whatever the message
+  is.
+
+  ```elixir
+  config :ash_dispatch, eligible_recipient: MyApp.Notifications.Eligibility
+  ```
+
+  A module implementing `AshDispatch.EligibleRecipient` (or `{module,
+  function}`, `{module, function, args}`, or a two-argument function). It is
+  asked **when the recipients are resolved** and **again at the moment of
+  sending**: a delivery can wait in a queue for hours — `delay:`, a retry, a
+  stranded job rescued later — and the answer may have changed while it waited.
+  An ineligible recipient gets a `:skipped` receipt carrying
+  `"recipient_ineligible"` (with the host's own reason appended), never a silent
+  drop: the receipt holds the letter that was written for them and says why it
+  was held back. A check that raises, cannot be called or answers something
+  other than `true` / `:ok` / `{:ok, true}` holds the delivery back and says so
+  in the log — the question is whether a person may be contacted, and a host
+  that cannot answer it has not said yes. `:broadcast` and `:oban` have no
+  receipt to record a verdict on, so an ineligible recipient is simply not
+  dispatched to and the log line is the record. *Upgrade:* nothing — without the
+  setting nothing is asked.
+- **A gate on the event: does it go out at all?** `should_send?/2` answered
+  that with a boolean and left nothing behind — a channel it refused was
+  dropped silently, and afterwards nobody could tell whether the event had been
+  skipped or had never fired. A gate is the same decision with a record and a
+  reason:
+
+  ```elixir
+  event :reminder,
+    trigger_on: :manual,
+    gate: {MyApp.Bookings, :still_booked?},
+    channels: [
+      [transport: :email, audience: :user, time: {:in, 86_400}],
+      [transport: :in_app, audience: :user]
+    ]
+  ```
+
+  `{module, function}`, `{module, function, extra_args}` or a one-argument
+  function, called with an `AshDispatch.Gate.Info` struct; an event module may
+  implement `c:AshDispatch.Event.gate/1` instead, and the DSL option wins over
+  it. Evaluated at dispatch, once per channel, and **again at the moment of
+  sending** — which is what makes it work for a reminder queued for tomorrow
+  morning and a booking cancelled tonight. When it closes, a `:skipped` receipt
+  carrying `"event_gate_closed"` (with the gate's own reason appended) exists
+  for **every channel that would have been used**. Only `true` and `:ok` let the
+  event out; a gate that raises, cannot be called or answers something else
+  closes, logs an error and still leaves the records. A gate decides delivery,
+  not side effects: `generate_send_variables/2` has already run when it is
+  asked. *Upgrade:* nothing — an event without a gate is never asked. One thing
+  to check: the callback is found with `function_exported?(module, :gate, 1)`,
+  so an event module that happens to define a `gate/1` of its own now gates its
+  event. Rename it, or have it return `true`.
+- **A backend may answer that it did not send.** `{:skip, reason}` (or
+  `{:skipped, reason}`) from an email or SMS backend leaves the receipt
+  `:skipped` with the reason — a third outcome next to `:sent` and `:failed`,
+  for an address on a provider's suppression list or a rule of the host's own.
+  Before, such a backend had to choose between reporting a send that never
+  happened and a failure that would be retried five times.
+
+### Added (installer)
+
+- **`mix ash_dispatch.install` writes the Oban configuration it used to
+  print.** Four releases printed "give Oban these queues and these two
+  scheduled workers" in a closing notice and left it at that (BACKLOG 1); a
+  host that missed the notice never retried a failed delivery and never
+  emptied a sensitive body, silently, which is the whole problem with a
+  notice. The installer now writes `queues: [default: 10, emails: 10, sms: 5,
+  webhooks: 5]` and a `Oban.Plugins.Cron` entry for
+  `RetryFailedDeliveries` and `ScrubSensitiveContent`.
+
+  It adds only what is missing. A queue size the host chose is kept; a cron
+  schedule the host moved for one of our workers is kept and not duplicated
+  (entries are compared by worker, not by schedule); an existing Cron plugin
+  gets the missing entries, and a plugins list without one gets ours beside
+  the host's. A plugins list shaped in a way the installer does not recognise
+  is left untouched, and the notice still says what is needed.
+- **A Preference resource**, `MyApp.Notifications.Preference`, built on
+  `AshDispatch.Resources.Preference.Base`, listed in the Notifications domain
+  and wired up (`preference_resource:`, `user_preference:
+  AshDispatch.UserPreference.Resource`). A new install gets working
+  preferences instead of a checker pointed at a table nobody created. It needs
+  PostgreSQL 15 (`NULLS NOT DISTINCT`), which the closing notice says.
+- **`config :ash_dispatch, retry_queue:`** — the queue
+  `AshDispatch.Workers.RetryFailedDeliveries` runs in, read at runtime.
+  **Still `:default`**: moving it to `:emails` would stop the retries of a host
+  whose Oban has no `:emails` entry for it, without notice, so that waits for
+  0.10.0. A `queue:` in the cron entry wins over it.
+
+### Fixed (installer)
+
+- **The installer can be run twice.** Every module it generates went through
+  `Igniter.Project.Module.create_module/3`, which fails the run when the file
+  is already there, so a second run stopped on "File already exists" before it
+  did anything — and a host that wanted to re-run it after adding a repo or a
+  user resource could not. A module that exists is now left alone, the inbox
+  route is added only when the router does not already have it, and every
+  config write was already additive. `mix ash_dispatch.install` twice over is
+  a no-op.
+
+### Changed
+
+- **`skip_email_delivery` is now read in one place**, as
+  `delivery_mode: [email: :blocked]`. It keeps the reason it has always written
+  on the receipt (`"email delivery disabled (dev mode)"`), it still covers
+  email only, and it beats a *global* `delivery_mode` — a host that had it
+  switched on does not start mailing people by setting `delivery_mode: :live`.
+  An explicit `delivery_mode: [email: ...]` beats it. *Upgrade:* nothing.
+- **One place decides whether a delivery goes out**, `AshDispatch.Delivery`,
+  called by the three send workers and — for the delivery mode alone — by the
+  two transports that deliver synchronously. The gate, the eligibility check
+  and the mode are asked in that order, so a receipt held back says why in
+  terms of the message and the person first, and only then in terms of the
+  host. A test pins that every send point asks.
+
+### Not in this release
+
+- **The tenant through the whole flow.** Every read the library makes is still
+  made without a tenant: a host with `multitenancy strategy :context` and a
+  schema per tenant writes its receipts into `public`, and
+  `ScrubSensitiveContent` never reaches a tenant schema at all. Designed, with
+  the work plan and all 86 reads that have no tenant today, in
+  `docs/design/0.9.4-tenancy.md`. It is a patch's worth of work and it needs
+  per-tenant test fixtures the suite does not have yet.
+- The receipt's own `tenant` column (BACKLOG 10) is part of that design, not of
+  this release: it is a new column, so it waits for the release that has a
+  reason to ask hosts for a migration.
+
 ## [0.9.2] - 2026-11-12
 
 ### Changed

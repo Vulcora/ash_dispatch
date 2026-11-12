@@ -281,6 +281,48 @@ config :ash_dispatch,
 Keep admin/team/system audiences out of this list. An operator must not be able
 to silence an operational alert by unticking a marketing box.
 
+### A Preference Is Not The Same As "May Be Reached" (0.9.3)
+
+The list above has a hole in it, and it is deliberate on one side and was a bug
+on the other. A mandatory event (`metadata: [user_configurable: false]`) walks
+past the preference check on purpose — a password reset is not a marketing
+choice. But until 0.9.3 that override was total: a **closed account, a barred
+user or an address that was never verified** still got the letter, because
+nothing in the library had ever been told that some recipients must not be
+reached whatever the message is.
+
+That is a different question, and it has its own setting:
+
+```elixir
+config :ash_dispatch, eligible_recipient: MyApp.Notifications.Eligibility
+
+defmodule MyApp.Notifications.Eligibility do
+  @behaviour AshDispatch.EligibleRecipient
+
+  @impl true
+  def eligible?(_recipient, opts) do
+    case MyApp.Accounts.get_user(opts[:user_id]) do
+      {:ok, %{deactivated_at: nil, blocked: false}} -> true
+      {:ok, _user} -> {false, "account closed"}
+      _ -> true
+    end
+  end
+end
+```
+
+- It is asked **for every event, mandatory ones included**.
+- It is asked **when the recipients are resolved** and **again at the moment of
+  sending** — a delivery can wait in a queue for hours, and an account can be
+  closed while it waits.
+- An ineligible recipient gets a `:skipped` receipt carrying
+  `"recipient_ineligible: account closed"`, never a silent drop: the audit trail
+  says a letter was written for this person and held back, and why.
+- A check that raises holds the delivery back. The question is whether a person
+  may be contacted, and a host that cannot answer it has not said yes.
+
+Without the setting nothing is asked and nothing changes. See
+`AshDispatch.EligibleRecipient`.
+
 ### Checking Preferences Outside the Send Path
 
 `AshDispatch.UserPreference.allows_user?/4` is the same predicate the transports

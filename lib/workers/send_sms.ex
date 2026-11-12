@@ -17,6 +17,13 @@ defmodule AshDispatch.Workers.SendSMS do
   - `receipt_id` — the receipt's UUID. Everything else is read from the
     receipt, so a retry can never send different text than the one frozen at
     creation.
+
+  ## Whether anything is sent at all
+
+  `AshDispatch.DeliveryMode` is read before the backend is called, so a host on
+  `:blocked`, `:dry_run` or an allow-list gets a `:skipped` receipt holding the
+  message that was not sent. The backend may also answer `{:skip, reason}`
+  itself (since 0.9.3) when it decides not to send.
   """
 
   use Oban.Worker,
@@ -29,6 +36,7 @@ defmodule AshDispatch.Workers.SendSMS do
 
   alias AshDispatch.Config
   alias AshDispatch.ContentMap
+  alias AshDispatch.Delivery
   alias AshDispatch.ReceiptStatus
   alias AshDispatch.Transports.Email
   alias AshDispatch.Workers.ScrubSensitiveContent
@@ -64,19 +72,30 @@ defmodule AshDispatch.Workers.SendSMS do
 
       :ok
     else
-      case {backend(), refusal(receipt)} do
-        {nil, _refusal} ->
-          ReceiptStatus.mark_skipped(receipt, "transport_not_implemented")
+      case Delivery.verdict(receipt) do
+        {:skip, reason} ->
+          Delivery.hold(receipt, reason)
           :ok
 
-        {_backend, reason} when is_binary(reason) ->
-          ReceiptStatus.refuse(receipt, reason)
-          Logger.error("SMS refused for receipt #{receipt.id}: #{reason}")
-          {:cancel, reason}
-
-        {backend, nil} ->
-          send_with(backend, receipt)
+        :send ->
+          send_or_refuse(receipt)
       end
+    end
+  end
+
+  defp send_or_refuse(receipt) do
+    case {backend(), refusal(receipt)} do
+      {nil, _refusal} ->
+        ReceiptStatus.mark_skipped(receipt, "transport_not_implemented")
+        :ok
+
+      {_backend, reason} when is_binary(reason) ->
+        ReceiptStatus.refuse(receipt, reason)
+        Logger.error("SMS refused for receipt #{receipt.id}: #{reason}")
+        {:cancel, reason}
+
+      {backend, nil} ->
+        send_with(backend, receipt)
     end
   end
 
@@ -143,6 +162,14 @@ defmodule AshDispatch.Workers.SendSMS do
       {:ok, _other} ->
         :ok
 
+      # A backend that did not send and has not marked the receipt itself. The
+      # same third answer `SendEmail` accepts: `:skipped`, not `:failed`.
+      skipped when skipped in [:skip, :skipped] ->
+        skip_from_backend(receipt, "backend did not send")
+
+      {skipped, reason} when skipped in [:skip, :skipped] ->
+        skip_from_backend(receipt, reason)
+
       {:error, reason} ->
         # The backend never got to mark it — do it here, or the receipt strands
         # in :sending, where no cron picks it up.
@@ -155,6 +182,13 @@ defmodule AshDispatch.Workers.SendSMS do
       ReceiptStatus.mark_failed(receipt, error)
       Logger.error("SMS backend raised for receipt #{receipt.id}: #{inspect(error)}")
       {:error, error}
+  end
+
+  defp skip_from_backend(receipt, reason) do
+    reason = if is_binary(reason), do: reason, else: inspect(reason)
+    ReceiptStatus.mark_skipped(receipt, reason)
+    Logger.info("SMS not sent by the backend for receipt #{receipt.id}: #{reason}")
+    :ok
   end
 
   # The job carries only the receipt id, so the original context is gone — it

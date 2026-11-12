@@ -179,6 +179,9 @@ defmodule AshDispatch.Resource.Transformers.InjectDispatchChanges do
         metadata: event.metadata,
         priority: event.priority || :standard,
         module: event_module,
+        # The event's gate travels with the config so the notifier path does
+        # not have to look the event up again (`AshDispatch.Gate`).
+        gate: Map.get(event, :gate),
         data_key: event.data_key,
         include_actor_as: event.include_actor_as,
         recipient_filter: recipient_filter,

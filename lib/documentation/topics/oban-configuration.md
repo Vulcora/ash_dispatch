@@ -178,6 +178,21 @@ config :my_app, Oban,
   ]
 ```
 
+Since 0.9.3, `mix ash_dispatch.install` writes the queues and both scheduled
+workers (`RetryFailedDeliveries` and `ScrubSensitiveContent`) into
+`config/config.exs` instead of printing them in a notice. It adds only what is
+missing: a queue size you chose, and a schedule you moved, are left as they
+are.
+
+The retry worker runs in `:default`. To run it where your mail runs — so
+pausing or scaling that queue does the same to the retries:
+
+```elixir
+config :ash_dispatch, retry_queue: :emails
+```
+
+A `queue:` in the cron entry wins over the config.
+
 ### 3. Monitor Job Performance
 
 Use [ObanWeb](https://hexdocs.pm/oban_web) for monitoring:

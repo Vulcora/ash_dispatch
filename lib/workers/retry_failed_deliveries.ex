@@ -12,7 +12,11 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
 
   The worker runs in `:default`. To run it where the email workers run - so a
   host that pauses or scales the `:emails` queue pauses or scales the retries
-  with it - name the queue in the cron entry:
+  with it - set the queue:
+
+      config :ash_dispatch, retry_queue: :emails
+
+  or name it in the cron entry, which wins over the config:
 
       {"*/5 * * * *", AshDispatch.Workers.RetryFailedDeliveries, queue: :emails}
 
@@ -80,6 +84,15 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
 
   require Ash.Query
   require Logger
+
+  # The queue is read at runtime rather than baked in by `use Oban.Worker`, so
+  # a host can move the retries to the queue its mail runs in without a fork.
+  # `Oban.Cron` merges the crontab entry's options over these, so a `queue:` in
+  # the cron entry still wins.
+  @impl Oban.Worker
+  def __opts__ do
+    Keyword.put(super(), :queue, Config.retry_queue())
+  end
 
   @default_max_retries 5
   @default_retry_delay_minutes 15

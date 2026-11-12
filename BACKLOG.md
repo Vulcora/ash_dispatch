@@ -26,10 +26,15 @@ failure the receipt is put back to `:failed` instead of stranding on
 - `retry_count`: only `:retry` increments it (`mark_failed` stopped in
   0.5.6); `test/workers/retry_accounting_test.exs` now pins both.
 
-Still open:
-- `mix ash_dispatch.install` should add the cron entry, and the retry worker
-  should run in `:emails` (a queue integrators already must define) instead
-  of `:default`.
+**Installer and queue resolved in 0.9.3:**
+- `mix ash_dispatch.install` writes the Oban queues and both cron entries
+  instead of printing them. It adds only what is missing: a queue size or a
+  schedule the host chose is left alone, and running the installer twice
+  changes nothing (it used to stop on "File already exists").
+- The retry worker's queue is `config :ash_dispatch, retry_queue:`. The
+  default stays `:default` in 0.9.x — moving it to `:emails` would stop the
+  retries of a host whose Oban has no `:emails` entry for it, without notice,
+  so that waits for 0.10.0.
 
 ## 2. ManualTrigger `:trigger` accepts arguments it ignores — RESOLVED in 0.8.6
 

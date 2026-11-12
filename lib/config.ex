@@ -508,6 +508,28 @@ defmodule AshDispatch.Config do
     Application.get_env(:ash_dispatch, :preference_gated_audiences, [:user])
   end
 
+  @doc """
+  The host's check for whether a recipient may be reached at all — a closed
+  account, a barred user, an unverified address.
+
+  A module implementing `AshDispatch.EligibleRecipient`, `{module, function}`,
+  `{module, function, extra_args}`, or a two-argument function. `nil` (the
+  default) asks nothing.
+
+  Unlike a preference, this applies to mandatory events too. See
+  `AshDispatch.EligibleRecipient`.
+
+  ## Example
+
+      config :ash_dispatch,
+        eligible_recipient: MyApp.Notifications.Eligibility
+  """
+  @spec eligible_recipient() ::
+          module() | {module(), atom()} | {module(), atom(), list()} | fun() | nil
+  def eligible_recipient do
+    Application.get_env(:ash_dispatch, :eligible_recipient)
+  end
+
   # ============================================================================
   # Integrations
   # ============================================================================
@@ -641,6 +663,11 @@ defmodule AshDispatch.Config do
 
   Defaults to `false`.
 
+  Since 0.9.3 this is the email-shaped corner of `delivery_mode/0`: it is read
+  as `delivery_mode: [email: :blocked]` and keeps the reason it has always
+  written on the receipt. It covers email only — use `:delivery_mode` to hold
+  back SMS, push, in-app and webhooks as well.
+
   ## Example
 
       # config/dev.exs
@@ -650,6 +677,46 @@ defmodule AshDispatch.Config do
   @spec skip_email_delivery?() :: boolean()
   def skip_email_delivery? do
     Application.get_env(:ash_dispatch, :skip_email_delivery, false)
+  end
+
+  @doc """
+  Whether deliveries really go out, per transport.
+
+  `:live` (the default), `:blocked`, `:dry_run`, `{:allow_list, [...]}`, or a
+  keyword list per transport. See `AshDispatch.DeliveryMode` for the full
+  reading, including how `skip_email_delivery` maps onto it.
+
+  ## Example
+
+      # config/staging.exs — the team can be mailed, nobody else
+      config :ash_dispatch,
+        delivery_mode: [
+          default: :blocked,
+          email: {:allow_list, ["@example.test"]}
+        ]
+  """
+  @spec delivery_mode() :: term()
+  def delivery_mode do
+    Application.get_env(:ash_dispatch, :delivery_mode)
+  end
+
+  @doc """
+  The Oban queue `AshDispatch.Workers.RetryFailedDeliveries` runs in.
+
+  Defaults to `:default`, which is what every release before 0.9.3 used and
+  what 0.9.x keeps: a host whose Oban has no `:emails` entry for it would
+  otherwise stop retrying failed deliveries without notice.
+
+  Set it to the queue your mail runs in, so pausing or scaling that queue
+  pauses or scales the retries with it:
+
+      config :ash_dispatch, retry_queue: :emails
+
+  A `queue:` in the cron entry wins over this.
+  """
+  @spec retry_queue() :: atom()
+  def retry_queue do
+    Application.get_env(:ash_dispatch, :retry_queue, :default)
   end
 
   @doc """

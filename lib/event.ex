@@ -626,6 +626,34 @@ defmodule AshDispatch.Event do
   """
   @callback source_url(context(), channel()) :: String.t() | nil
 
+  @doc """
+  A condition on the event: does it go out at all?
+
+  Asked at dispatch, once per channel, and again at the moment of sending — the
+  second ask is what makes it work for a delayed delivery. When it closes, a
+  `:skipped` receipt exists for every channel that would have been used, each
+  carrying the reason.
+
+      @impl true
+      def gate(%AshDispatch.Gate.Info{} = info) do
+        case MyApp.Bookings.fetch(info.source_id) do
+          {:ok, %{cancelled_at: nil}} -> true
+          {:ok, _booking} -> {false, "the booking was cancelled"}
+          :error -> {false, "the booking is gone"}
+        end
+      end
+
+  Only `true` and `:ok` let the event out; a gate that raises closes it. The
+  `gate:` option in the resource DSL wins over this callback. See
+  `AshDispatch.Gate` for the full contract — it has more to say about what the
+  struct carries at each stage than fits here.
+
+  Unlike `c:should_send?/2`, which drops a channel without a trace, this leaves
+  a record.
+  """
+  @callback gate(info :: AshDispatch.Gate.Info.t()) ::
+              true | false | nil | :ok | {:ok, boolean()} | {false, String.t()} | {:error, term()}
+
   # Optional advanced callbacks
   @callback template_variant(context(), channel()) :: atom() | nil
   @callback should_send?(context(), channel()) :: boolean()
@@ -662,6 +690,7 @@ defmodule AshDispatch.Event do
     data_key: 0,
     template_variant: 2,
     should_send?: 2,
+    gate: 1,
     prepare_data: 2,
     enrich_context: 2
   ]

@@ -41,6 +41,7 @@ defmodule AshDispatch.Transports.Push do
   require Logger
 
   alias AshDispatch.Config
+  alias AshDispatch.Delivery
   alias AshDispatch.Transports.Preferences
 
   def deliver(receipt, context, channel, event_config) do
@@ -53,8 +54,12 @@ defmodule AshDispatch.Transports.Push do
   # cannot be expected to know about preferences, and asking it to would put
   # the same eight lines in every app that wires SMS.
   defp do_deliver(receipt, context, channel, event_config) do
-    case Config.push_backend() do
-      nil ->
+    # A missing backend still wins over the delivery mode, as it did before:
+    # "no backend is configured" says more about the state of the host than
+    # "this host does not send", and a host without one behaves exactly as it
+    # does today.
+    case {Config.push_backend(), Delivery.mode_verdict(receipt)} do
+      {nil, _verdict} ->
         Logger.info("Push transport not yet implemented (no :push_backend configured), skipping")
 
         receipt
@@ -62,7 +67,12 @@ defmodule AshDispatch.Transports.Push do
         |> Ash.update!(authorize?: false)
         |> then(&{:ok, &1})
 
-      backend when is_atom(backend) ->
+      # Push delivers synchronously, so this is the moment of sending: a host
+      # on `:blocked`, `:dry_run` or an allow-list never reaches the backend.
+      {_backend, {:skip, reason}} ->
+        {:ok, Delivery.hold(receipt, reason)}
+
+      {backend, :send} when is_atom(backend) ->
         backend.deliver(receipt, context, channel, event_config)
     end
   end

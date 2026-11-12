@@ -1,7 +1,7 @@
 defmodule AshDispatch.MixProject do
   use Mix.Project
 
-  @version "0.9.2"
+  @version "0.9.3"
   @description "Event-driven notification system for Ash Framework with multiple transport types"
   @source_url "https://github.com/Vulcora/ash_dispatch"
 
@@ -135,6 +135,13 @@ defmodule AshDispatch.MixProject do
           AshDispatch.TemplateResolver,
           AshDispatch.StrictTemplates,
           AshDispatch.TemplateError
+        ],
+        "Delivery policy": [
+          AshDispatch.Delivery,
+          AshDispatch.DeliveryMode,
+          AshDispatch.EligibleRecipient,
+          AshDispatch.Gate,
+          AshDispatch.Gate.Info
         ],
         Transports: [
           AshDispatch.Transports.Email,
