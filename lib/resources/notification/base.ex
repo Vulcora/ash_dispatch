@@ -89,13 +89,18 @@ defmodule AshDispatch.Resources.Notification.Base do
         end)
 
       result =
-        Ash.bulk_update(query, action, %{},
-          actor: context.actor,
-          authorize?: false,
-          context: %{ash_dispatch_bulk: true},
-          return_errors?: true,
-          # Use stream strategy to ensure changes are triggered
-          strategy: :stream
+        Ash.bulk_update(
+          query,
+          action,
+          %{},
+          [
+            actor: context.actor,
+            authorize?: false,
+            context: %{ash_dispatch_bulk: true},
+            return_errors?: true,
+            # Use stream strategy to ensure changes are triggered
+            strategy: :stream
+          ] ++ AshDispatch.Tenancy.opts(__MODULE__, context.tenant)
         )
 
       case result do
@@ -278,11 +283,14 @@ defmodule AshDispatch.Resources.Notification.Base do
           argument :tenant, :string, allow_nil?: true
 
           run fn input, context ->
+            # The action's own tenant, when this resource is per tenant: a
+            # count must not reach across schemas, and `:tenant` as an ARGUMENT
+            # is the column filter, which is a different question.
+            opts = [actor: context.actor] ++ AshDispatch.Tenancy.opts(__MODULE__, context.tenant)
+
             __MODULE__
-            |> Ash.Query.for_read(:unread, %{tenant: input.arguments[:tenant]},
-              actor: context.actor
-            )
-            |> Ash.count(actor: context.actor)
+            |> Ash.Query.for_read(:unread, %{tenant: input.arguments[:tenant]}, opts)
+            |> Ash.count(opts)
           end
         end
 

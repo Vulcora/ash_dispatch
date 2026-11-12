@@ -45,14 +45,15 @@ defmodule AshDispatch.Workers.SendSMS do
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: args}) do
-    receipt_id = args["receipt_id"]
-
-    case Config.delivery_receipt_resource() |> Ash.get(receipt_id, authorize?: false) do
+    case AshDispatch.Tenancy.Job.receipt(args) do
       {:ok, receipt} ->
         process_sms(receipt)
 
+      {:cancel, reason} ->
+        {:cancel, reason}
+
       {:error, error} ->
-        Logger.error("Failed to fetch receipt #{receipt_id}: #{inspect(error)}")
+        Logger.error("Failed to fetch receipt #{args["receipt_id"]}: #{inspect(error)}")
         {:error, :receipt_not_found}
     end
   end
@@ -60,7 +61,9 @@ defmodule AshDispatch.Workers.SendSMS do
   @doc false
   # Builds a fresh job for a receipt. Used by the retry path, which has no
   # other arguments to carry — the text lives in the receipt.
-  def new_for_receipt(receipt), do: new(%{receipt_id: receipt.id})
+  def new_for_receipt(receipt) do
+    %{"receipt_id" => receipt.id} |> AshDispatch.Tenancy.Job.put_tenant(receipt) |> new()
+  end
 
   defp process_sms(receipt) do
     # Terminal state: a duplicate job should finish as success, not as a second

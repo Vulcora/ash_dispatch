@@ -15,6 +15,28 @@ defmodule AshDispatch.Test.Schema do
   """
 
   @doc """
+  Installs AshPostgres's own SQL functions into the test database.
+
+  `AshStateMachine`'s atomic updates validate their "no matching transition"
+  error as an expression, which Postgres can only raise through
+  `ash_raise_error`. A host gets these from `mix ash.codegen`; a test database
+  that someone created by hand does not, and every receipt transition then
+  fails with "must be performed atomically" — which looks like a bug in the
+  library and is a bug in the fixture.
+
+  The statements come out of AshPostgres's own installer, so they are the ones a
+  host would have.
+  """
+  @spec install_ash_functions!(module()) :: :ok
+  def install_ash_functions!(repo) do
+    AshPostgres.MigrationGenerator.AshFunctions.install(nil)
+    |> then(&Regex.scan(~r/execute\(\"\"\"\n(.*?)\n\s*\"\"\"\)/s, &1, capture: :all_but_first))
+    |> Enum.each(fn [sql] -> repo.query!(sql) end)
+
+    :ok
+  end
+
+  @doc """
   Creates `prefix` (dropping it first) and one table per resource in it.
 
   `prefix: nil` creates the tables in the repo's default schema, for a resource

@@ -153,4 +153,98 @@ defmodule AshDispatch.Tenancy do
     |> Ash.Changeset.for_update(action, attrs)
     |> set(of(record))
   end
+
+  @doc """
+  The tenant to work in, given a receipt and the context around it: the one the
+  receipt was read with, else the dispatch's.
+
+  The receipt's comes first because it is the schema the row is actually in. On
+  a synchronous transport the two are the same; in a worker there is no context
+  at all.
+  """
+  @spec tenant_for(term(), term()) :: term()
+  def tenant_for(receipt, context) do
+    of(receipt) || context_tenant(context)
+  end
+
+  defp context_tenant(%{tenant: tenant}), do: tenant
+  defp context_tenant(_context), do: nil
+
+  @doc """
+  The tenant an Oban job says to work in — the one place a tenant reaches the
+  library from storage rather than from a running dispatch.
+
+  - `{:ok, nil}` — the job carries none. Every job enqueued before 0.9.4
+    carries none, which is exactly today's behaviour, and that is what makes
+    this safe to deploy while jobs are in flight.
+  - `{:ok, tenant}` — the host recognises it, or has not said what its tenants
+    are (see below).
+  - `{:error, reason}` — the host does not recognise it. The caller cancels:
+    a tenant is a Postgres schema name, and an args row that someone has
+    edited must not be able to choose which schema is read.
+
+  When `:tenants` is not configured the tenant is allowed through, with a
+  warning. The difference from a webhook tag is where the value came from: this
+  one the library wrote itself when it enqueued the job, and refusing every
+  delivery because a host has not implemented a callback yet would be a worse
+  failure than the one it prevents. A webhook tag comes from outside and is
+  refused outright (`AshDispatch.WebhookHandlers.Resend`).
+  """
+  @spec from_job_args(map()) :: {:ok, term()} | {:error, String.t()}
+  def from_job_args(args) when is_map(args) do
+    case args["tenant"] || args[:tenant] do
+      nil ->
+        {:ok, nil}
+
+      tenant ->
+        case AshDispatch.Tenants.check(tenant) do
+          :ok ->
+            {:ok, tenant}
+
+          {:error, :not_configured} ->
+            AshDispatch.Tenants.warn_if_missing("A send job carries a tenant")
+            {:ok, tenant}
+
+          {:error, :unknown_tenant} ->
+            {:error, "the job's tenant #{inspect(tenant)} is not one this host recognises"}
+        end
+    end
+  end
+
+  def from_job_args(_args), do: {:ok, nil}
+
+  @doc """
+  Whether an error is Postgres saying there is nothing there to read — a tenant
+  that was named but whose schema or tables were never created.
+
+  Worth telling apart: it will not fix itself, so the job is cancelled rather
+  than retried five times against a schema that is still not there.
+
+  Two forms, because a missing schema is reported as a missing *relation* when
+  the name is qualified (`42P01`, not `3F000`), and because Ash sometimes
+  carries the Postgrex error as a struct and sometimes as the text of one.
+  """
+  @spec missing_schema?(term()) :: boolean()
+  def missing_schema?(error) do
+    error |> flatten() |> Enum.any?(&schema_error?/1)
+  end
+
+  @missing_codes [:invalid_schema_name, :undefined_table]
+  @missing_text ["invalid_schema_name", "undefined_table", "3F000", "42P01"]
+
+  defp schema_error?(%{postgres: %{code: code}}), do: code in @missing_codes
+
+  defp schema_error?(%{error: text}) when is_binary(text),
+    do: Enum.any?(@missing_text, &String.contains?(text, &1))
+
+  defp schema_error?(text) when is_binary(text),
+    do: Enum.any?(@missing_text, &String.contains?(text, &1))
+
+  defp schema_error?(_error), do: false
+
+  defp flatten(%{errors: errors}) when is_list(errors),
+    do: Enum.flat_map(errors, &flatten/1)
+
+  defp flatten(%{error: error} = outer) when is_map(error), do: [outer | flatten(error)]
+  defp flatten(error), do: [error]
 end

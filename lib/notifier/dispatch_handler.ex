@@ -235,12 +235,21 @@ defmodule AshDispatch.Notifier.DispatchHandler do
     |> Map.put(:tenant, notification.changeset && notification.changeset.tenant)
   end
 
+  defp tenant_of(%{tenant: tenant}), do: tenant
+  defp tenant_of(_changeset), do: nil
+
   defp maybe_load_relationships(record, [], _changeset), do: record
 
   defp maybe_load_relationships(record, load, changeset) do
     domain = (changeset && changeset.domain) || record.__struct__.__domain__()
 
-    case Ash.load(record, load, domain: domain, authorize?: false) do
+    # In the action's tenant, when the host's record is per tenant: the
+    # notifier knows it from the changeset.
+    load_opts =
+      [domain: domain, authorize?: false] ++
+        AshDispatch.Tenancy.opts(record.__struct__, tenant_of(changeset))
+
+    case Ash.load(record, load, load_opts) do
       {:ok, loaded_record} ->
         loaded_record
 

@@ -37,7 +37,7 @@ defmodule AshDispatch.UserPreference.Resource do
 
   @behaviour AshDispatch.UserPreference
 
-  alias AshDispatch.{Config, Context, UserPreference}
+  alias AshDispatch.{Config, Context, Tenancy, UserPreference}
 
   require Ash.Query
 
@@ -239,11 +239,13 @@ defmodule AshDispatch.UserPreference.Resource do
       {:ok, [row | _]} ->
         row
         |> Ash.Changeset.for_update(:update, %{enabled: attrs.enabled}, action_opts)
+        |> Tenancy.set(attrs.tenant)
         |> Ash.update(action_opts)
 
       {:ok, []} ->
         resource()
         |> Ash.Changeset.for_create(:set, attrs, action_opts)
+        |> Tenancy.set(attrs.tenant)
         |> Ash.create(action_opts)
 
       {:error, error} ->
@@ -262,7 +264,10 @@ defmodule AshDispatch.UserPreference.Resource do
 
     with {:ok, rows} <- find_rows(attrs, Keyword.take(opts, [:actor, :authorize?])) do
       Enum.reduce_while(rows, :ok, fn row, :ok ->
-        case Ash.destroy(row, Keyword.take(opts, [:actor, :authorize?])) do
+        case Ash.destroy(
+               row,
+               Keyword.take(opts, [:actor, :authorize?]) ++ tenant_opts(attrs.tenant)
+             ) do
           :ok -> {:cont, :ok}
           {:error, error} -> {:halt, {:error, error}}
         end
@@ -279,8 +284,15 @@ defmodule AshDispatch.UserPreference.Resource do
     |> filter_eq(:user_id, attrs.user_id)
     |> filter_eq(:event_id, attrs[:event_id])
     |> filter_eq(:category, attrs[:category])
-    |> Ash.read(opts)
+    |> Ash.read(opts ++ tenant_opts(attrs.tenant))
   end
+
+  # The scope's tenant is both the `tenant` COLUMN and, for a preference
+  # resource built with `multitenancy: :context`, the schema the row lives in.
+  # Writing and filtering both means one code path for the two kinds of host:
+  # for a per-tenant resource the column is a redundant copy of what the schema
+  # already says, and for a public one it is the only thing that says it.
+  defp tenant_opts(tenant), do: Tenancy.opts(resource(), tenant)
 
   # Registry channels are the DSL's keyword lists; resolved ones are structs.
   defp channel_field(channel, key) when is_list(channel), do: Keyword.get(channel, key)
@@ -312,7 +324,7 @@ defmodule AshDispatch.UserPreference.Resource do
         %{tenant: tenant, event_id: event_id, category: category, user_ids: ids},
         authorize?: false
       )
-      |> Ash.read!(authorize?: false)
+      |> Ash.read!([authorize?: false] ++ tenant_opts(tenant))
 
     # Tenant defaults come back with every read; keep one copy of each row.
     merged = %{users: known, rows: Enum.uniq_by(cached.rows ++ rows, & &1.id)}
@@ -329,7 +341,7 @@ defmodule AshDispatch.UserPreference.Resource do
         do: Ash.Query.filter(query, is_nil(user_id)),
         else: Ash.Query.filter(query, is_nil(user_id) or user_id == ^user_id)
     end)
-    |> Ash.read!(authorize?: false)
+    |> Ash.read!([authorize?: false] ++ tenant_opts(tenant))
   end
 
   defp filter_eq(query, field, nil), do: Ash.Query.filter(query, is_nil(^Ash.Expr.ref(field)))

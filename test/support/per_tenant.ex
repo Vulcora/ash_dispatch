@@ -6,7 +6,10 @@ defmodule AshDispatch.Test.PerTenant.Repo do
   """
   use AshPostgres.Repo, otp_app: :ash_dispatch, warn_on_missing_ash_functions?: false
 
-  def installed_extensions, do: []
+  # The receipt's state machine validates its transitions as expressions, which
+  # Postgres raises through `ash_raise_error`. A host has these from
+  # `mix ash.codegen`; the fixture installs them in setup.
+  def installed_extensions, do: ["ash-functions"]
   def min_pg_version, do: %Version{major: 15, minor: 0, patch: 0}
 end
 
@@ -114,6 +117,9 @@ defmodule AshDispatch.Test.PerTenant.Meeting do
   dispatch do
     event :updated,
       trigger_on: :manual,
+      # Spelled out: the registry derives an event id from the resource name,
+      # and this fixture's modules answer with their own.
+      event_id: "pt_meeting.updated",
       module: AshDispatch.Test.PerTenant.MeetingUpdated,
       metadata: [category: :meetings],
       channels: [
@@ -123,6 +129,7 @@ defmodule AshDispatch.Test.PerTenant.Meeting do
 
     event :cancelled,
       trigger_on: :manual,
+      event_id: "pt_meeting.cancelled",
       module: AshDispatch.Test.PerTenant.MeetingCancelled,
       metadata: [category: :meetings, sensitive_content: true],
       channels: [
@@ -227,6 +234,8 @@ defmodule AshDispatch.Test.PerTenantCase do
       {PerTenant.Repo, url: System.fetch_env!("ASH_DISPATCH_TEST_DATABASE_URL"), pool_size: 4}
     )
 
+    AshDispatch.Test.Schema.install_ash_functions!(PerTenant.Repo)
+
     for tenant <- @tenants do
       AshDispatch.Test.Schema.create!(PerTenant.Repo, @per_tenant_resources, tenant)
     end
@@ -304,30 +313,47 @@ defmodule AshDispatch.Test.PerTenantCase do
   @doc "Sets a preference row inside a tenant."
   def put_preference!(tenant, attrs) do
     PerTenant.Preference
-    |> Ash.Changeset.for_create(:set, attrs)
+    |> Ash.Changeset.for_create(:set, Map.put(attrs, :tenant, tenant))
     |> Ash.Changeset.set_tenant(tenant)
     |> Ash.create!(authorize?: false)
   end
 
-  @doc "Creates a receipt directly, in a tenant — for the send-path tests."
+  @doc """
+  Creates a receipt directly, in a tenant — for the send-path tests.
+
+  `status:` is not an attribute the create action accepts (the state machine
+  owns it), so a receipt that has to start `:scheduled` is created and then
+  transitioned, which is what the transports do.
+  """
   def receipt!(tenant, attrs) do
-    PerTenant.Receipt
-    |> Ash.Changeset.for_create(
-      :create,
-      Map.merge(
-        %{
-          event_id: "pt_meeting.updated",
-          transport: :email,
-          audience: :user,
-          recipient: "someone@example.com",
-          subject: "Meeting",
-          body_text: "The meeting moved"
-        },
-        attrs
+    {status, attrs} = Map.pop(attrs, :status)
+
+    receipt =
+      PerTenant.Receipt
+      |> Ash.Changeset.for_create(
+        :create,
+        Map.merge(
+          %{
+            event_id: "pt_meeting.updated",
+            transport: :email,
+            audience: :user,
+            recipient: "someone@example.com",
+            subject: "Meeting",
+            body_text: "The meeting moved"
+          },
+          attrs
+        )
       )
-    )
-    |> Ash.Changeset.set_tenant(tenant)
-    |> Ash.create!(authorize?: false)
+      |> Ash.Changeset.set_tenant(tenant)
+      |> Ash.create!(authorize?: false)
+      |> AshDispatch.Tenancy.remember(tenant)
+
+    case status do
+      nil -> receipt
+      :pending -> receipt
+      :scheduled -> AshDispatch.ReceiptStatus.mark_scheduled(receipt)
+      other -> raise ArgumentError, "receipt!/2 cannot start a receipt in #{inspect(other)}"
+    end
   end
 
   @doc "Every email the fixture backend was given, oldest first."

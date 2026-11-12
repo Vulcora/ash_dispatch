@@ -20,7 +20,11 @@ defmodule AshDispatch.Changes.EnqueueRetryJob do
     do: changeset
 
   def change(changeset, _opts, _context) do
-    Ash.Changeset.after_action(changeset, fn _changeset, receipt ->
+    Ash.Changeset.after_action(changeset, fn changeset, receipt ->
+      # The action ran in a tenant; the receipt it produced has to remember
+      # that, or the job it enqueues cannot say which schema to read it from.
+      receipt = AshDispatch.Tenancy.remember(receipt, changeset.tenant)
+
       case enqueue_job(receipt) do
         {:ok, %{id: job_id}} when is_integer(job_id) ->
           Logger.info("EnqueueRetryJob: Created Oban job #{job_id} for receipt #{receipt.id}")
@@ -28,6 +32,7 @@ defmodule AshDispatch.Changes.EnqueueRetryJob do
           # Persist the new job ID to the database
           receipt
           |> Ash.Changeset.for_update(:update, %{oban_job_id: job_id}, authorize?: false)
+          |> AshDispatch.Tenancy.set(AshDispatch.Tenancy.of(receipt))
           |> Ash.update(authorize?: false)
 
         {:ok, _direct} ->

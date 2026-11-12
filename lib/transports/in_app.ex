@@ -41,6 +41,8 @@ defmodule AshDispatch.Transports.InApp do
 
   alias AshDispatch.Config
   alias AshDispatch.Delivery
+  alias AshDispatch.ReceiptStatus
+  alias AshDispatch.Tenancy
 
   alias AshDispatch.Transports.Preferences
 
@@ -108,7 +110,7 @@ defmodule AshDispatch.Transports.InApp do
     # re-creating here would insert a second notification under a different
     # key. Settle the receipt instead.
     receipt
-    |> Ash.Changeset.for_update(:mark_sent, %{})
+    |> Tenancy.changeset_for_update(:mark_sent, %{})
     |> Ash.update(authorize?: false)
 
     :ok
@@ -149,6 +151,10 @@ defmodule AshDispatch.Transports.InApp do
 
       notification_resource = Config.notification_resource()
 
+      # The retry runs from the receipt alone, so the tenant comes from the
+      # receipt: the notification belongs in the same schema the receipt is in.
+      tenant = Tenancy.of(receipt)
+
       # `authorize?: false`: the transport is system-internal. It runs in the
       # dispatch chain without an end user as actor, and the notification is
       # created FOR the recipient — not BY them. `Notification.Base` forbids
@@ -158,6 +164,7 @@ defmodule AshDispatch.Transports.InApp do
            |> Ash.Changeset.for_create(:create, notification_attrs,
              skip_unknown_inputs: [:category, :tenant]
            )
+           |> Tenancy.set(tenant)
            |> Ash.create(authorize?: false) do
         {:ok, notification} ->
           # Broadcast and mark receipt as sent
@@ -165,7 +172,7 @@ defmodule AshDispatch.Transports.InApp do
           broadcast_notification(notification, invalidates)
 
           receipt
-          |> Ash.Changeset.for_update(:mark_sent, %{notification_id: notification.id})
+          |> Tenancy.changeset_for_update(:mark_sent, %{notification_id: notification.id})
           |> Ash.update(authorize?: false)
 
           :ok
@@ -179,7 +186,7 @@ defmodule AshDispatch.Transports.InApp do
             )
 
             receipt
-            |> Ash.Changeset.for_update(:mark_sent, %{})
+            |> Tenancy.changeset_for_update(:mark_sent, %{})
             |> Ash.update(authorize?: false)
 
             :ok
@@ -245,7 +252,17 @@ defmodule AshDispatch.Transports.InApp do
         # create/update/destroy, so this must bypass policies.
         notification_resource = Config.notification_resource()
 
-        case create_notification(notification_resource, notification_attrs, idempotency_key) do
+        # The notification belongs in the schema the receipt is in — which on
+        # this path is the dispatch's tenant, and on a retry is whatever the
+        # receipt remembers.
+        tenant = Tenancy.tenant_for(receipt, context)
+
+        case create_notification(
+               notification_resource,
+               notification_attrs,
+               idempotency_key,
+               tenant
+             ) do
           {:ok, notification} ->
             Logger.debug("""
             Created in-app notification:
@@ -281,30 +298,30 @@ defmodule AshDispatch.Transports.InApp do
   # Update receipt with notification_id and mark as sent
   defp update_receipt_with_notification(receipt, result) do
     case result do
+      # `mark_sent` here sets the notification link, not a provider response —
+      # in-app has no provider — so the changeset is built directly rather than
+      # through `ReceiptStatus.mark_sent/2`, which reads its argument as one.
       {:ok, %{id: notification_id}} ->
         receipt
-        |> Ash.Changeset.for_update(:mark_sent, %{notification_id: notification_id})
+        |> Tenancy.changeset_for_update(:mark_sent, %{notification_id: notification_id})
         |> Ash.update!(authorize?: false)
 
       {:ok, :already_exists} ->
         # Idempotency conflict — notification exists but we couldn't look it up.
         # Mark as sent without linking notification_id.
         receipt
-        |> Ash.Changeset.for_update(:mark_sent, %{})
+        |> Tenancy.changeset_for_update(:mark_sent, %{})
         |> Ash.update!(authorize?: false)
 
       {:error, :no_user_id} ->
         # Skip receipts for external recipients without user_ids
-        receipt
-        |> Ash.Changeset.for_update(:skip, %{
-          error_message: "In-app notifications require user_id (external recipient)"
-        })
-        |> Ash.update!(authorize?: false)
+        ReceiptStatus.mark_skipped(
+          receipt,
+          "In-app notifications require user_id (external recipient)"
+        )
 
       {:error, reason} ->
-        receipt
-        |> Ash.Changeset.for_update(:mark_failed, %{error_message: inspect(reason)})
-        |> Ash.update!(authorize?: false)
+        ReceiptStatus.mark_failed(receipt, inspect(reason))
     end
   end
 
@@ -425,33 +442,39 @@ defmodule AshDispatch.Transports.InApp do
   # re-run forever.
   #
   # So: look first, and still treat a raised conflict as the conflict it is.
-  defp create_notification(notification_resource, attrs, idempotency_key) do
-    case find_by_idempotency_key(notification_resource, idempotency_key) do
+  defp create_notification(notification_resource, attrs, idempotency_key, tenant) do
+    case find_by_idempotency_key(notification_resource, idempotency_key, tenant) do
       {:ok, existing} ->
         {:already_exists, existing}
 
       _ ->
-        insert_notification(notification_resource, attrs, idempotency_key)
+        insert_notification(notification_resource, attrs, idempotency_key, tenant)
     end
   end
 
-  defp insert_notification(notification_resource, attrs, idempotency_key) do
+  defp insert_notification(notification_resource, attrs, idempotency_key, tenant) do
     # `category` and `tenant` arrived in 0.9.0: a notification resource that
-    # does not have them yet still creates, without them.
+    # does not have them yet still creates, without them. The `tenant` ATTRIBUTE
+    # and the tenant this is written in are different things, and a per-tenant
+    # notification resource has only the second.
     notification_resource
     |> Ash.Changeset.for_create(:create, attrs, skip_unknown_inputs: [:category, :tenant])
+    |> Tenancy.set(tenant)
     |> Ash.create(authorize?: false)
     |> case do
-      {:ok, notification} -> {:ok, notification}
-      {:error, error} -> classify_create_error(notification_resource, error, idempotency_key)
+      {:ok, notification} ->
+        {:ok, notification}
+
+      {:error, error} ->
+        classify_create_error(notification_resource, error, idempotency_key, tenant)
     end
   rescue
-    error -> classify_create_error(notification_resource, error, idempotency_key)
+    error -> classify_create_error(notification_resource, error, idempotency_key, tenant)
   end
 
-  defp classify_create_error(notification_resource, error, idempotency_key) do
+  defp classify_create_error(notification_resource, error, idempotency_key, tenant) do
     if idempotency_conflict?(error) do
-      case find_by_idempotency_key(notification_resource, idempotency_key) do
+      case find_by_idempotency_key(notification_resource, idempotency_key, tenant) do
         {:ok, existing} -> {:already_exists, existing}
         _ -> {:already_exists, :already_exists}
       end
@@ -460,14 +483,16 @@ defmodule AshDispatch.Transports.InApp do
     end
   end
 
-  # Look up an existing notification by idempotency key
-  defp find_by_idempotency_key(notification_resource, key) do
+  # Look up an existing notification by idempotency key. Per tenant: the same
+  # key may legitimately exist in another tenant's schema, and finding that one
+  # would skip a delivery this tenant never had.
+  defp find_by_idempotency_key(notification_resource, key, tenant) do
     require Ash.Query
 
     notification_resource
     |> Ash.Query.filter(idempotency_key == ^key)
     |> Ash.Query.limit(1)
-    |> Ash.read(authorize?: false)
+    |> Ash.read([authorize?: false] ++ Tenancy.opts(notification_resource, tenant))
     |> case do
       {:ok, [notification]} -> {:ok, notification}
       _ -> {:error, :not_found}

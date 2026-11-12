@@ -62,10 +62,7 @@ defmodule AshDispatch.Transports.Push do
       {nil, _verdict} ->
         Logger.info("Push transport not yet implemented (no :push_backend configured), skipping")
 
-        receipt
-        |> Ash.Changeset.for_update(:skip, %{error_message: "transport_not_implemented"})
-        |> Ash.update!(authorize?: false)
-        |> then(&{:ok, &1})
+        {:ok, AshDispatch.ReceiptStatus.mark_skipped(receipt, "transport_not_implemented")}
 
       # Push delivers synchronously, so this is the moment of sending: a host
       # on `:blocked`, `:dry_run` or an allow-list never reaches the backend.

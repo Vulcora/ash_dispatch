@@ -55,6 +55,8 @@ defmodule AshDispatch.Transports.SMS do
 
   require Logger
 
+  alias AshDispatch.ReceiptStatus
+  alias AshDispatch.Tenancy
   alias AshDispatch.Transports.Email
   alias AshDispatch.Transports.Preferences
 
@@ -71,10 +73,7 @@ defmodule AshDispatch.Transports.SMS do
       nil ->
         Logger.info("SMS transport not yet implemented (no :sms_backend configured), skipping")
 
-        receipt
-        |> Ash.Changeset.for_update(:skip, %{error_message: "transport_not_implemented"})
-        |> Ash.update!(authorize?: false)
-        |> then(&{:ok, &1})
+        {:ok, ReceiptStatus.mark_skipped(receipt, "transport_not_implemented")}
 
       _backend ->
         result = enqueue(receipt, channel)
@@ -96,9 +95,9 @@ defmodule AshDispatch.Transports.SMS do
     # that is the point: a retry must never be able to send anything other than
     # what was frozen at creation.
     changeset =
-      AshDispatch.Workers.SendSMS.new(%{"receipt_id" => receipt.id},
-        schedule_in: Email.schedule_seconds(channel)
-      )
+      %{"receipt_id" => receipt.id}
+      |> put_tenant(Tenancy.of(receipt))
+      |> AshDispatch.Workers.SendSMS.new(schedule_in: Email.schedule_seconds(channel))
 
     case Oban.insert(changeset) do
       {:ok, job} ->
@@ -111,14 +110,22 @@ defmodule AshDispatch.Transports.SMS do
     end
   end
 
+  # The worker reads the receipt by id, so it needs to know which schema to
+  # read it from. Absent for a host without tenants, as before.
+  defp put_tenant(args, nil), do: args
+  defp put_tenant(args, tenant), do: Map.put(args, "tenant", Tenancy.key(tenant))
+
   defp update_receipt_with_job(receipt, {:ok, job}) do
     # Re-read: under Oban's inline mode the worker has already finished and the
-    # receipt is no longer :pending.
-    case Ash.get(receipt.__struct__, receipt.id, authorize?: false) do
+    # receipt is no longer :pending. In its own tenant.
+    resource = receipt.__struct__
+    tenant = Tenancy.of(receipt)
+
+    case Ash.get(resource, receipt.id, [authorize?: false] ++ Tenancy.opts(resource, tenant)) do
       {:ok, %{status: :pending} = current} ->
         current
-        |> Ash.Changeset.for_update(:schedule, %{oban_job_id: job.id})
-        |> Ash.update!(authorize?: false)
+        |> Tenancy.remember(tenant)
+        |> ReceiptStatus.mark_scheduled(oban_job_id: job.id)
 
       {:ok, current} ->
         Logger.debug(
@@ -133,8 +140,6 @@ defmodule AshDispatch.Transports.SMS do
   end
 
   defp update_receipt_with_job(receipt, {:error, reason}) do
-    receipt
-    |> Ash.Changeset.for_update(:mark_failed, %{error_message: inspect(reason)})
-    |> Ash.update!(authorize?: false)
+    ReceiptStatus.mark_failed(receipt, inspect(reason))
   end
 end

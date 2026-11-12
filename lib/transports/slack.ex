@@ -115,20 +115,19 @@ defmodule AshDispatch.Transports.Slack do
       payload = build_slack_payload(receipt.content, context)
 
       # Enqueue webhook worker
-      job_args = %{
-        receipt_id: receipt.id,
-        webhook_url: webhook_url,
-        payload: payload,
-        headers: %{"Content-Type" => "application/json"}
-      }
+      job_args =
+        %{
+          "receipt_id" => receipt.id,
+          "webhook_url" => webhook_url,
+          "payload" => payload,
+          "headers" => %{"Content-Type" => "application/json"}
+        }
+        |> put_tenant(AshDispatch.Tenancy.of(receipt))
 
       case SendWebhook.new(job_args) |> Oban.insert() do
         {:ok, _job} ->
-          # Mark receipt as scheduled
-          updated_receipt =
-            receipt
-            |> Ash.Changeset.for_update(:schedule, %{})
-            |> Ash.update!(authorize?: false)
+          # Mark receipt as scheduled, in its own tenant
+          updated_receipt = AshDispatch.ReceiptStatus.mark_scheduled(receipt)
 
           Logger.info("Slack webhook job enqueued for receipt #{receipt.id}")
           {:ok, updated_receipt}
@@ -138,11 +137,10 @@ defmodule AshDispatch.Transports.Slack do
           Logger.error("Failed to enqueue Slack webhook job: #{inspect(reason)}")
 
           updated_receipt =
-            receipt
-            |> Ash.Changeset.for_update(:mark_failed, %{
-              error_message: "Failed to enqueue: #{inspect(reason)}"
-            })
-            |> Ash.update!(authorize?: false)
+            AshDispatch.ReceiptStatus.mark_failed(
+              receipt,
+              "Failed to enqueue: #{inspect(reason)}"
+            )
 
           {:ok, updated_receipt}
       end
@@ -151,17 +149,17 @@ defmodule AshDispatch.Transports.Slack do
       Logger.warning("Slack transport missing webhook_url for receipt #{receipt.id}, skipping")
 
       updated_receipt =
-        receipt
-        |> Ash.Changeset.for_update(:skip, %{
-          error_message: "No webhook_url configured"
-        })
-        |> Ash.update!(authorize?: false)
+        AshDispatch.ReceiptStatus.mark_skipped(receipt, "No webhook_url configured")
 
       {:ok, updated_receipt}
     end
   end
 
   # Private helpers
+
+  # The worker reads the receipt by id, so the job says which schema it is in.
+  defp put_tenant(args, nil), do: args
+  defp put_tenant(args, tenant), do: Map.put(args, "tenant", AshDispatch.Tenancy.key(tenant))
 
   defp get_webhook_url(%Channel{webhook_url: url}) when is_binary(url), do: url
 

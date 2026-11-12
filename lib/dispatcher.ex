@@ -34,6 +34,7 @@ defmodule AshDispatch.Dispatcher do
   alias AshDispatch.EligibleRecipient
   alias AshDispatch.EventResolver
   alias AshDispatch.Gate
+  alias AshDispatch.Tenancy
   alias AshDispatch.Naming
   alias AshDispatch.Event.RecipientExtractor
   alias AshDispatch.Helpers.RecordReader
@@ -389,20 +390,50 @@ defmodule AshDispatch.Dispatcher do
   - `{:error, reason}` - If dispatch fails
   """
   def dispatch_channel(context, channel, event_config) do
-    if channel_should_send?(context, channel, event_config) do
-      do_dispatch_channel(
-        context,
-        channel,
-        event_config,
-        gate_hold(context, channel, event_config)
-      )
-    else
-      Logger.debug(
-        "Dispatch skipped by should_send?/2: #{context.event_id} (#{channel.transport}/#{channel.audience})"
-      )
+    cond do
+      not channel_should_send?(context, channel, event_config) ->
+        should_send_skip(context, channel)
 
-      {:ok, :skipped_should_send}
+      # Receipts live in one schema per tenant and this dispatch does not know
+      # which. Asked once per channel, and refused rather than written to
+      # `public`: a receipt in the wrong schema is worse than no receipt,
+      # because it looks like one.
+      tenant_missing?(context, channel) ->
+        Logger.error("""
+        AshDispatch: this dispatch has no tenant, and #{inspect(Config.delivery_receipt_resource())}
+        stores receipts per tenant. Nothing was sent.
+
+        Event: #{context.event_id} (#{channel.transport}/#{channel.audience})
+
+        Pass `tenant:` to `Dispatcher.dispatch/4`, or run the action that triggers
+        the event with a tenant. An event that genuinely has no tenant needs
+        receipts that are not per tenant (see AshDispatch.Tenancy).
+        """)
+
+        {:error, :tenant_required}
+
+      true ->
+        do_dispatch_channel(
+          context,
+          channel,
+          event_config,
+          gate_hold(context, channel, event_config)
+        )
     end
+  end
+
+  defp tenant_missing?(context, channel) do
+    is_nil(Map.get(context, :tenant)) and
+      not skip_receipt_for_transport?(channel.transport) and
+      Tenancy.receipts_per_tenant?()
+  end
+
+  defp should_send_skip(context, channel) do
+    Logger.debug(
+      "Dispatch skipped by should_send?/2: #{context.event_id} (#{channel.transport}/#{channel.audience})"
+    )
+
+    {:ok, :skipped_should_send}
   end
 
   # The event's gate (`AshDispatch.Gate`), asked once per channel. A closed
@@ -842,20 +873,30 @@ defmodule AshDispatch.Dispatcher do
         # This enables skip_if_read policy and provides useful linking for analytics
         notification_id =
           if channel.transport == :email and attrs.user_id do
-            find_in_app_notification_id(context.event_id, attrs.user_id)
+            find_in_app_notification_id(context.event_id, attrs.user_id, context.tenant)
           else
             nil
           end
 
         # Create DeliveryReceipt
         # Use authorize?: false and skip_unknown_inputs to work within transaction context
-        # `actor_id` arrived in 0.9.0: a receipt resource of its own that has
-        # no such attribute still creates, without it.
-        Config.delivery_receipt_resource()
+        # `actor_id` arrived in 0.9.0 and `tenant` in 0.9.4 (`tenant_column:
+        # true`): a receipt resource of its own that has neither attribute
+        # still creates, without them.
+        resource = Config.delivery_receipt_resource()
+
+        resource
         |> Ash.Changeset.for_create(:create, Map.put(attrs, :notification_id, notification_id),
-          skip_unknown_inputs: [:notification_id, :actor_id]
+          skip_unknown_inputs: [:notification_id, :actor_id, :tenant]
         )
+        |> Tenancy.set(context.tenant)
         |> Ash.create(authorize?: false)
+        |> case do
+          # The receipt remembers which schema it was written to, so every
+          # transition that follows lands in the same one without being told.
+          {:ok, receipt} -> {:ok, Tenancy.remember(receipt, context.tenant)}
+          other -> other
+        end
     end
   end
 
@@ -915,7 +956,12 @@ defmodule AshDispatch.Dispatcher do
       actor_id: extract_user_id_from_recipient(context.actor || context.user),
       source_type: source_type,
       source_id: source_id,
-      locale: locale
+      locale: locale,
+      # For a receipt resource built with `tenant_column: true`: which tenant
+      # this receipt was for, in one table. Dropped by `skip_unknown_inputs`
+      # for a resource without the column, which includes every per-tenant
+      # receipt — there the schema already says it.
+      tenant: Context.tenant_key(context.tenant)
       # Note: scheduled_for removed - Oban handles scheduling via schedule_in parameter
     }
 
@@ -1151,17 +1197,22 @@ defmodule AshDispatch.Dispatcher do
     EventResolver.data_key(module) || context.resource_key
   end
 
-  # Find the in-app notification ID for skip_if_read policy
-  defp find_in_app_notification_id(event_id, user_id) do
+  # Find the in-app notification ID for skip_if_read policy. In the dispatch's
+  # own tenant: the in-app receipt it is looking for is in the same schema as
+  # the email receipt being created, and a read of another tenant's would be a
+  # link to a notification this recipient cannot see.
+  defp find_in_app_notification_id(event_id, user_id, tenant) do
     require Ash.Query
 
-    case Config.delivery_receipt_resource()
+    resource = Config.delivery_receipt_resource()
+
+    case resource
          |> Ash.Query.filter(
            event_id == ^event_id and user_id == ^user_id and transport == :in_app
          )
          |> Ash.Query.select([:notification_id])
          |> Ash.Query.limit(1)
-         |> Ash.read(authorize?: false) do
+         |> Ash.read([authorize?: false] ++ Tenancy.opts(resource, tenant)) do
       {:ok, [receipt | _]} -> receipt.notification_id
       _ -> nil
     end
@@ -1883,11 +1934,7 @@ defmodule AshDispatch.Dispatcher do
       :error ->
         Logger.warning("Unknown transport: #{channel.transport}, skipping delivery")
 
-        receipt
-        |> Ash.Changeset.for_update(:skip, %{
-          error_message: "Unknown transport: #{channel.transport}"
-        })
-        |> Ash.update(authorize?: false)
+        AshDispatch.ReceiptStatus.skip(receipt, "Unknown transport: #{channel.transport}")
     end
   end
 
@@ -2019,7 +2066,14 @@ defmodule AshDispatch.Dispatcher do
             context
 
           domain ->
-            case Ash.load(record, load, domain: domain, authorize?: false) do
+            # In the dispatch's tenant when the host's own record is per
+            # tenant: a relationship loaded from the wrong schema is either
+            # empty or somebody else's.
+            load_opts =
+              [domain: domain, authorize?: false] ++
+                Tenancy.opts(record.__struct__, context.tenant)
+
+            case Ash.load(record, load, load_opts) do
               {:ok, loaded_record} ->
                 # Update context with loaded record
                 updated_data = Map.put(context.data, resource_key, loaded_record)

@@ -138,10 +138,14 @@ defmodule AshDispatch.Workers.SendEmail do
 
     Logger.info("Processing email job for receipt #{receipt_id}")
 
-    # Fetch receipt (bypass authorization - workers run as system)
-    case Config.delivery_receipt_resource() |> Ash.get(receipt_id, authorize?: false) do
+    # Fetch receipt (bypass authorization - workers run as system), in the
+    # tenant the job names.
+    case AshDispatch.Tenancy.Job.receipt(args) do
       {:ok, receipt} ->
         process_email(receipt, args, job.attempt)
+
+      {:cancel, reason} ->
+        {:cancel, reason}
 
       {:error, error} ->
         Logger.error("Failed to fetch receipt #{receipt_id}: #{inspect(error)}")
@@ -155,8 +159,9 @@ defmodule AshDispatch.Workers.SendEmail do
   # exist only in that job's args — without this, every retried email
   # silently loses its attachments (broken inline images included).
   def new_for_receipt(receipt) do
-    %{receipt_id: receipt.id}
+    %{"receipt_id" => receipt.id}
     |> maybe_put_original_attachments(receipt)
+    |> AshDispatch.Tenancy.Job.put_tenant(receipt)
     |> new()
   end
 
@@ -164,7 +169,7 @@ defmodule AshDispatch.Workers.SendEmail do
     case Config.repo().get(Oban.Job, job_id) do
       %Oban.Job{args: %{"attachments" => attachments}}
       when is_list(attachments) and attachments != [] ->
-        Map.put(args, :attachments, attachments)
+        Map.put(args, "attachments", attachments)
 
       _ ->
         args

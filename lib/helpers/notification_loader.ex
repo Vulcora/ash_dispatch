@@ -42,6 +42,8 @@ defmodule AshDispatch.Helpers.NotificationLoader do
 
   - `:limit` - Number of notifications to load (default: 50)
   - `:serializer` - Custom serialization function (default: built-in serializer)
+  - `:tenant` - the tenant to read in. Required when the notification resource
+    is per tenant (`multitenancy: :context`), ignored otherwise. Since 0.9.4
 
   ## Examples
 
@@ -60,12 +62,13 @@ defmodule AshDispatch.Helpers.NotificationLoader do
   def load_recent(user_id, opts \\ []) do
     limit = Keyword.get(opts, :limit, 50)
     serializer = Keyword.get(opts, :serializer)
+    resource = Config.notification_resource()
 
-    Config.notification_resource()
+    resource
     |> Ash.Query.filter(user_id == ^user_id)
     |> Ash.Query.sort(inserted_at: :desc)
     |> Ash.Query.limit(limit)
-    |> Ash.read(authorize?: false)
+    |> Ash.read([authorize?: false] ++ tenant_opts(opts))
     |> case do
       {:ok, notifications} ->
         Enum.map(notifications, fn notification ->
@@ -134,16 +137,27 @@ defmodule AshDispatch.Helpers.NotificationLoader do
   """
   def mark_as_read(notification_id, opts \\ []) do
     actor = Keyword.get(opts, :actor)
+    tenant = Keyword.get(opts, :tenant)
+    read_opts = [actor: actor] ++ tenant_opts(opts)
 
     with {:ok, notification} <-
            Config.notification_resource()
-           |> Ash.get(notification_id, actor: actor),
+           |> Ash.get(notification_id, read_opts),
          {:ok, updated} <-
            notification
            |> Ash.Changeset.for_update(:mark_as_read, %{}, actor: actor)
+           |> AshDispatch.Tenancy.set(tenant)
            |> Ash.update() do
       {:ok, updated}
     end
+  end
+
+  # `:tenant` means two things, and which one is the resource's business: for a
+  # notification resource built with `multitenancy: :context` it is the schema;
+  # for one in the public schema it is the `tenant` column, which the actions
+  # filter on through an argument. A host passes it once either way.
+  defp tenant_opts(opts) do
+    AshDispatch.Tenancy.opts(Config.notification_resource(), Keyword.get(opts, :tenant))
   end
 
   @doc """
@@ -182,7 +196,7 @@ defmodule AshDispatch.Helpers.NotificationLoader do
         |> Ash.ActionInput.for_action(
           :mark_all_as_read,
           %{user_id: user_id, tenant: AshDispatch.Context.tenant_key(tenant)},
-          action_opts(opts)
+          action_opts(opts) ++ tenant_opts(opts)
         )
         |> Ash.run_action()
     end
@@ -210,7 +224,7 @@ defmodule AshDispatch.Helpers.NotificationLoader do
       end
 
     Config.notification_resource()
-    |> Ash.ActionInput.for_action(:unread_count, input, action_opts(opts))
+    |> Ash.ActionInput.for_action(:unread_count, input, action_opts(opts) ++ tenant_opts(opts))
     |> Ash.run_action()
   end
 
