@@ -7,7 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.9.1] - Unreleased
+## [0.9.2] - 2026-11-12
+
+### Changed
+
+- **Recipients are masked in the log, and subjects are no longer logged.** The
+  Swoosh backend wrote the full address and the subject line at info on every
+  send; the dispatcher, the in-app transport and the workers wrote recipients
+  and provider errors that quote the address back; the Resend handler wrote a
+  whole webhook payload when it could not read one. A recipient is now written
+  as `a***@example.com` or `***4567`, errors have addresses masked inside them,
+  and a payload is logged by its shape only. New setting
+  `config :ash_dispatch, log_recipients: :redacted | :none | :full`; `:full`
+  restores the old lines for local development. Search the log by receipt id,
+  which every delivery line carries. See `AshDispatch.Log`.
+
+### Removed
+
+- `priv/native/cl44_nif.so`, a compiled binary that was committed by mistake.
+  Nothing loaded it and it was never part of the Hex package, but it came
+  along with a git dependency.
+
+### Fixed
+
+- The installer asked for `oban ~> 2.0`; the library needs `~> 2.12`.
+- The installer's closing notice now shows the Oban queues and the two
+  scheduled workers to add. They were left out, and a host without them never
+  retries a failed delivery and never empties a sensitive body - silently.
+  The installer still does not write this configuration itself.
+- The documentation's module groups listed three modules that do not exist.
+- The changelog called published versions "Unreleased".
+
+### Fixed (delivery)
+
+- **An email whose job was interrupted is sent when the job runs again.** The
+  worker marks the receipt `:sending` before it calls the backend. If the job
+  then stopped without a result - the node went down, or the job was killed
+  and Oban's lifeline put it back - the next run found the receipt in
+  `:sending`, could not move it to `:sending` again, read that as "another job
+  has this" and completed successfully. Nothing was sent, no error was logged
+  above info, and the receipt stayed in `:sending` for good. The worker now
+  looks at the job's attempt: a receipt in `:sending` on a second or later
+  attempt is this job's own unfinished work, and is sent. On a first attempt it
+  still belongs to another job and is left alone. No resource or migration
+  changes. An email can now be sent twice if the earlier attempt reached the
+  provider but died before recording it; that is the price of not losing it.
+
+## [0.9.1] - 2026-11-06
 
 The release of 0.9.0. The library code is unchanged from 0.9.0, which never
 reached Hex: its publish run stopped on two tests that failed depending on
@@ -23,7 +69,7 @@ timing. Read the 0.9.0 entry below for what the release contains.
   `AshDispatch.Test.Ets.stop/1` waits for the owner to exit (a monitor, not
   a sleep), and the inbox, meeting and actor/tenant fixtures use it.
 
-## [0.9.0] - Unreleased
+## [0.9.0] - never published; released as 0.9.1
 
 A notification centre and per-person preferences in the library: who acted,
 what a person wants, what a tenant defaults to, what can never be switched
@@ -132,7 +178,7 @@ CI's floor job runs on 1.17.
 - The dependency round BACKLOG 9 meant the Elixir floor to travel with: the
   floor is raised, the library update pass is still open.
 
-## [0.8.8] - Unreleased
+## [0.8.8] - 2026-11-06
 
 Fixes and opt-in additions only: no migration, and an app on `~> 0.8.7`
 reaches the same people as before unless it turns something on.
