@@ -32,7 +32,9 @@ defmodule AshDispatch.Setup do
   - `:repo` - (required) Ecto repo module
   - `:notification_resource` - (required) your Notification resource
   - `:user_resource` - adds a `belongs_to :user` relationship
-  - `:table`, `:notifiers` - as for `AshDispatch.Resources.DeliveryReceipt.Base`
+  - `:table`, `:notifiers`, `:primary_key`, `:multitenancy`, `:tenant_column` -
+    passed through to `AshDispatch.Resources.DeliveryReceipt.Base`, and mean
+    there what they mean there
   - `:extensions` - Ash extensions to add. Defaults to `[AshTypescript.Resource]`
     when ash_typescript is installed and `[]` otherwise. With
     `AshTypescript.Resource` the receipt's TypeScript type is `"DeliveryReceipt"`.

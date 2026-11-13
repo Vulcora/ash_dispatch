@@ -47,6 +47,10 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
   - `:tenant_column` - `true` adds a nullable `tenant` column (since 0.9.4),
     for a host that keeps receipts in the public schema and still wants to know
     which tenant a receipt was for.
+  - `:primary_key` - `:uuid` (the default, unchanged) or `:uuid_v7`. The v7
+    key's migration default is `uuid_generate_v7()`, which your database must
+    have; `:uuid` uses `gen_random_uuid()`, which is built in. See
+    `AshDispatch.Resources.PrimaryKey` and the Tenancy guide (since 0.9.4-rc.2).
 
   ## Per-tenant receipts (0.9.4)
 
@@ -98,6 +102,12 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
     multitenancy_block = AshDispatch.Tenancy.Base.block(Keyword.get(opts, :multitenancy))
     tenant_column? = Keyword.get(opts, :tenant_column, false) == true
     tenant_attribute = AshDispatch.Tenancy.Base.attribute(tenant_column?)
+
+    # 0.9.4-rc.2; see `AshDispatch.Resources.PrimaryKey`. Absent, `:uuid`,
+    # which is what this base has emitted since it existed — unlike the
+    # notification and preference bases, which are on `:uuid_v7`.
+    primary_key =
+      AshDispatch.Resources.PrimaryKey.attribute(:uuid, Keyword.get(opts, :primary_key))
 
     create_accept =
       [
@@ -208,7 +218,7 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
 
       # All attributes
       attributes do
-        uuid_primary_key :id
+        unquote(primary_key)
 
         attribute :event_id, :string, allow_nil?: false, public?: true
 
