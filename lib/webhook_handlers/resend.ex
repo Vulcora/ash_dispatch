@@ -41,8 +41,12 @@ defmodule AshDispatch.WebhookHandlers.Resend do
             {:error, :not_found} ->
               json(conn, %{status: "ok", message: "receipt not found"})
 
-            {:error, reason} ->
-              json(conn, %{status: "error", message: inspect(reason)})
+            {:error, _reason} ->
+              # Deliberately not `inspect(reason)`: the endpoint is
+              # unauthenticated unless you put `verify/3` in front of it, and
+              # the reason distinguishes payloads a stranger can send. It is
+              # in your log, where it belongs.
+              json(conn, %{status: "error"})
           end
         end
       end
@@ -189,7 +193,10 @@ defmodule AshDispatch.WebhookHandlers.Resend do
          Resend.process_webhook(params, tenant: conn.params["tenant"])
 
      Nothing depends on what the provider echoes back, so it works for every
-     provider. This is the recommended setup.
+     provider. This is the recommended setup, and it needs
+     `config :ash_dispatch, tenants:` like the others: a path segment is a
+     value from outside, and with per-tenant receipts it is a Postgres schema
+     name. Without that configuration this path is refused, not trusted.
   2. **A provider tag.** With `config :ash_dispatch, webhook_tenant_tag: true`
      the outgoing message carries an `X-AshDispatch-Tenant` header, and this
      function will read it back out of the payload. Only switch it on behind
@@ -200,21 +207,24 @@ defmodule AshDispatch.WebhookHandlers.Resend do
      unchanged.
 
   Whichever it is, the tenant is held against `AshDispatch.Tenants` before any
-  query, and the receipt is then looked up **inside** that tenant. A webhook
-  that names a tenant its receipt was not sent from therefore finds nothing:
-  the id exists in one schema only. Nothing is fanned out across schemas
-  looking for it - that would turn one indexed read into one per tenant, in the
-  one place in the library an outsider can trigger work.
+  query — a route param too, since 0.9.4-rc.1 — and the receipt is then looked
+  up **inside** that tenant. A webhook that names a tenant its receipt was not
+  sent from therefore finds nothing: the id exists in one schema only. Nothing
+  is fanned out across schemas looking for it - that would turn one indexed
+  read into one per tenant, in the one place in the library an outsider can
+  trigger work.
 
   ## Returns
 
   - `{:ok, receipt}` - Successfully processed webhook
-  - `{:error, :not_found}` - Delivery receipt not found for email_id
+  - `{:error, :not_found}` - Nothing was updated: no receipt has that
+    `email_id` in the tenant this request is about, **or** the request named a
+    tenant this host does not recognise or cannot check. One answer for both
+    on purpose — telling them apart turns an unauthenticated POST into a
+    tenant-existence oracle, and a tenant is a Postgres schema name, which is
+    to say a customer's. Your log keeps the distinction
   - `{:error, :missing_email_id}` - Webhook missing email_id field
   - `{:error, :invalid_format}` - Webhook payload invalid
-  - `{:error, :unknown_tenant}` - The request named a tenant this host does not
-    recognise, or carried a tag that cannot be checked. Nothing was read
-  - `{:error, reason}` - Other error
   """
   def process_webhook(params, opts \\ [])
 
@@ -231,6 +241,14 @@ defmodule AshDispatch.WebhookHandlers.Resend do
       false ->
         Logger.warning("Resend webhook missing email_id (type: #{inspect(params["type"])})")
         {:error, :missing_email_id}
+
+      # A refused tenant answers exactly what an unknown message id answers.
+      # The two used to differ, so an unauthenticated POST per candidate name
+      # enumerated the host's schemas — its customers — and the controller
+      # example in this module's own docs handed `inspect(reason)` back in the
+      # response body. The log still says which it was.
+      {:error, :unknown_tenant} ->
+        {:error, :not_found}
 
       {:error, reason} ->
         {:error, reason}
@@ -266,13 +284,13 @@ defmodule AshDispatch.WebhookHandlers.Resend do
     end
   end
 
-  # Which tenant this request may read. An explicit `:tenant` comes from the
-  # host's own router and is checked only against a typo; a tag out of the
-  # payload comes from outside and is refused unless the host can confirm it.
+  # Which tenant this request may read. Both sources come from outside: a tag
+  # is whatever the provider echoed, and a route param is whatever was in the
+  # URL. Neither reaches a query unchecked.
   defp tenant_for(data, opts) do
     case Keyword.get(opts, :tenant) do
       nil -> payload_tenant(data)
-      tenant -> check(tenant, allow_unchecked?: true)
+      tenant -> route_tenant(tenant)
     end
   end
 
@@ -287,30 +305,55 @@ defmodule AshDispatch.WebhookHandlers.Resend do
     end
   end
 
+  # A path segment comes from outside too. 0.9.4-rc.0 passed
+  # `allow_unchecked?: true` here, so with `:tenants` absent — and the guide
+  # presents this as the recommended setup without ever saying it needs
+  # `:tenants` — the string in `POST /webhooks/resend/:tenant` went straight
+  # into the `tenant:` option of a read, which is to say into a Postgres
+  # `prefix:`, with no check and not even the warning the rest of the release
+  # writes.
+  #
+  # Unchecked is allowed only where the value cannot choose a schema: a host
+  # whose receipts are in the public schema, where `:tenant` means the column.
+  defp route_tenant(tenant) do
+    if AshDispatch.Tenancy.receipts_per_tenant?() do
+      check(tenant, allow_unchecked?: false)
+    else
+      check(tenant, allow_unchecked?: true)
+    end
+  end
+
   defp check(tenant, opts) do
     case AshDispatch.Tenants.check(tenant) do
       :ok ->
         {:ok, tenant}
 
       {:error, :not_configured} ->
+        AshDispatch.Tenants.warn_if_missing("A provider webhook names a tenant")
+
         if Keyword.fetch!(opts, :allow_unchecked?) do
           {:ok, tenant}
         else
-          Logger.error(
-            "Resend webhook: the payload names tenant #{inspect(tenant)} and :tenants is not " <>
-              "configured, so it cannot be checked. Refusing to read it."
+          refuse(
+            :not_configured,
+            "Resend webhook: a request named a tenant and :tenants is not configured, so it " <>
+              "cannot be checked. Refusing to read it. See AshDispatch.Tenants."
           )
-
-          {:error, :unknown_tenant}
         end
 
       {:error, :unknown_tenant} ->
-        Logger.error(
-          "Resend webhook: refusing tenant #{inspect(tenant)} — this host does not recognise it."
-        )
-
-        {:error, :unknown_tenant}
+        refuse(:unknown_tenant, "Resend webhook: refusing a tenant this host does not recognise.")
     end
+  end
+
+  # A log line at an endpoint a stranger can call in a loop. `Logger.error`
+  # once per request was attacker-drivable volume at the level a host's
+  # alerting watches; this is `warning`, once a minute per reason. The tenant
+  # is not in the message or the key: it is the attacker's to choose, so
+  # neither the log nor the throttle should grow with it.
+  defp refuse(reason, message) do
+    AshDispatch.Log.throttled({__MODULE__, reason}, fn -> Logger.warning(message) end)
+    {:error, :unknown_tenant}
   end
 
   # Resend echoes custom headers as a list of `%{"name" => _, "value" => _}`;
