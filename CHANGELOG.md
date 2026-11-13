@@ -5,6 +5,168 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.4-rc.1] - 2026-11-13
+
+### What rc.0 got wrong
+
+rc.0 shipped as a release candidate asking for exactly this: a reading by
+someone who had not built it. An independent review found eleven things. Three
+of them lose mail on a host that does precisely what the Tenancy guide says,
+and they are all small, local mistakes — the kind a suite of 974 tests cannot
+see because every one of them is about a shape the fixtures did not have.
+
+Written plainly, because the next reader deserves to know what was wrong and
+not only what is right now:
+
+1. **A struct tenant was reduced to its `:id`, and every send for it was
+   cancelled.** `Ash.ToTenant` decides which schema a tenant's rows live in,
+   and its own documentation teaches the shape where the schema is not the
+   struct's `:id` (`"org_" <> id`, `org.schema`). The *write* side was right —
+   it hands the term to Ash, which applies the protocol. Every place rc.0
+   **serialised** a tenant used `AshDispatch.Context.tenant_key/1`, which
+   answers the `tenant` column's string: the Oban job's args, the cron
+   fan-out's args, the scrub's raw `prefix:`, the outgoing tenant tag and
+   `AshDispatch.Tenants`' own comparison. So a dispatch with
+   `tenant: %Organisation{id: "a"}` wrote its receipt into `org_a` correctly,
+   told the job `"a"`, and the worker cancelled the job — a cancelled Oban job
+   is a delivery lost for good, and every rescue path rebuilds the same args.
+   The scrub's `update_all(prefix: "a")` raised, so no tenant's sensitive
+   bodies were ever scrubbed: the exact bug 0.9.4 exists to fix. And
+   `Tenants.check/1` was no protection at all for such a host, because it
+   reduced both sides of its comparison and so approved precisely the strings
+   that cannot be read. Everything that becomes a schema name goes through
+   `AshDispatch.Tenancy.prefix/2` now. A tenant struct with no `:id` raised
+   `Protocol.UndefinedError` from the middle of a dispatch; it names the
+   problem now (`AshDispatch.Tenancy.UnsupportedTenantError`).
+2. **A tenant mid-migration was cancelled instead of retried.**
+   `missing_schema?/1` matched `42P01`/`undefined_table`, which is what
+   Postgres says for a schema that exists but whose tables are not there
+   *yet*: the normal state of a tenant between `create schema` and
+   `mix ash.migrate`, and of every tenant during a deploy that adds a table.
+   Every send enqueued in that window was cancelled permanently with its
+   receipt left `:scheduled`. Only `3F000` is cancelled now. The free-text
+   arms are gone too — they searched the error's message, so a nested error
+   about `public.oban_jobs` was read as a missing tenant.
+3. **Four reads of the host's own resources were never threaded, and all four
+   fail closed.** The `should_send_filter` query, `CounterLoader`'s audience
+   check, `CounterHandler`'s `load_and_traverse_path/3` (which was *given* a
+   `tenant` parameter nobody passed) and the context `CounterHandler` builds
+   for a filter-based audience. Each raised `TenantRequired`, each was rescued
+   to "no", and the result was dispatches skipped and counters zeroed with
+   nothing but a log line. The design document's hand-kept list of 87 call
+   sites is replaced by an AST walk over `lib/` that fails the build.
+4. **A webhook's route tenant was used unchecked, and the endpoint said which
+   tenants exist.** A path segment comes from outside like a provider's tag
+   does; rc.0 passed `allow_unchecked?: true` for it, so with `:tenants`
+   absent — the setup the guide recommends and never said needed `:tenants` —
+   the string in `POST /webhooks/resend/:tenant` went into a Postgres prefix
+   with no check. Separately, `{:error, :not_found}` and
+   `{:error, :unknown_tenant}` were distinguishable, so an unauthenticated
+   POST per candidate name enumerated the host's schemas, which is to say its
+   customers — and the controller example in the module's own docs handed
+   `inspect(reason)` back in the response body. One answer for both now, with
+   the distinction in the log; the refusal log is a `warning`, once a minute
+   per reason, and no longer names the tenant the caller chose.
+5. **`job_args: :minimal` sent an empty letter and recorded it `:sent`.** The
+   guard written for "the job carries no body, so the receipt is all there is"
+   was keyed on `sensitive_content`, and `:minimal` — the default when
+   receipts are per tenant — made that args shape universal. A receipt whose
+   bodies had gone was delivered as `subject: nil, text_body: nil,
+   html_body: nil` and marked `:sent`. The guard asks the args now.
+6. **The From display name was dropped under `:minimal`.** `:full` args carry
+   `%{"name" => ..., "email" => ...}`; `:minimal` args carry no `"from"`, and
+   the fallback answered the bare address. So a host that switched receipts to
+   per-tenant schemas started sending `noreply@acme.test` where it had sent
+   `Acme Bookings <noreply@acme.test>`. Also wrong for a sensitive event's job
+   since 0.8.7.
+7. **`tenant: nil` was written into a column the host owns.** The dispatcher
+   added the key unconditionally and relied on `skip_unknown_inputs` to drop
+   it. That option drops an input the action does not accept; it does not drop
+   one it does — and Ash applies an attribute's default only when the input is
+   *absent*. A host with a receipt resource of its own that already had a
+   `tenant` attribute with a default had it overwritten with `nil` on every
+   dispatch, having opted into nothing.
+8. **`Tenancy.of/1` read Ash's metadata without asking the resource.** Ash
+   records the tenant it was given on every action, for any resource,
+   multitenant or not. So a host whose app passes `tenant:` to every `Ash`
+   call handed the library receipts carrying one, it went into the job args,
+   and `Tenants.check/1` could **cancel the job** — for a receipt in the
+   public schema, on a host that had never heard of any of this.
+9. **The cron fan-out had no uniqueness and no honest result.** The design
+   document gives "Oban's `unique` keeps a slow tenant from being enqueued
+   twice" as one of three reasons for the fan-out; it was never built, so
+   every tick added one more pass per tenant whatever was still queued. And
+   `fan_out/2` answered `:ok` when it had enqueued nothing, so a run that did
+   nothing was green in Oban.
+10. **The "structural guards" proved less than they claimed.** Two text
+    searches stood in for "every read and write the library makes takes its
+    tenant from `AshDispatch.Tenancy`". Seven ordinary spellings got past both
+    — `Ash.Query.set_tenant/2`, a tenant in a variable, a multi-line call, a
+    `)` in the first argument, the `Ash.Query`/`Ash.Changeset` constructors,
+    `apply/3`, and the raw `prefix:` neither search mentioned. One of them
+    also reported prose in a `@moduledoc` as a call site. It is an AST walk
+    now, and what the walk catches is itself asserted.
+11. **`:tenants` guarded three outside paths, and the guide implied every
+    `:tenant`.** The guide now says exactly which tenants the library checks —
+    the ones it reads back from an Oban job, a provider payload or a webhook
+    route — and that the `:tenant` a host passes to a loader is the host's own
+    to validate, with `AshDispatch.Tenants.check/1` public for it.
+    `c:AshDispatch.Tenants.known?/1` is documented as strongly recommended
+    once the webhook endpoint is public, and `check/1` now asks the host's
+    source at most once per call by construction rather than by how the calls
+    happened to nest.
+
+Smaller things from the same review: a dispatch with no tenant only consulted
+the receipt resource, so a host that switched only `Notification.Base` or
+`Preference.Base` to `:context` got a retry loop instead of the loud refusal;
+a fanned-out cron job whose tenant could no longer be checked ran in silence;
+`Tenants.all/0` and `check/1` rescued exceptions but not an exit, so a
+`DBConnection` timeout in a host's `all/0` took the cron entry job down;
+`ScrubSensitiveContent` had an unreachable `perform/1` clause; the cancelled
+send job's `Logger.error` is a `warning`; and `unique: [keys: [:receipt_id]]`
+on the send workers names the tenant too, since a receipt id is unique per
+schema and not across them.
+
+### Changed
+
+- **An email with nothing in it is refused rather than sent.** If the job
+  carries no body and the receipt has no body and no subject either, the
+  worker refuses, records the receipt `:failed_permanent` with the reason, and
+  does not call the provider. This can reach a host on the default `:full`
+  args, in one case: an event that renders no subject **and** no body used to
+  go out empty and be recorded `:sent`. A subject with no body still sends.
+- **`WebhookHandlers.Resend.process_webhook/2` answers `{:error, :not_found}`
+  where rc.0 answered `{:error, :unknown_tenant}`**, and refuses a route
+  tenant it cannot check when receipts are per tenant. Both return values are
+  new in rc.0, so nothing released depends on them.
+- **`Tenancy.Cron.fan_out/2` answers `{:error, reason}`** when it could not
+  enqueue a single pass. A partial failure is still `:ok`.
+- **The From of an email that sets none carries the configured display name**
+  under every args shape, including a sensitive event's job (wrong since
+  0.8.7) and a retry built from the receipt alone.
+
+### Added
+
+- **`AshDispatch.Tenancy.prefix/2`** and `receipt_prefix/1` — a tenant as the
+  schema name `Ash.ToTenant` resolves it to. The one answer every serialising
+  path in the library agrees on. For a string, atom or integer tenant the
+  protocol is the identity, so this changes nothing for a host that names its
+  tenants with strings.
+- **`AshDispatch.Tenancy.UnsupportedTenantError`** — a named error for a
+  tenant the `tenant` column cannot hold, instead of a bare
+  `Protocol.UndefinedError` from wherever the library happened to be.
+- **`AshDispatch.Log.throttled/3`** — runs a log line at most once per window
+  per key, for the lines an outsider can provoke.
+- **`AshDispatch.Tenancy.Cron.job/2`** — the job the fan-out enqueues for one
+  tenant, so its uniqueness can be asserted on the thing that is inserted.
+
+### Fixed
+
+Everything in *What rc.0 got wrong* above. Nothing in it is reachable without
+`multitenancy: :context` on one of the three bases, except findings 7 and 8,
+which reach a host that opted into nothing, and the empty-letter guard under
+*Changed*.
+
 ## [0.9.4-rc.0] - 2026-11-12
 
 ### Release candidate

@@ -32,17 +32,39 @@ defmodule AshDispatch.Tenants do
   ## `known?/1`
 
   A tenant can also arrive from **outside**: in the tag a provider echoes back
-  on a webhook, or in the args of an Oban job. A tenant is a Postgres schema
-  name, so a string that reaches a query unchecked chooses which schema is
-  read. Nothing in this library ever lets an outside tenant through without
-  asking:
+  on a webhook, in a webhook endpoint's path, or in the args of an Oban job. A
+  tenant is a Postgres schema name, so a string that reaches a query unchecked
+  chooses which schema is read. Every tenant the library reads back rather than
+  one the host handed it goes through `check/1` first:
 
       @impl true
       def known?(tenant), do: tenant in all()
 
   The callback is optional; without it, membership in `all/0` is the answer,
-  which is correct and costs a list. Implement it when `all/0` is expensive
-  enough that you would rather answer with one query.
+  which is correct and costs a list — **once per check**, which is once per
+  send job and once per unauthenticated POST to the webhook endpoint, the one
+  place in the library an outsider can trigger work. So implement it as soon
+  as that endpoint is public, or whenever `all/0` is a query you would rather
+  not run per request:
+
+      @impl true
+      def known?(tenant) do
+        MyApp.Accounts.Organisation
+        |> Ash.Query.filter(schema == ^tenant and active == true)
+        |> Ash.exists?(authorize?: false)
+      end
+
+  ## What is not checked
+
+  The `:tenant` a host passes to `AshDispatch.Helpers.NotificationLoader`,
+  `AshDispatch.Helpers.CounterLoader`,
+  `AshDispatch.UserPreference.Resource.put/3`, `AshDispatch.Preview.render/3`
+  or the LiveView hook. Those are the host's own calls, in its own request,
+  with a value it has already authorised — the same value it passes to its own
+  `Ash` calls — and checking them would add a query per bell render and refuse
+  a tenant the host's own queries accept. `check/1` is public for a host that
+  wants the library's answer about a value it took from a request. See the
+  Tenancy guide.
 
   ## Without it
 
