@@ -71,7 +71,7 @@ defmodule AshDispatch.Tenancy.Job do
   """
   @spec put_tenant(map(), struct()) :: map()
   def put_tenant(args, receipt) do
-    case Tenancy.key(Tenancy.of(receipt)) do
+    case Tenancy.receipt_prefix(Tenancy.of(receipt)) do
       nil -> args
       tenant -> Map.put(args, "tenant", tenant)
     end

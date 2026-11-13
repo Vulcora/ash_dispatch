@@ -400,7 +400,7 @@ defmodule AshDispatch.Workers.SendEmail do
   # and a "send now" carry it too — the receipt knows its own tenant.
   defp put_tenant_tag(headers, receipt) do
     with true <- Config.webhook_tenant_tag?(),
-         tenant when is_binary(tenant) <- AshDispatch.Tenancy.key(Tenancy.of(receipt)) do
+         tenant when is_binary(tenant) <- AshDispatch.Tenancy.receipt_prefix(Tenancy.of(receipt)) do
       Map.put(headers, AshDispatch.WebhookHandlers.Resend.tenant_header(), tenant)
     else
       _ -> headers

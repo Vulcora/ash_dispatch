@@ -91,10 +91,66 @@ defmodule AshDispatch.Tenancy do
   def preferences_per_tenant?, do: multitenant?(Config.preference_resource())
 
   @doc """
-  The tenant as the library stores and compares it — `AshDispatch.Context.tenant_key/1`.
+  The tenant as the library stores it in the `tenant` **column** —
+  `AshDispatch.Context.tenant_key/1`.
+
+  This is not a schema name. For a tenant that is a struct it is the struct's
+  `:id`, which `Ash.ToTenant` is free to turn into something else entirely
+  (`"org_" <> id`, `org.schema`). Use `prefix/2` for anything that becomes a
+  schema name.
   """
   @spec key(term()) :: String.t() | nil
   def key(tenant), do: Context.tenant_key(tenant)
+
+  @doc """
+  The tenant as a **schema name**: what Ash itself would prefix `resource`'s
+  table with, as a string.
+
+  This is `Ash.ToTenant.to_tenant/2` — the protocol Ash applies on every read
+  and write — and it is the only correct answer for a value the library has to
+  *serialise* and later hand back to Ash: an Oban job's args, the cron
+  fan-out's args, the scrub's raw `prefix:`, the outgoing tenant tag, and the
+  comparison in `AshDispatch.Tenants`.
+
+  `key/1` is not that answer. `Ash.ToTenant`'s own moduledoc teaches
+
+      def to_tenant(%{id: id}, _resource), do: "org_\#{id}"
+
+  so for a struct tenant the two disagree, and a job whose args say `"42"`
+  reads a schema that does not exist. (0.9.4-rc.0 used `key/1` here; see the
+  CHANGELOG.)
+
+  For a string, atom or integer tenant `Ash.ToTenant` is the identity, so this
+  answers exactly what `key/1` does — which is why routing these paths through
+  it changes nothing for a host that names its tenants with strings.
+
+  A tenant with no `Ash.ToTenant` implementation falls back to `key/1`: a plain
+  map has meant its `:id` since 0.9.0, and Ash would refuse it as a tenant
+  anyway. A term that is neither raises
+  `AshDispatch.Tenancy.UnsupportedTenantError` rather than letting
+  `Protocol.UndefinedError` out of the middle of a dispatch.
+  """
+  @spec prefix(term(), term()) :: String.t() | nil
+  def prefix(resource, tenant)
+  def prefix(_resource, nil), do: nil
+
+  def prefix(resource, tenant) do
+    case Ash.ToTenant.impl_for(tenant) do
+      nil -> Context.tenant_key(tenant)
+      _impl -> tenant |> Ash.ToTenant.to_tenant(resource) |> Context.tenant_key()
+    end
+  end
+
+  @doc """
+  `prefix/2` for the configured delivery receipt resource.
+
+  Every value the library serialises is read back against the receipt — the
+  send workers read the receipt, the scrub updates its table, the webhook tag
+  names the schema its receipt is in — so they all have to agree on one string,
+  and this is it.
+  """
+  @spec receipt_prefix(term()) :: String.t() | nil
+  def receipt_prefix(tenant), do: prefix(Config.delivery_receipt_resource(), tenant)
 
   @doc """
   Remembers the tenant a record was read or written with, on the record.

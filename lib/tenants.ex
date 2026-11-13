@@ -76,7 +76,7 @@ defmodule AshDispatch.Tenants do
   def all do
     case AshDispatch.Config.tenants() do
       nil -> []
-      source -> source |> ask() |> List.wrap()
+      source -> listed(source)
     end
   rescue
     error ->
@@ -163,20 +163,33 @@ defmodule AshDispatch.Tenants do
             "{module, function, args}, or a zero-argument function."
   end
 
+  # The source `check/1` already read is passed in, so the host's list is asked
+  # for at most once per check: `all/0` would read `:tenants` a second time to
+  # find the same source. With `known?/1` the list is not asked for at all,
+  # which is the whole reason that callback exists.
   defp ask_known?(module, tenant) when is_atom(module) do
     if Code.ensure_loaded?(module) and function_exported?(module, :known?, 1) do
       module.known?(tenant) == true
     else
-      member?(tenant)
+      member?(tenant, listed(module))
     end
   end
 
-  defp ask_known?(_source, tenant), do: member?(tenant)
+  defp ask_known?(source, tenant), do: member?(tenant, listed(source))
 
-  # Compared as the library stores a tenant, so a host that answers with
-  # structs and a tag that comes back as a string still agree.
-  defp member?(tenant) do
-    key = AshDispatch.Context.tenant_key(tenant)
-    Enum.any?(all(), &(AshDispatch.Context.tenant_key(&1) == key))
+  defp listed(source), do: source |> ask() |> List.wrap()
+
+  # Compared as SCHEMA NAMES — `Ash.ToTenant` — so a host that answers with
+  # structs and a tag that comes back as a string still agree, and the gate
+  # approves exactly the strings that can be read.
+  #
+  # `AshDispatch.Context.tenant_key/1` was the comparison until 0.9.4-rc.1, and
+  # for a host whose `all/0` answers with structs it reduced both sides to the
+  # struct's `:id`: the gate then approved an id that is not a schema name, so
+  # it was no protection at all. For a string tenant the two are the same
+  # function.
+  defp member?(tenant, tenants) do
+    prefix = AshDispatch.Tenancy.receipt_prefix(tenant)
+    Enum.any?(tenants, &(AshDispatch.Tenancy.receipt_prefix(&1) == prefix))
   end
 end

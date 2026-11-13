@@ -182,13 +182,18 @@ defmodule AshDispatch.Context do
   end
 
   @doc """
-  The tenant as the string ash_dispatch stores it.
+  The tenant as the string ash_dispatch stores in the `tenant` **column**.
 
   A tenant reaches the library in whatever shape the app uses for Ash: a
-  string, an integer, or a record (an organisation struct). Notification and
-  preference rows store it as a string, so every shape is reduced to one:
-  a binary as it is, a record by its `:id`, anything else through
+  string, an integer, or a record (an organisation struct). Notification,
+  preference and receipt rows store it as a string, so every shape is reduced
+  to one: a binary as it is, a record by its `:id`, anything else through
   `to_string/1`. `nil` stays `nil` — an app without tenancy.
+
+  This is the column, not a schema name. Which schema a tenant's rows live in
+  is `Ash.ToTenant`'s answer, and the library asks it through
+  `AshDispatch.Tenancy.prefix/2`. For a struct tenant the two differ, by
+  design: `Ash.ToTenant`'s own example turns `%{id: id}` into `"org_" <> id`.
 
   ## Examples
 
@@ -209,7 +214,19 @@ defmodule AshDispatch.Context do
   def tenant_key(tenant) when is_binary(tenant), do: tenant
   def tenant_key(%{id: id}), do: tenant_key(id)
   def tenant_key(tenant) when is_atom(tenant) or is_number(tenant), do: to_string(tenant)
-  def tenant_key(tenant), do: to_string(tenant)
+
+  # A term that is neither a string, a number, an atom nor something with an
+  # `:id` used to fall into `to_string/1`, which for a struct raises
+  # `Protocol.UndefinedError` from wherever the library happened to be — in
+  # the middle of building an Oban job's args, for one. Say what is wrong
+  # instead, and name the two ways to fix it.
+  def tenant_key(tenant) do
+    if String.Chars.impl_for(tenant) do
+      to_string(tenant)
+    else
+      raise AshDispatch.Tenancy.UnsupportedTenantError, tenant: tenant
+    end
+  end
 
   # Private helpers
 

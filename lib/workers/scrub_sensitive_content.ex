@@ -116,7 +116,7 @@ defmodule AshDispatch.Workers.ScrubSensitiveContent do
   end
 
   defp prefix_opts(nil), do: []
-  defp prefix_opts(tenant), do: [prefix: AshDispatch.Tenancy.key(tenant)]
+  defp prefix_opts(tenant), do: [prefix: AshDispatch.Tenancy.receipt_prefix(tenant)]
 
   @doc false
   # The two limits: `{cutoff, stranded_cutoff}`. The cap is never shorter than

@@ -105,7 +105,7 @@ defmodule AshDispatch.Tenancy.Cron do
   end
 
   defp enqueue(worker, tenant) do
-    case %{"tenant" => Tenancy.key(tenant)} |> worker.new() |> Oban.insert() do
+    case %{"tenant" => Tenancy.receipt_prefix(tenant)} |> worker.new() |> Oban.insert() do
       {:ok, _job} -> :ok
       {:error, reason} -> {:error, reason}
     end

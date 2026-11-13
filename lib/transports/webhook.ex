@@ -165,7 +165,7 @@ defmodule AshDispatch.Transports.Webhook do
 
   # The worker reads the receipt by id, so the job says which schema it is in.
   defp put_tenant(args, nil), do: args
-  defp put_tenant(args, tenant), do: Map.put(args, "tenant", Tenancy.key(tenant))
+  defp put_tenant(args, tenant), do: Map.put(args, "tenant", Tenancy.receipt_prefix(tenant))
 
   @doc """
   The JSON-serialisable envelope this transport POSTs.
