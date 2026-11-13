@@ -46,6 +46,20 @@ Run the generator:
 mix ash_dispatch.gen
 ```
 
+> #### If you do not want the SDK {: .info}
+>
+> It is generated as soon as `ash_typescript` is configured, which is not the
+> same thing as wanting it — a host may have `ash_typescript` only for its own
+> RPC types, or a frontend that is not React.
+>
+> ```elixir
+> config :ash_dispatch, sdk: false
+> ```
+>
+> Nothing is written and `mix ash.codegen --check` passes with none of these
+> files on disk. `sdk: :if_events` writes them only when your app has events
+> or counters. See the [Code Generation guide](code-generation.md).
+
 ---
 
 ## Generated Files

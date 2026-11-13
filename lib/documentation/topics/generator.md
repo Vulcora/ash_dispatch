@@ -401,9 +401,18 @@ config :ash_dispatch,
   # Override SDK output path
   sdk_output_path: "apps/frontend/src/lib/ash-dispatch",
 
+  # Or do not generate the React/TypeScript client at all (0.9.4-rc.2).
+  # `sdk_output_path: false` says the same thing.
+  sdk: false,
+
   # Domains to scan for counters/events
   domains: [MyApp.Orders, MyApp.Tickets, MyApp.Notifications]
 ```
+
+With `sdk: false` nothing is written and `mix ash.codegen --check` passes with
+no SDK files on disk; `sdk: :if_events` writes them only when the app has
+events, counters, a `resource_meta` or an `entity_changes` block. See the
+[Code Generation guide](code-generation.md).
 
 ---
 
