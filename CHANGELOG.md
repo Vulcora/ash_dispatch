@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.4-rc.3] - 2026-11-14
+
 ### Slack and Discord webhook URLs stay out of the job table and the log
 
 A Slack or Discord webhook URL is a credential: whoever has it can post to the
