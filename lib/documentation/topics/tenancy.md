@@ -291,6 +291,158 @@ Two consequences worth knowing:
   `:default_from_name`/`:default_from_email` as it does under `:full`. An
   event that sets its own still wins.
 
+## `uuid_generate_v7()` must exist in the database
+
+Two of the library's resources have a **UUID v7** primary key:
+`AshDispatch.Resources.Notification.Base` and
+`AshDispatch.Resources.Preference.Base`, both since 0.9.0. A v7 id carries its
+timestamp in its leading bits, so rows written in order are stored in order —
+which is what an inbox query (`WHERE user_id = … ORDER BY inserted_at DESC`)
+wants, and which a random v4 id costs you in index churn. The delivery receipt
+is on a plain v4 key and is unaffected.
+
+`mix ash.codegen` turns a v7 key into this:
+
+```elixir
+add :id, :uuid, null: false, default: fragment("uuid_generate_v7()"), primary_key: true
+```
+
+Postgres has no `uuid_generate_v7()` of its own before version 18. **ash_postgres
+creates it** — in its `ash-functions` migration, and only for a repo whose
+`installed_extensions/0` lists `"ash-functions"`:
+
+```elixir
+defmodule MyApp.Repo do
+  use AshPostgres.Repo, otp_app: :my_app
+
+  def installed_extensions, do: ["ash-functions"]
+end
+```
+
+Where the function is missing, `CREATE TABLE` fails. Nothing warns you at
+compile time, the migration looks ordinary, and the error arrives from the
+database.
+
+### How to check
+
+```sql
+SELECT to_regprocedure('public.uuid_generate_v7()');
+```
+
+`NULL` means it is not there. `mix ash_dispatch.install` runs the same check
+against your repo's source and says so.
+
+### The migration to add it
+
+```bash
+mix ash.codegen install_ash_functions
+mix ash.migrate
+```
+
+That is the ordinary route and the one to take: ash_postgres notices the
+extension is newly requested and writes the migration for it, together with
+the other functions Ash expects (`ash_elixir_or`, `ash_trim_whitespace`,
+`ash_raise_error` — the last of which a receipt's state machine needs anyway).
+
+If you cannot run `ash.codegen` — a schema someone else owns, a migration
+written by hand — the function is one statement:
+
+```elixir
+defmodule MyApp.Repo.Migrations.AddUuidGenerateV7 do
+  use Ecto.Migration
+
+  def up do
+    execute("""
+    CREATE OR REPLACE FUNCTION uuid_generate_v7()
+    RETURNS UUID
+    AS $$
+    DECLARE
+      timestamp    TIMESTAMPTZ;
+      microseconds INT;
+    BEGIN
+      timestamp    = clock_timestamp();
+      microseconds = (cast(extract(microseconds FROM timestamp)::INT - (floor(extract(milliseconds FROM timestamp))::INT * 1000) AS DOUBLE PRECISION) * 4.096)::INT;
+
+      RETURN encode(
+        set_byte(
+          set_byte(
+            overlay(uuid_send(gen_random_uuid()) placing substring(int8send(floor(extract(epoch FROM timestamp) * 1000)::BIGINT) FROM 3) FROM 1 FOR 6
+          ),
+          6, (b'0111' || (microseconds >> 8)::bit(4))::bit(8)::int
+        ),
+        7, microseconds::bit(8)::int
+      ),
+      'hex')::UUID;
+    END
+    $$
+    LANGUAGE PLPGSQL
+    SET search_path = ''
+    VOLATILE;
+    """)
+  end
+
+  def down, do: execute("DROP FUNCTION IF EXISTS uuid_generate_v7()")
+end
+```
+
+That is ash_postgres's own definition, copied; keep taking it from
+ash_postgres rather than from here if the two ever differ. On Postgres 18 and
+later ash_postgres uses the built-in `uuidv7()` instead and creates nothing —
+tell it which server you are on with `min_pg_version/0` on the repo.
+
+### If you create a tenant's tables when the tenant is created
+
+This is where it bites hardest, and it is the reason the section exists.
+
+The function is created **once, in one schema** — the repo's default prefix,
+normally `public`. A `CREATE TABLE` in a tenant's schema resolves
+`uuid_generate_v7()` against the `search_path` of whoever runs it. If your
+tenant-creation code sets the search path to the new schema alone, the
+function is not visible, `CREATE TABLE` fails, and **no tenant can be
+created** — the tables are made at sign-up, so the failure is in your sign-up
+path rather than in a deploy.
+
+So either:
+
+- install `ash-functions` **before** the first tenant, and leave `public` on
+  the search path of the connection that creates a tenant's tables (which is
+  `mix ash.migrate`'s own behaviour); or
+- schema-qualify it, if you write the DDL yourself: `DEFAULT
+  public.uuid_generate_v7()`; or
+- do not use a v7 key at all, below.
+
+### Or: ask the base for a v4 key
+
+A host that cannot define functions in its database — a managed instance, a
+schema it does not own — can say so, and nothing about your database has to
+change:
+
+```elixir
+defmodule MyApp.Notifications.Notification do
+  use AshDispatch.Resources.Notification.Base,
+    repo: MyApp.Repo,
+    domain: MyApp.Notifications,
+    multitenancy: :context,
+    primary_key: :uuid
+end
+```
+
+`:uuid` gives `uuid_primary_key :id`, whose migration default is
+`gen_random_uuid()` — built into Postgres 13 and later, in every schema. The
+option is on all three bases (`Notification.Base` and `Preference.Base`
+default to `:uuid_v7`, `DeliveryReceipt.Base` to `:uuid`) and on
+`AshDispatch.Setup`, which passes it through.
+
+**Set it before you generate the first migration.** Both kinds store the same
+column — `:uuid_v7`'s storage type *is* `uuid` — so switching only changes the
+column's DEFAULT, and `mix ash.codegen` will write you an `ALTER COLUMN … SET
+DEFAULT` for a table that already exists. Ids already written keep working
+either way; you lose the ordering property for rows written after the switch,
+not the rows themselves.
+
+Nothing here changed a default. A host that does not pass `primary_key:` gets
+exactly the key it got in 0.9.3 and 0.9.4-rc.1.
+
 ## While you are deploying
 
 A 0.9.3 node that picks up a 0.9.4 fanned-out cron job ignores

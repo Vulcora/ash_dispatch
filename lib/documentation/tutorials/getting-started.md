@@ -11,6 +11,15 @@ This guide assumes you're familiar with:
 - Ash resources and actions
 - Basic Elixir
 
+Of your database it asks two things:
+
+- **PostgreSQL 15 or later**, for the preference resource's scope identity
+  (`NULLS NOT DISTINCT`).
+- **`uuid_generate_v7()`**, for the notification and preference tables. See
+  [Your database needs `uuid_generate_v7()`](#your-database-needs-uuid-generate-v7)
+  below — it is one line in your repo, it fails at `CREATE TABLE` if you miss
+  it, and it is the single most common reason a first migration does not run.
+
 ## Quick Start with Igniter (Recommended)
 
 The fastest way to get started is using the Igniter installer:
@@ -38,6 +47,50 @@ mix ash.migrate
 ```
 
 Then skip to [Add Your First Event](#add-your-first-event).
+
+### Your database needs `uuid_generate_v7()`
+
+The notification and preference resources have a **UUID v7** primary key, so
+`mix ash.codegen` writes `default: fragment("uuid_generate_v7()")` into their
+migration. Postgres has no such function before version 18 — ash_postgres
+creates it, and only for a repo that asks:
+
+```elixir
+defmodule MyApp.Repo do
+  use AshPostgres.Repo, otp_app: :my_app
+
+  def installed_extensions, do: ["ash-functions"]
+end
+```
+
+```bash
+mix ash.codegen install_ash_functions
+mix ash.migrate
+```
+
+To check whether it is already there:
+
+```sql
+SELECT to_regprocedure('public.uuid_generate_v7()');
+```
+
+`NULL` means it is not, and `mix ash.migrate` will fail at `CREATE TABLE`.
+`mix ash_dispatch.install` runs the same check against your repo's source and
+warns you.
+
+If you cannot define functions in your database, ask the bases for a plain v4
+key instead — `gen_random_uuid()` is built into Postgres 13 and later:
+
+```elixir
+use AshDispatch.Resources.Notification.Base,
+  repo: MyApp.Repo,
+  domain: MyApp.Notifications,
+  primary_key: :uuid
+```
+
+Set it before your first migration. The [Tenancy guide](../topics/tenancy.md)
+has the whole section, including the hand-written migration and what this
+costs a host that creates each tenant's tables when the tenant is created.
 
 ### Installer Options
 
