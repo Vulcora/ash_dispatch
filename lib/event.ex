@@ -934,9 +934,19 @@ defmodule AshDispatch.Event do
             # For should_send?, we need to evaluate against each recipient
             # This is a simplified version - full implementation would need to
             # evaluate per-recipient in the dispatcher
+            # In the dispatch's tenant, when the host's users are per tenant:
+            # without it the filter query raises, is rescued to `false`, and
+            # every channel with a `should_send_filter` is skipped silently.
             case AshDispatch.Event.Helpers.extract_target_user(context, channel) do
-              nil -> true
-              user -> AshDispatch.Event.Helpers.evaluate_user_filter(user, filter)
+              nil ->
+                true
+
+              user ->
+                AshDispatch.Event.Helpers.evaluate_user_filter(
+                  user,
+                  filter,
+                  Map.get(context, :tenant)
+                )
             end
         end
       end

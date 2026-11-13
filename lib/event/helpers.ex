@@ -514,16 +514,27 @@ defmodule AshDispatch.Event.Helpers do
       evaluate_user_filter(user, [admin: true, archived: false])
       #=> true/false
 
-  Returns true if user matches the filter, false otherwise.
-  """
-  def evaluate_user_filter(nil, _filter), do: false
+      # In a tenant, when the host's user resource is per tenant (0.9.4)
+      evaluate_user_filter(user, [admin: true], tenant)
 
-  def evaluate_user_filter(_user, filter) when filter == [] or filter == %{} do
+  Returns true if user matches the filter, false otherwise.
+
+  `tenant` defaults to `nil`, which is what every caller passed before 0.9.4
+  and what a host without multitenancy wants: the read then takes no tenant at
+  all, as it always did. For a host whose users ARE per tenant it is not
+  optional — the query raises `Ash.Error.Invalid.TenantRequired`, the rescue
+  below answers `false`, and the dispatch is skipped with nothing but a debug
+  line to say so.
+  """
+  def evaluate_user_filter(user, filter, tenant \\ nil)
+  def evaluate_user_filter(nil, _filter, _tenant), do: false
+
+  def evaluate_user_filter(_user, filter, _tenant) when filter == [] or filter == %{} do
     # Empty filter means "all users"
     true
   end
 
-  def evaluate_user_filter(user, filter) do
+  def evaluate_user_filter(user, filter, tenant) do
     user_module = Config.user_module()
 
     if is_nil(user_module) do
@@ -542,7 +553,7 @@ defmodule AshDispatch.Event.Helpers do
       # Apply the provided filter
       query = apply_filter(query, filter)
 
-      Ash.exists?(query, authorize?: false)
+      Ash.exists?(query, [authorize?: false] ++ AshDispatch.Tenancy.opts(user_module, tenant))
     end
   rescue
     error ->

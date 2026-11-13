@@ -128,7 +128,7 @@ defmodule AshDispatch.Helpers.CounterLoader do
     # Filter counters based on user's audiences (using configured filters)
     relevant_counters =
       Enum.filter(counter_definitions, fn counter ->
-        user_matches_audience?(user, counter.audience)
+        user_matches_audience?(user, counter.audience, tenant)
       end)
 
     # Execute queries and build counter map
@@ -197,9 +197,9 @@ defmodule AshDispatch.Helpers.CounterLoader do
 
   # Check if user matches the audience using configured recipient filters
   # Uses Ash query engine to properly evaluate filter expressions
-  defp user_matches_audience?(nil, _audience), do: false
+  defp user_matches_audience?(nil, _audience, _tenant), do: false
 
-  defp user_matches_audience?(user, audience) do
+  defp user_matches_audience?(user, audience, tenant) do
     # Get the filter for this audience from config
     audiences_config = Config.audiences()
 
@@ -212,7 +212,7 @@ defmodule AshDispatch.Helpers.CounterLoader do
         Keyword.get(audiences_config, audience, [])
       end
 
-    match_audience_config(user, audience, audience_config)
+    match_audience_config(user, audience, audience_config, tenant)
   rescue
     error ->
       Logger.error("[CounterLoader] Failed to check user audience #{audience}: #{inspect(error)}")
@@ -220,7 +220,7 @@ defmodule AshDispatch.Helpers.CounterLoader do
       false
   end
 
-  defp match_audience_config(user, _audience, config) when is_list(config) do
+  defp match_audience_config(user, _audience, config, tenant) when is_list(config) do
     # Extract the actual filter from the config using consolidated helper
     # New format: [:user, admin: true] -> extract [admin: true]
     # Old format: [admin: true] -> use as-is
@@ -234,15 +234,19 @@ defmodule AshDispatch.Helpers.CounterLoader do
       # This works with any Ash filter expression, not just simple equality
       user_module = Config.user_module()
 
+      # The audience check is a read of the host's user resource, so it needs
+      # the tenant `load_counters_for_user/2` was given: without it the query
+      # raises for a per-tenant user resource, the rescue above answers
+      # `false`, and every filtered audience's counters silently vanish.
       user_module
       |> Ash.Query.new()
       |> Ash.Query.filter(id == ^user.id)
       |> Ash.Query.filter(^audience_filter)
-      |> Ash.exists?(authorize?: false)
+      |> Ash.exists?([authorize?: false] ++ AshDispatch.Tenancy.opts(user_module, tenant))
     end
   end
 
-  defp match_audience_config(_user, audience, other) do
+  defp match_audience_config(_user, audience, other, _tenant) do
     # MFA/function resolvers cannot be evaluated against a single user, so
     # fail CLOSED. The old fallthrough parsed these to an empty filter —
     # i.e. "matches everyone" — which broadcast admin counters to every

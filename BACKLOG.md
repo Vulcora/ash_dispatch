@@ -235,3 +235,25 @@ Two smaller pieces travel with it:
   `Ash.ToTenant` implementation) still answers its `:id` for the schema too,
   because there is nothing else to ask. Ash itself refuses such a tenant on a
   per-tenant resource, so this only keeps 0.9.x behaviour for the column.
+
+## 12. `applicable_for_user?/1` cannot be given a tenant — 0.10.0
+
+Found by the independent review of 0.9.4-rc.0.
+
+The DSL's `manual_trigger_filter` runs through
+`AshDispatch.Event.Helpers.evaluate_user_filter/3`, which takes a tenant since
+0.9.4-rc.1 — but the only caller on that path is the generated
+`c:AshDispatch.Event.applicable_for_user?/1`, and the callback has no tenant to
+give it. So for a host whose users are per tenant the filter still answers
+`false` and the event is hidden from the manual-trigger list.
+
+Nothing is sent or lost: the callback's own docs say it "is **only** used for
+filtering the manual trigger event list in admin UIs. It does NOT affect
+normal event dispatch." The dispatch path (`should_send_filter`, through
+`c:AshDispatch.Event.should_send?/2`) has the context and is fixed.
+
+Why not in 0.9.x: the fix is a tenant on the callback, and a host may have
+overridden `applicable_for_user?/1`. Generating an `applicable_for_user?/2`
+beside it and preferring that would silently stop calling such a host's
+override — a patch must not do that. 0.10.0 can change the callback to take a
+context, with a deprecation path for `/1`.
