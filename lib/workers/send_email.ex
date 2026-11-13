@@ -271,7 +271,7 @@ defmodule AshDispatch.Workers.SendEmail do
            :continue <- check_email_backend_configured(),
            :continue <- check_skip_if_read_policy(receipt),
            :send <- check_user_preferences(receipt),
-           :continue <- check_sensitive_body(receipt, args) do
+           :continue <- check_body(receipt, args) do
         # Mark as sending - handle race condition gracefully
         case ReceiptStatus.mark_sending(receipt) do
           {:ok, receipt} ->
@@ -323,26 +323,52 @@ defmodule AshDispatch.Workers.SendEmail do
     end
   end
 
-  # A sensitive event's job carries no bodies, so the receipt is all there is.
-  # If it holds nothing to send, or the scrub's marker, the letter is gone and
-  # no retry brings it back: fail closed, and never report it as sent. A job
-  # enqueued before 0.8.7 still carries its bodies in the args and passes.
-  defp check_sensitive_body(receipt, args) do
+  # When the job carries no bodies the receipt is all there is. If it holds
+  # nothing to send, or the scrub's marker, the letter is gone and no retry
+  # brings it back: fail closed, and never report it as sent.
+  #
+  # The question is about the ARGS, not the event. It was `sensitive?/1` until
+  # 0.9.4-rc.1, which was right while a bodyless job was something only a
+  # sensitive event produced (0.8.7) — and then `job_args: :minimal` made that
+  # shape the default for every event of a per-tenant host, so the guard
+  # written for exactly that shape stopped covering it. A receipt whose bodies
+  # had gone (its own retention job, a column dropped in a migration window, a
+  # template that rendered nothing, a reclassified event's scrub) was sent
+  # empty and recorded `:sent`.
+  #
+  # A job that carries a body passes without reading the receipt's state at
+  # all: that is every job under `:full`, which is the default for every host
+  # on public receipts, and every job enqueued before 0.8.7.
+  defp check_body(receipt, args) do
     params = email_params(receipt, args)
+    bodyless? = blank?(params.text_body) and blank?(params.html_body)
 
     cond do
-      not Email.sensitive?(receipt.event_id) ->
+      args_carry_body?(args) ->
         :continue
 
+      # The body existed and is gone. Never send the marker itself.
       params.text_body == ScrubSensitiveContent.marker() ->
-        {:refuse, "sensitive content already scrubbed from the receipt, not sent"}
+        {:refuse, "the content was scrubbed from the receipt, not sent"}
 
-      blank?(params.text_body) and blank?(params.html_body) ->
+      # Nothing to deliver at all. A subject with no body is a thin letter but
+      # it is a letter; this is an envelope with nothing in it.
+      bodyless? and blank?(params.subject) ->
+        {:refuse, "the job carries no body and the receipt has nothing to send, not sent"}
+
+      # A sensitive event's job has carried no bodies since 0.8.7, so for one
+      # of those a blank body is the same refusal it has always been — subject
+      # or no subject.
+      bodyless? and Email.sensitive?(receipt.event_id) ->
         {:refuse, "sensitive event's receipt has no body, not sent"}
 
       true ->
         :continue
     end
+  end
+
+  defp args_carry_body?(args) do
+    not (blank?(args["text_body"]) and blank?(args["html_body"]))
   end
 
   defp blank?(body), do: body in [nil, ""]
@@ -478,14 +504,24 @@ defmodule AshDispatch.Workers.SendEmail do
 
   defp parse_from_field(%{"name" => name, "email" => email}), do: {name, email}
   defp parse_from_field(%{"email" => email}), do: email
+  defp parse_from_field(%{name: name, email: email}), do: {name, email}
+  defp parse_from_field(%{email: email}), do: email
   defp parse_from_field(from) when is_binary(from), do: from
   defp parse_from_field({_, _} = from), do: from
   # Handle JSON-serialized tuple (stored as array)
   defp parse_from_field([name, email]) when is_binary(name) and is_binary(email),
     do: {name, email}
 
-  # Fallback to configured default
-  defp parse_from_field(_), do: Config.default_from_email()
+  # The same default `Transports.Email.get_from_field/1` puts in `:full` args:
+  # `{name, email}`, not the bare address. `:full` args always carry a `"from"`
+  # and `:minimal` args carry none, so until 0.9.4-rc.1 the two shapes
+  # disagreed about the From of every event that does not set one itself —
+  # `Acme Bookings <noreply@acme.test>` under `:full` and a bare
+  # `noreply@acme.test` under `:minimal`, which is the default when receipts
+  # are per tenant. (True for a sensitive event's job since 0.8.7, where
+  # `:minimal` came from.) From is addressing, not message content: it belongs
+  # in the envelope whatever the args shape.
+  defp parse_from_field(_), do: {Config.default_from_name(), Config.default_from_email()}
 
   # May this letter really go out? `AshDispatch.Delivery` answers for every
   # transport; `skip_email_delivery: true` is read as "email is blocked" and
