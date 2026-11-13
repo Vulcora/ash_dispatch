@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Slack and Discord webhook URLs stay out of the job table and the log
+
+A Slack or Discord webhook URL is a credential: whoever has it can post to the
+channel. Until now it was copied into `oban_jobs.args` (`"webhook_url"`), where
+it outlives the job, and `AshDispatch.Workers.SendWebhook` logged it on every
+outcome (`url=…` on success, on 4xx/5xx and on network errors, and in full in
+the debug line).
+
+- **`metadata.webhook_url_env` for `:slack` and `:discord`**, the option
+  `:webhook` got in 0.9.4. The job args carry the variable's NAME
+  (`"webhook_url_env"`) and no URL; the worker reads the value when it sends.
+  A rotated URL takes effect for jobs already queued, and nothing needs a
+  recompile. An unset variable skips the receipt at dispatch with
+  `"webhook_url_env NAME is not set"`, and fails (retryably) at send time with
+  the same reason — never a value.
+- **No log line carries the URL.** `SendWebhook` logs
+  `AshDispatch.Transports.WebhookUrl.mask/1` (scheme and host) everywhere, and
+  scrubs the URL out of logged response bodies and errors. This applies to
+  every webhook-based transport, including an explicit `webhook_url`.
+- `Slack.job_args/3` and `Discord.job_args/3` are public, so the shape that
+  lands in `oban_jobs.args` can be tested without Oban.
+- `config :ash_dispatch, AshDispatch.Workers.SendWebhook, req_options: [...]`
+  is passed into `Req.post/2`, as `:req_options` already is for Elks.
+
+Unchanged: a channel with neither `webhook_url_env` nor a URL is `:skipped`
+with `"No webhook_url configured"`; an explicit `webhook_url` still travels in
+the job args (it is compiled into the application already). The generic
+`:webhook` transport still resolves `webhook_url_env` at dispatch, because its
+signature binds the URL's path at enqueue time.
+
 ## [0.9.4-rc.2] - 2026-11-13
 
 ### What the first per-tenant host found

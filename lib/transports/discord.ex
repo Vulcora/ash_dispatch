@@ -35,6 +35,22 @@ defmodule AshDispatch.Transports.Discord do
         ]
       end
 
+      # Or from the environment, read when the message is sent
+      event :order_created,
+        channels: [
+          [
+            transport: :discord,
+            audience: :team,
+            metadata: [webhook_url_env: "DISCORD_ORDERS_WEBHOOK_URL"]
+          ]
+        ]
+
+  A Discord webhook URL is a credential. With `webhook_url_env` the job args
+  carry only the variable's name and the worker reads the value when it sends,
+  so the URL is never stored in `oban_jobs.args`; no log line carries it either
+  way. An unset variable skips the receipt with a reason that names it. See
+  `AshDispatch.Transports.WebhookUrl`.
+
   ## Content
 
   Discord messages support:
@@ -70,6 +86,7 @@ defmodule AshDispatch.Transports.Discord do
 
   alias AshDispatch.Channel
   alias AshDispatch.Transports.Preferences
+  alias AshDispatch.Transports.WebhookUrl
   alias AshDispatch.Workers.SendWebhook
 
   require Logger
@@ -97,50 +114,59 @@ defmodule AshDispatch.Transports.Discord do
   end
 
   defp do_deliver(receipt, context, channel) do
-    webhook_url = get_webhook_url(channel)
+    case job_args(receipt, context, channel) do
+      {:ok, job_args} ->
+        case SendWebhook.new(job_args) |> Oban.insert() do
+          {:ok, _job} ->
+            # Mark receipt as scheduled, in its own tenant
+            updated_receipt = AshDispatch.ReceiptStatus.mark_scheduled(receipt)
 
-    if webhook_url do
-      # Build Discord payload
-      payload = build_discord_payload(receipt.content, context)
+            Logger.info("Discord webhook job enqueued for receipt #{receipt.id}")
+            {:ok, updated_receipt}
 
-      # Enqueue webhook worker
-      job_args =
-        %{
+          {:error, reason} ->
+            # Failed to enqueue - mark receipt as failed
+            Logger.error("Failed to enqueue Discord webhook job: #{inspect(reason)}")
+
+            updated_receipt =
+              AshDispatch.ReceiptStatus.mark_failed(
+                receipt,
+                "Failed to enqueue: #{inspect(reason)}"
+              )
+
+            {:ok, updated_receipt}
+        end
+
+      {:skip, reason} ->
+        # Nothing to post to - skip
+        Logger.warning("Discord transport: #{reason} for receipt #{receipt.id}, skipping")
+
+        {:ok, AshDispatch.ReceiptStatus.mark_skipped(receipt, reason)}
+    end
+  end
+
+  @doc """
+  The `AshDispatch.Workers.SendWebhook` job args for a receipt, or why there
+  are none.
+
+  With `metadata.webhook_url_env` the args carry the variable's NAME under
+  `"webhook_url_env"` and no URL; the worker reads the value when it sends.
+  See `AshDispatch.Transports.WebhookUrl`. Public so the shape that lands in
+  `oban_jobs.args` can be tested without an Oban instance.
+  """
+  @spec job_args(map(), map(), Channel.t()) :: {:ok, map()} | {:skip, String.t()}
+  def job_args(receipt, context, channel) do
+    with {:ok, target} <- WebhookUrl.target(channel) do
+      args =
+        target
+        |> Map.merge(%{
           "receipt_id" => receipt.id,
-          "webhook_url" => webhook_url,
-          "payload" => payload,
+          "payload" => build_discord_payload(receipt.content, context),
           "headers" => %{"Content-Type" => "application/json"}
-        }
+        })
         |> put_tenant(AshDispatch.Tenancy.of(receipt))
 
-      case SendWebhook.new(job_args) |> Oban.insert() do
-        {:ok, _job} ->
-          # Mark receipt as scheduled, in its own tenant
-          updated_receipt = AshDispatch.ReceiptStatus.mark_scheduled(receipt)
-
-          Logger.info("Discord webhook job enqueued for receipt #{receipt.id}")
-          {:ok, updated_receipt}
-
-        {:error, reason} ->
-          # Failed to enqueue - mark receipt as failed
-          Logger.error("Failed to enqueue Discord webhook job: #{inspect(reason)}")
-
-          updated_receipt =
-            AshDispatch.ReceiptStatus.mark_failed(
-              receipt,
-              "Failed to enqueue: #{inspect(reason)}"
-            )
-
-          {:ok, updated_receipt}
-      end
-    else
-      # No webhook URL configured - skip
-      Logger.warning("Discord transport missing webhook_url for receipt #{receipt.id}, skipping")
-
-      updated_receipt =
-        AshDispatch.ReceiptStatus.mark_skipped(receipt, "No webhook_url configured")
-
-      {:ok, updated_receipt}
+      {:ok, args}
     end
   end
 
@@ -151,14 +177,6 @@ defmodule AshDispatch.Transports.Discord do
 
   defp put_tenant(args, tenant),
     do: Map.put(args, "tenant", AshDispatch.Tenancy.receipt_prefix(tenant))
-
-  defp get_webhook_url(%Channel{webhook_url: url}) when is_binary(url), do: url
-
-  defp get_webhook_url(%Channel{opts: opts}) when is_map(opts) do
-    opts["webhook_url"] || opts[:webhook_url]
-  end
-
-  defp get_webhook_url(_), do: nil
 
   defp build_discord_payload(content, _context) when is_map(content) do
     # Base payload with content
