@@ -500,3 +500,11 @@ if it uses one.
 An independent review of rc.0 found eleven things, including three that lost
 mail on a host doing exactly what this page says. They are fixed in rc.1 — see
 the CHANGELOG for what each of them was.
+
+rc.2 is the first report from a host actually running it. Everything on this
+page behaved as written; three things that were not on it did not. Two of them
+are now: the `uuid_generate_v7()` section above, which is the one that stops a
+tenant being created at all, and — in the *Previews and testing* guide — whose
+clock the library's timestamps come from. The third was the generated
+TypeScript client, which could not be turned off and now can
+(`config :ash_dispatch, sdk: false`).
