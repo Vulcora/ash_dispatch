@@ -197,8 +197,11 @@ Later, if asked for:
   finds `context.user` in `data` rather than taking the action's actor, as it
   always has; switching it would change what such an event module reads as
   its subject.
-- The receipt carries `actor_id` but no `tenant`; per-tenant receipt reports
-  read it through the source record for now.
+- ~~The receipt carries `actor_id` but no `tenant`; per-tenant receipt reports
+  read it through the source record for now.~~ **Resolved in 0.9.4:**
+  `tenant_column: true` on `DeliveryReceipt.Base` adds the column, and
+  `multitenancy: :context` puts the receipts in the tenant's own schema
+  instead. See the Tenancy guide.
 - `Preference.Base`'s upsert relies on `NULLS NOT DISTINCT` (Postgres 15+);
   `UserPreference.Resource.put/3` updates an existing row itself, so it also
   works on data layers without it.
