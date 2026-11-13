@@ -64,7 +64,7 @@ defmodule AshDispatch.Tenancy.Job do
         fetch(resource, receipt_id, tenant)
 
       {:error, reason} ->
-        Logger.error(
+        Logger.warning(
           "AshDispatch: refusing a send job for receipt #{inspect(receipt_id)}: #{reason}. " <>
             "A tenant is a schema name, so an unrecognised one is never read from."
         )

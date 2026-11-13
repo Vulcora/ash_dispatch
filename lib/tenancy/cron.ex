@@ -44,8 +44,20 @@ defmodule AshDispatch.Tenancy.Cron do
     cond do
       tenant = args["tenant"] || args[:tenant] ->
         case Tenants.check(tenant) do
-          {:error, :unknown_tenant} -> :no_tenants
-          _ok_or_not_configured -> {:run, tenant}
+          :ok ->
+            {:run, tenant}
+
+          {:error, :unknown_tenant} ->
+            :no_tenants
+
+          # `:tenants` was configured when the fan-out wrote this job's args
+          # and is not now. The value is the library's own, from the host's own
+          # `all/0`, so it is allowed through for the same reason a send job's
+          # is — but it used to go through in silence, and it reaches the
+          # scrub's raw `prefix:`.
+          {:error, :not_configured} ->
+            Tenants.warn_if_missing("A fanned-out cron job carries a tenant")
+            {:run, tenant}
         end
 
       not Tenancy.receipts_per_tenant?() ->

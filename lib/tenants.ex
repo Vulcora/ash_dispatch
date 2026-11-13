@@ -86,6 +86,17 @@ defmodule AshDispatch.Tenants do
       )
 
       []
+  catch
+    # A `DBConnection` timeout in a host's `all/0` exits rather than raising,
+    # and used to take the whole cron entry job down with it instead of being
+    # logged like any other unreadable list.
+    kind, value ->
+      Logger.error(
+        "ash_dispatch: :tenants could not be read (#{kind} #{inspect(value)}); " <>
+          "treating it as no tenants."
+      )
+
+      []
   end
 
   @doc "Whether the host has configured a source of tenants at all."
@@ -118,6 +129,14 @@ defmodule AshDispatch.Tenants do
       Logger.error(
         "ash_dispatch: the :tenants check raised for #{inspect(tenant)} " <>
           "(#{Exception.message(error)}); the tenant is refused."
+      )
+
+      {:error, :unknown_tenant}
+  catch
+    kind, value ->
+      Logger.error(
+        "ash_dispatch: the :tenants check #{kind} for a tenant " <>
+          "(#{inspect(value)}); the tenant is refused."
       )
 
       {:error, :unknown_tenant}

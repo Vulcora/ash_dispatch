@@ -84,7 +84,11 @@ defmodule AshDispatch.Workers.SendSMSTest do
 
     test "one job per receipt — a 'send now' must not become two messages" do
       unique = SendSMS.__opts__()[:unique]
-      assert unique[:keys] == [:receipt_id]
+
+      # `:tenant` since 0.9.4-rc.1: a receipt id is unique per schema, not
+      # across them. Absent from the args of every job a host without tenants
+      # enqueues, so the key is the same key there.
+      assert unique[:keys] == [:receipt_id, :tenant]
       assert :executing in unique[:states]
     end
   end
