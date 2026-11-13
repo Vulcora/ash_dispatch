@@ -179,11 +179,34 @@ defmodule AshDispatch.Tenancy do
   Reads what `remember/2` stored, and falls back to the tenant Ash itself
   records in a struct's metadata — a record the host loaded and handed us
   carries that one, and it is as good an answer.
+
+  The fallback asks the resource first, like every other function here. Ash
+  writes `__metadata__.tenant` from the changeset's or query's tenant on every
+  action, for **any** resource, multitenant or not — Ash *tolerates* a tenant
+  it will not use, which is the premise this whole release rests on. So a host
+  whose app passes `tenant:` to every Ash call (normal in a multi-tenant
+  Phoenix app) hands the library receipts carrying a tenant in metadata, and
+  until 0.9.4-rc.1 that tenant went into the send job's args and could get the
+  job **cancelled** by `AshDispatch.Tenants.check/1` — on a host whose
+  receipts are in the public schema and always were.
+
+  The `#{inspect(@metadata_key)}` key needs no such gate: `remember/2` only
+  writes it for a multitenant resource.
   """
   @spec of(term()) :: term()
-  def of(%{__metadata__: metadata}) when is_map(metadata) do
-    Map.get(metadata, @metadata_key) || Map.get(metadata, :tenant)
+  def of(record)
+
+  def of(%resource{__metadata__: metadata}) when is_map(metadata) do
+    case Map.get(metadata, @metadata_key) do
+      nil -> if multitenant?(resource), do: Map.get(metadata, :tenant)
+      remembered -> remembered
+    end
   end
+
+  # A pseudo-receipt (the `:broadcast` and `:oban` transports get a plain map)
+  # is not a resource, so there is nothing to ask and nothing of Ash's to read.
+  def of(%{__metadata__: metadata}) when is_map(metadata),
+    do: Map.get(metadata, @metadata_key)
 
   def of(_record), do: nil
 

@@ -956,14 +956,24 @@ defmodule AshDispatch.Dispatcher do
       actor_id: extract_user_id_from_recipient(context.actor || context.user),
       source_type: source_type,
       source_id: source_id,
-      locale: locale,
-      # For a receipt resource built with `tenant_column: true`: which tenant
-      # this receipt was for, in one table. Dropped by `skip_unknown_inputs`
-      # for a resource without the column, which includes every per-tenant
-      # receipt — there the schema already says it.
-      tenant: Context.tenant_key(context.tenant)
+      locale: locale
       # Note: scheduled_for removed - Oban handles scheduling via schedule_in parameter
     }
+
+    # For a receipt resource built with `tenant_column: true`: which tenant
+    # this receipt was for, in one table. Dropped by `skip_unknown_inputs` for
+    # a resource without the column, which includes every per-tenant receipt —
+    # there the schema already says it.
+    #
+    # `maybe_put/3`, not a key with a nil value: `skip_unknown_inputs` drops an
+    # input the action does not accept and does NOT drop one it does, and Ash
+    # applies an attribute's default only when the input is ABSENT. A host with
+    # a receipt resource of its own that already has a `tenant` attribute its
+    # `:create` accepts — explicitly supported, and the reason
+    # `skip_unknown_inputs` is here at all — therefore had the library's
+    # explicit `nil` defeat its own default on every dispatch without a
+    # tenant. On a host that opted into nothing.
+    attrs = maybe_put(attrs, :tenant, Context.tenant_key(context.tenant))
 
     # Add recipient name to content if available
     content =
