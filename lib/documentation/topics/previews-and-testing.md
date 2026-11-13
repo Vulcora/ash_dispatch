@@ -121,6 +121,86 @@ when an event loses a channel or a template instead of quietly checking less.
 `render_all/1` returns the results instead of failing, for your own checks
 (length of the subject, absolute links, `lang` attribute, …).
 
+## Time, and whose clock the library writes
+
+A host that controls time through a module of its own — one `MyApp.Clock`
+everything calls, frozen or travelled in tests — does not control the
+timestamps this library writes. That is worth knowing before a test asserts on
+one.
+
+### What the columns are
+
+Every timestamp in the library's own resources is **`utc_datetime_usec`**:
+`inserted_at` and `updated_at` on all three (`DeliveryReceipt.Base`,
+`Notification.Base`, `Preference.Base`), and so are `occurred_at`, `read_at`,
+`seen_at`, `archived_at`, `sent_at`, `delivered_at`, `failed_at`,
+`bounced_at`, `last_retry_at` and the rest.
+
+In Postgres that is `timestamp` **without** time zone, holding UTC by
+convention. A host that uses `timestamptz` everywhere else has these tables as
+the exception. They are not wrong — a `utc_datetime_usec` is unambiguous
+because it is always UTC — but they do not join cleanly against a `timestamptz`
+column without a cast, and `AshPostgres.Timestamptz` is not what the bases
+declare.
+
+### Where the value comes from
+
+`inserted_at` and `updated_at` carry a **database default** in the generated
+migration:
+
+```elixir
+add :inserted_at, :utc_datetime_usec, null: false, default: fragment("(now() AT TIME ZONE 'utc')")
+```
+
+That default is a safety net for a row inserted by something other than Ash.
+It is not where the value normally comes from: Ash fills both attributes from
+its own `&DateTime.utc_now/0` while it builds the changeset, so what reaches
+the database is the **BEAM's clock**, in the process that did the write, and
+the column default never fires. The same is true of every other timestamp
+above — `occurred_at` defaults to `DateTime.utc_now()`, and `sent_at`,
+`read_at`, `seen_at`, `archived_at` and `last_retry_at` are set by changes
+that call `DateTime.utc_now/0` directly.
+
+So there are two clocks involved and neither of them is yours:
+
+| Written by | Clock | Can a host supply it? |
+|---|---|---|
+| `inserted_at`, `updated_at` | the BEAM, through Ash's `timestamps` macro | no |
+| `occurred_at`, `sent_at`, `read_at`, `seen_at`, `archived_at`, `last_retry_at`, … | the BEAM, in this library | no |
+| the column DEFAULT, for a non-Ash `INSERT` | the database | no |
+
+`inserted_at` and `updated_at` are `writable?: false`, so an action cannot
+accept them either.
+
+### What to do in a test
+
+Do not assert on an exact instant in a library-written timestamp. Assert on
+the ordering or the window:
+
+```elixir
+before = DateTime.utc_now()
+AshDispatch.Dispatcher.dispatch("orders.created", %{order: order})
+receipt = read_the_receipt()
+
+assert DateTime.compare(receipt.inserted_at, before) in [:gt, :eq]
+```
+
+If your test freezes time in your own clock module, the library's rows are
+still stamped with the real one, and a strict equality against your frozen
+instant fails. That is the finding behind this section, not a defect: the
+library never claimed to take its time from anywhere else.
+
+One seam does exist today. `AshDispatch.Context` carries `:now`, settable per
+dispatch, and the broadcast transport's payload timestamp uses it:
+
+```elixir
+AshDispatch.Dispatcher.dispatch("orders.created", %{order: order}, %{}, now: frozen)
+```
+
+Nothing that is *persisted* reads it yet. Widening that seam to the values the
+library writes from Elixir is BACKLOG 13; moving the columns to `timestamptz`
+is a migration and therefore 0.10.0.
+
 ## Strict templates
 
 ash_dispatch renders `.html.heex` templates with EEx, after turning

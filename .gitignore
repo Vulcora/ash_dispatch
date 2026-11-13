@@ -27,6 +27,9 @@ Thumbs.db
 *.tmp
 *.log
 
+# ExUnit's `@tag :tmp_dir` writes here
+/tmp
+
 # Build artifacts
 /priv/ash_dispatch/
 

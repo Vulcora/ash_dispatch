@@ -69,6 +69,28 @@ defmodule Mix.Tasks.AshDispatch.Gen do
       config :ash_dispatch,
         sdk_output_path: "apps/frontend/src/lib/ash-dispatch"
 
+  ## Turning the SDK off
+
+  The SDK is a React/TypeScript client. A host that has `ash_typescript` for
+  its own RPC types but does not want this library's client says so:
+
+      config :ash_dispatch, sdk: false
+
+  Nothing is then written — no `channel.ts`, no components, no `README.md`, no
+  `.prettierignore` section — and `--check` passes with none of those files on
+  disk. `sdk_output_path: false` means the same thing and is read as "off"
+  rather than as "unset" (0.9.4-rc.2; before that it fell through as falsy and
+  the SDK was generated anyway).
+
+  The third value generates the SDK only when there is something to put in it:
+
+      config :ash_dispatch, sdk: :if_events
+
+  "Something" is any event, counter, `resource_meta` or `entity_changes` block
+  in the host's resources. It is opt-in rather than the default because a host
+  that has none of those has been getting the client's static files since
+  0.8.0, and a patch release does not stop writing files a host already has.
+
   See the [Code Generation guide](lib/documentation/topics/code-generation.md) for details.
   """
 
@@ -97,14 +119,26 @@ defmodule Mix.Tasks.AshDispatch.Gen do
         aliases: [v: :verbose]
       )
 
-    otp_app = Mix.Project.config()[:app]
-    sdk_enabled = typescript_sdk_enabled?(otp_app)
+    generate(Mix.Project.config()[:app], opts)
+  end
 
+  @doc false
+  # The task's body, with the host's app and the parsed options passed in
+  # rather than read from the Mix project — so that the suite can run it
+  # (`run/1` refuses to run inside ash_dispatch itself). Not public API.
+  def generate(otp_app, opts) do
     # Introspect all events, counters, resources, and entity change config
     events = AshDispatch.Introspection.all_events(otp_app)
     counters = discover_counters(otp_app)
     resource_metas = discover_resource_metas(otp_app)
     entity_change_resources = discover_entity_change_resources(otp_app)
+
+    # Whether the SDK has anything of the host's to describe. Only consulted
+    # under `sdk: :if_events`; see `sdk_setting/1`.
+    sdk_content? =
+      events != [] or counters != [] or resource_metas != [] or entity_change_resources != []
+
+    sdk_enabled = typescript_sdk_enabled?(otp_app, sdk_content?)
 
     # Warn if no events or counters found (common misconfiguration)
     warn_if_no_dispatch_resources(otp_app, events, counters)
@@ -117,7 +151,7 @@ defmodule Mix.Tasks.AshDispatch.Gen do
       if sdk_enabled do
         Mix.shell().info("TypeScript SDK output: #{sdk_base_path(otp_app)}")
       else
-        Mix.shell().info("TypeScript SDK generation disabled (ash_typescript not configured)")
+        Mix.shell().info("TypeScript SDK generation disabled (#{sdk_disabled_reason(otp_app)})")
       end
     end
 
@@ -165,14 +199,17 @@ defmodule Mix.Tasks.AshDispatch.Gen do
       # Generate Gettext catalog for content: strings (if gettext_backend configured)
       generated_count = generated_count + generate_gettext_catalog(events, otp_app)
 
-      # Ensure .prettierignore includes generated files
-      generated_count = generated_count + ensure_prettierignore(otp_app)
+      # Ensure .prettierignore includes generated files. Only when the SDK is
+      # on: with it off there is nothing to keep prettier away from, and a
+      # host that asked for no SDK does not want its .prettierignore edited.
+      generated_count =
+        generated_count + if(sdk_enabled, do: ensure_prettierignore(otp_app), else: 0)
 
       if generated_count > 0 do
         Mix.shell().info("\nGenerated #{generated_count} file(s)")
 
         # Check for required dependencies and warn if missing
-        check_frontend_dependencies(otp_app)
+        if sdk_enabled, do: check_frontend_dependencies(otp_app)
       end
 
       {:ok, []}
@@ -1450,19 +1487,92 @@ defmodule Mix.Tasks.AshDispatch.Gen do
   # Default output path matching ash_typescript's installer default
   @default_ash_typescript_output "assets/js/ash_rpc.ts"
 
-  defp typescript_sdk_enabled?(otp_app) do
+  @doc false
+  # What the host asked for, before anything is looked up on disk:
+  #
+  #   * `:off`       — `sdk: false`, or `sdk_output_path: false`
+  #   * `:if_events` — `sdk: :if_events`, generate only when the host has
+  #                    events, counters, resource metas or entity changes
+  #   * `:always`    — unset, or `sdk: true`. What every release before
+  #                    0.9.4-rc.2 did, and still the default.
+  #
+  # Both keys are read as `config :ash_dispatch, …` first and as
+  # `config :my_app, ash_dispatch: […]` second, which is the pair of spellings
+  # the rest of this task already accepted. `false` is distinguished from
+  # unset: `sdk_output_path: false` used to be swallowed by an `||` chain and
+  # the SDK was written anyway (#50).
+  def sdk_setting(otp_app) do
+    if sdk_config(otp_app, :sdk_output_path) == false do
+      :off
+    else
+      case sdk_config(otp_app, :sdk) do
+        nil -> :always
+        true -> :always
+        false -> :off
+        :if_events -> :if_events
+        other -> raise ArgumentError, bad_sdk_setting(other)
+      end
+    end
+  end
+
+  defp bad_sdk_setting(other) do
+    """
+    AshDispatch: `config :ash_dispatch, sdk: #{inspect(other)}` is not a value this task understands.
+
+    Expected one of:
+
+      sdk: true         # generate the TypeScript SDK (the default; leave it out)
+      sdk: false        # generate nothing, and let `--check` pass with no files
+      sdk: :if_events   # generate only when this app has events or counters
+
+    `sdk_output_path: false` is accepted as another spelling of `sdk: false`.
+    """
+  end
+
+  # The value of one codegen key, or nil when the host has not set it.
+  # `Application.fetch_env/2` rather than `get_env/2 ||`, so that `false`
+  # survives as `false` instead of looking like "not configured".
+  defp sdk_config(otp_app, key) do
+    case Application.fetch_env(:ash_dispatch, key) do
+      {:ok, value} when not is_nil(value) ->
+        value
+
+      _ ->
+        case Application.get_env(otp_app, :ash_dispatch) do
+          config when is_list(config) -> Keyword.get(config, key)
+          _ -> nil
+        end
+    end
+  end
+
+  defp sdk_disabled_reason(otp_app) do
+    case sdk_setting(otp_app) do
+      :off -> "config :ash_dispatch, sdk: false"
+      :if_events -> "sdk: :if_events, and this app has no events or counters"
+      :always -> "ash_typescript not configured"
+    end
+  end
+
+  defp typescript_sdk_enabled?(otp_app, content?) do
     # SDK generation requires either:
     # 1. Explicit sdk_output_path in ash_dispatch config
     # 2. Valid ash_typescript :output_file configuration
     # 3. Any domain using AshTypescript.Rpc (uses default path)
-    explicit_path =
-      Application.get_env(:ash_dispatch, :sdk_output_path) ||
-        Application.get_env(otp_app, :ash_dispatch)[:sdk_output_path]
+    #
+    # …and, before any of them, that the host has not switched it off.
+    case sdk_setting(otp_app) do
+      :off -> false
+      :if_events -> content? and sdk_configured?(otp_app)
+      :always -> sdk_configured?(otp_app)
+    end
+  end
 
+  defp sdk_configured?(otp_app) do
+    explicit_path = sdk_config(otp_app, :sdk_output_path)
     ash_ts_output = Application.get_env(:ash_typescript, :output_file)
 
     cond do
-      explicit_path != nil -> true
+      is_binary(explicit_path) and explicit_path != "" -> true
       ash_ts_output != nil and is_binary(ash_ts_output) and ash_ts_output != "" -> true
       ash_typescript_in_use?(otp_app) -> true
       true -> false
@@ -1470,24 +1580,31 @@ defmodule Mix.Tasks.AshDispatch.Gen do
   end
 
   defp sdk_base_path(otp_app) do
-    explicit_path =
-      Application.get_env(:ash_dispatch, :sdk_output_path) ||
-        Application.get_env(otp_app, :ash_dispatch)[:sdk_output_path]
+    explicit_path = sdk_config(otp_app, :sdk_output_path)
 
-    if explicit_path do
-      explicit_path
-    else
-      # Use configured output_file, or default if ash_typescript is in use
-      ash_ts_output =
-        Application.get_env(:ash_typescript, :output_file) ||
-          if(ash_typescript_in_use?(otp_app), do: @default_ash_typescript_output)
-
-      if ash_ts_output do
-        base_dir = Path.dirname(ash_ts_output)
-        Path.join(base_dir, "ash-dispatch")
-      else
+    cond do
+      # The off switch, honoured here as well as in `typescript_sdk_enabled?/2`
+      # because every other writer of SDK files asks this function for a path:
+      # `check_sdk_status/3`, `sdk_path/2`, `find_prettierignore_path/1` and
+      # the peer-dependency warning all go quiet when it answers nil.
+      sdk_setting(otp_app) == :off ->
         nil
-      end
+
+      is_binary(explicit_path) and explicit_path != "" ->
+        explicit_path
+
+      true ->
+        # Use configured output_file, or default if ash_typescript is in use
+        ash_ts_output =
+          Application.get_env(:ash_typescript, :output_file) ||
+            if(ash_typescript_in_use?(otp_app), do: @default_ash_typescript_output)
+
+        if ash_ts_output do
+          base_dir = Path.dirname(ash_ts_output)
+          Path.join(base_dir, "ash-dispatch")
+        else
+          nil
+        end
     end
   end
 

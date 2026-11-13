@@ -155,6 +155,53 @@ config :ash_dispatch,
   typescript_events_output: "apps/frontend/src/lib/custom/events.ts"
 ```
 
+### Turning the SDK off
+
+The SDK is a React/TypeScript client: a Phoenix channel wrapper, a Zustand
+store, three `.tsx` components, hooks and a README. It is generated as soon as
+`ash_typescript` is configured, which is not the same thing as wanting it — a
+host may have `ash_typescript` for its own RPC types, or use a frontend that
+is not React, or have no events yet.
+
+```elixir
+config :ash_dispatch, sdk: false
+```
+
+Nothing is then written — no `channel.ts`, no components, no `README.md`, no
+`.prettierignore` section, no warning about missing `zustand` and `phoenix` —
+and `mix ash.codegen --check` passes with none of those files on disk. The
+templates and event modules the generator writes for your events are a
+separate thing and are unaffected.
+
+`sdk_output_path: false` means the same:
+
+```elixir
+config :ash_dispatch, sdk_output_path: false
+```
+
+Before 0.9.4-rc.2 that one fell through as falsy — the path was derived from
+`ash_typescript`'s `output_file` instead and the SDK was generated anyway.
+
+The third value generates the SDK only when there is something of yours to put
+in it:
+
+```elixir
+config :ash_dispatch, sdk: :if_events
+```
+
+"Something" is any event, counter, `resource_meta` or `entity_changes` block
+in your resources. This is **opt-in rather than the default**: a host with none
+of those has been getting the client's static files since 0.8.0, and a patch
+release does not stop writing files a host already has. Set it, run
+`mix ash.codegen`, and delete the files yourself the once.
+
+Both keys are also read in the app-scoped spelling, if that is where the rest
+of your AshDispatch config lives:
+
+```elixir
+config :my_app, ash_dispatch: [sdk: false]
+```
+
 ### Template Compilation (Production)
 
 Templates are loaded directly from `lib/` in development for fast iteration.

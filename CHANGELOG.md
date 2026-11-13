@@ -5,6 +5,108 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.4-rc.2] - 2026-11-13
+
+### What the first per-tenant host found
+
+rc.0 and rc.1 were read by people who had not built the library. rc.2 is the
+first report from someone *running* it: one Postgres schema per tenant, the
+generated TypeScript client in use, in production. Everything in the Tenancy
+guide behaved as documented. Three things that are not in it did not (#50).
+
+None of them is a defect in what the library does. Two are things it does
+without being asked and gives no way to decline; the third is a fact about its
+own tables that nobody wrote down. That is the shape of most of what a first
+host finds, and it is worth saying out loud, because "no bugs" and "nothing to
+fix" are not the same sentence.
+
+1. **The React/TypeScript SDK could not be turned off.** It is generated as
+   soon as `config :ash_typescript, output_file:` is set — which a host may
+   have set for its own RPC types, with no interest in this library's client.
+   A host with no AshDispatch events got thirteen files (channel, store, three
+   `.tsx` components, hooks, README), a `.prettierignore` section, and warnings
+   about `zustand` and `phoenix`, which it does not depend on. The obvious
+   guess, `sdk_output_path: false`, went through an `||` chain, so `false`
+   read as "not configured", the path was derived from ash_typescript's
+   `output_file` instead, and the files were written anyway. Deleting them
+   then failed `--check` in CI: files you did not want, and a job that insists
+   on them.
+2. **`uuid_v7_primary_key` needs `uuid_generate_v7()`, and the guides never
+   said so.** `Notification.Base` and `Preference.Base` have had a v7 key
+   since 0.9.0, so `mix ash.codegen` writes
+   `default: fragment("uuid_generate_v7()")` into their migration. Postgres
+   has no such function before 18 — ash_postgres creates it, in its
+   `ash-functions` migration, and only for a repo whose
+   `installed_extensions/0` asks for it. Where it is missing, `CREATE TABLE`
+   fails. For this host that is not a failed deploy: it creates each tenant's
+   tables when the tenant is created, so no tenant could be created at all.
+3. **The library's timestamps are not on the host's clock.** They are
+   `utc_datetime_usec` — `timestamp` *without* time zone — in an app that is
+   `timestamptz` everywhere, and their values come from the BEAM inside Ash
+   and inside this library, not from the one module the host routes time
+   through. So a test that freezes time cannot pin them.
+
+### Added
+
+- **An off switch for the generated SDK.** `config :ash_dispatch, sdk: false`
+  generates nothing — no client, no `.prettierignore` section, no
+  peer-dependency warning — and `mix ash.codegen --check` passes with none of
+  those files on disk. `sdk_output_path: false` is read as the same thing
+  rather than as "unset". Both keys are also read in the app-scoped spelling
+  (`config :my_app, ash_dispatch: [...]`).
+- **`config :ash_dispatch, sdk: :if_events`** generates the SDK only when the
+  app has events, counters, a `resource_meta` or an `entity_changes` block.
+  **Opt-in, not the default**: a host with none of those has been getting the
+  client's static files since 0.8.0, and a patch release does not stop writing
+  files a host already has. Set it, run `mix ash.codegen`, delete the files
+  once.
+- **`primary_key:` on all three `Base` macros** (`:uuid_v7` or `:uuid`), and
+  through `AshDispatch.Setup`, which passes it on. For a host whose database
+  will not define functions: `:uuid` means `gen_random_uuid()`, built into
+  Postgres 13 and later, in every schema. **No default moved** —
+  `Notification.Base` and `Preference.Base` are still `:uuid_v7`,
+  `DeliveryReceipt.Base` is still `:uuid`. Both kinds store a `uuid` column,
+  so the option changes the column's DEFAULT and nothing else.
+- **`mix ash_dispatch.install` warns when the repo does not install
+  `ash-functions`**, with the SQL to check the database
+  (`SELECT to_regprocedure('public.uuid_generate_v7()')`), the
+  `installed_extensions/0` line that fixes it, and `primary_key: :uuid` as the
+  alternative. The check is the repo's own source: no database connection.
+
+### Documentation
+
+- **The Tenancy guide has a `uuid_generate_v7()` section**: which resources
+  have a v7 key and why, what the migration contains, how to check, how to
+  install it through `ash.codegen`, the statement to run by hand when that is
+  not available, and the part that only bites a per-tenant host — the function
+  lives in one schema, and a `CREATE TABLE` in a tenant's schema resolves it
+  against the creating connection's `search_path`.
+- **The install guide says it in Prerequisites**, beside the PostgreSQL 15
+  floor, where a reader who has read nothing else will meet it.
+- **The Code Generation and TypeScript SDK guides document the off switch.**
+- **The testing guide says whose clock the library's timestamps come from**:
+  `utc_datetime_usec` columns; a `DEFAULT (now() AT TIME ZONE 'utc')` that is
+  a safety net for an INSERT that does not go through Ash, not where the value
+  normally comes from; Ash filling `inserted_at`/`updated_at` from the BEAM
+  while building the changeset; `writable?: false`, so an action cannot be
+  given them. Assert on ordering or a window, not on an instant.
+- **BACKLOG 13** carries the rest of the timestamp question, split by cost.
+  The values written from Elixir could be routed through a configurable clock
+  without touching a column — `AshDispatch.Context` already carries `:now`, so
+  half the seam exists — and that would fit inside a 0.9.x patch if a host
+  asks for it. Moving `inserted_at`/`updated_at` to such a clock, or the
+  columns to `timestamptz`, is 0.10.0: the first changes what ash_postgres
+  writes as the column DEFAULT unless `migration_defaults` is pinned to hold
+  it still, and the second is an `ALTER COLUMN … TYPE`, per tenant.
+
+### Compatibility
+
+A patch, under the same rule as every 0.9.x before it: no migration, and no
+default changed for a host that has not opted in. A host that upgrades from
+rc.1 and sets none of the new options gets byte-for-byte what rc.1 gave it —
+the same SDK files, the same primary keys, the same timestamps. The suite that
+passed on rc.1 passes unchanged, with 26 tests added for what is new.
+
 ## [0.9.4-rc.1] - 2026-11-13
 
 ### What rc.0 got wrong

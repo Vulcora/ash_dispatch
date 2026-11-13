@@ -112,7 +112,77 @@ if Code.ensure_loaded?(Igniter) do
       |> maybe_setup_phoenix(opts[:phoenix], otp_app, app_module)
       |> maybe_configure_email(opts[:email], otp_app, app_module)
       |> maybe_run_typescript(opts[:typescript])
+      |> maybe_warn_missing_ash_functions(otp_app, repo, app_module)
       |> add_final_notice(app_module, found_repo, user_resource)
+    end
+
+    # ============================================
+    # uuid_generate_v7()
+    # ============================================
+
+    # The notification and preference resources written above have a
+    # `uuid_v7_primary_key`, so `mix ash.codegen` writes
+    # `default: fragment("uuid_generate_v7()")` into their migration. Postgres
+    # has no such function before 18: ash_postgres creates it, in its
+    # `ash-functions` migration, and only for a repo whose
+    # `installed_extensions/0` lists `"ash-functions"`. Where it is missing,
+    # `CREATE TABLE` fails — and for a host that creates a tenant's tables when
+    # the tenant is created, no tenant can be created at all (#50).
+    #
+    # The check is the repo's own source: no database connection, nothing of
+    # the host's compiled, and it answers the only question that decides it.
+    defp maybe_warn_missing_ash_functions(igniter, otp_app, repo, app_module) do
+      case Igniter.Project.Module.find_module(igniter, repo) do
+        {:ok, {igniter, source, _zipper}} ->
+          if source |> Rewrite.Source.get(:content) |> String.contains?(~s("ash-functions")) do
+            igniter
+          else
+            Igniter.add_notice(igniter, ash_functions_notice(otp_app, repo, app_module))
+          end
+
+        # No repo of that name to read. The closing notice already says so;
+        # warning about a file that is not there would only be noise.
+        {:error, igniter} ->
+          igniter
+      end
+    end
+
+    defp ash_functions_notice(otp_app, repo, app_module) do
+      """
+      ⚠️  #{inspect(repo)} does not list the "ash-functions" extension, and the
+      notification and preference resources have a UUID v7 primary key.
+
+      `mix ash.codegen` writes `default: fragment("uuid_generate_v7()")` for
+      their tables. Postgres has no such function before 18 — ash_postgres
+      creates it, and only for a repo that asks. Without it CREATE TABLE fails.
+
+      Check your database:
+
+          SELECT to_regprocedure('public.uuid_generate_v7()');
+
+      A NULL answer means it is not there. To add it:
+
+          defmodule #{inspect(repo)} do
+            use AshPostgres.Repo, otp_app: :#{otp_app}
+
+            def installed_extensions, do: ["ash-functions"]
+          end
+
+          mix ash.codegen install_ash_functions
+          mix ash.migrate
+
+      Or keep v4 keys, which need no function at all:
+
+          use AshDispatch.Resources.Notification.Base,
+            repo: #{inspect(repo)},
+            domain: #{inspect(Module.concat(app_module, Notifications))},
+            primary_key: :uuid
+
+      If you create each tenant's tables when the tenant is created, read the
+      "uuid_generate_v7()" section of the Tenancy guide before your first one:
+      the function lives in one schema and is resolved against the search_path
+      of whoever runs the CREATE TABLE.
+      """
     end
 
     # ============================================

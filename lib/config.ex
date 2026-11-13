@@ -808,8 +808,27 @@ defmodule AshDispatch.Config do
 
   @doc """
   Output path for generated SDK files.
+
+  A codegen key, not a runtime one: `mix ash_dispatch.gen` reads it, and this
+  accessor exists so the key is documented with the others. The generator also
+  accepts the app-scoped spelling (`config :my_app, ash_dispatch: [...]`),
+  which this function does not see — ask the generator, not this module, for
+  the answer it will act on.
+
+  Three values:
+
+  - a path — write the SDK there
+  - `false` — write no SDK at all, and let `mix ash.codegen --check` pass with
+    none of those files on disk. The same as `config :ash_dispatch, sdk: false`.
+    Before 0.9.4-rc.2 this fell through as falsy and the SDK was written anyway
+  - unset — derive the path from `config :ash_typescript, output_file:`
+
+  `config :ash_dispatch, sdk:` is the companion switch: `true` (the default),
+  `false`, or `:if_events` to write the SDK only when this app has events,
+  counters, a `resource_meta` or an `entity_changes` block. See
+  `Mix.Tasks.AshDispatch.Gen` and the Code Generation guide.
   """
-  @spec sdk_output_path() :: String.t() | nil
+  @spec sdk_output_path() :: String.t() | false | nil
   def sdk_output_path do
     Application.get_env(:ash_dispatch, :sdk_output_path)
   end

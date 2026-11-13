@@ -257,3 +257,59 @@ overridden `applicable_for_user?/1`. Generating an `applicable_for_user?/2`
 beside it and preferring that would silently stop calling such a host's
 override — a patch must not do that. 0.10.0 can change the callback to take a
 context, with a deprecation path for `/1`.
+
+## 13. A host cannot supply the clock the library's timestamps come from — 0.10.0
+
+Reported by the first per-tenant host (#50, point 3). Documented in the
+*Previews and testing* guide for 0.9.4-rc.2; not changed.
+
+What is true today:
+
+- every timestamp in `DeliveryReceipt.Base`, `Notification.Base` and
+  `Preference.Base` is `utc_datetime_usec` — Postgres `timestamp` *without*
+  time zone. A host that uses `timestamptz` everywhere has these tables as the
+  exception;
+- `inserted_at` and `updated_at` come from Ash's `timestamps` macro, so their
+  value is the **BEAM's** `&DateTime.utc_now/0`, evaluated while the changeset
+  is built. The `DEFAULT (now() AT TIME ZONE 'utc')` that ash_postgres writes
+  into the migration for that same default is only a safety net for an
+  `INSERT` that does not go through Ash;
+- `occurred_at`, `sent_at`, `read_at`, `seen_at`, `archived_at`,
+  `last_retry_at` and the rest are set by this library calling
+  `DateTime.utc_now/0` directly;
+- so a host that controls time through one module of its own controls none of
+  them, and `writable?: false` on the two timestamps means an action cannot be
+  given them either.
+
+### The migration-free half, if a host asks for it
+
+The values this library writes **from Elixir** — everything in the third
+bullet — can be routed through a configurable clock without touching a column:
+
+```elixir
+config :ash_dispatch, clock: MyApp.Clock   # default: DateTime
+```
+
+one `AshDispatch.Clock.utc_now/0` helper, and the ~12 call sites replaced.
+`AshDispatch.Context` already carries `:now` (settable per dispatch, read today
+only by the broadcast transport's payload timestamp), so the seam half exists.
+Nothing about the schema changes and the default is `DateTime`, so it is
+inside what a 0.9.x patch may do, and it could land in one if a host asks.
+It is here rather than in rc.2 because no host has asked for more than the
+note, and a clock nothing reads is worse than no clock.
+
+### The halves that need 0.10.0
+
+- **`inserted_at`/`updated_at` from the same clock.** Replacing
+  `timestamps(public?: true)` with explicit `create_timestamp`/
+  `update_timestamp` entities whose default is not literally
+  `&DateTime.utc_now/0` changes what ash_postgres writes as the column's
+  DEFAULT (its mapping matches on that exact capture), so the next
+  `mix ash.codegen` in every host produces an `ALTER COLUMN … DROP DEFAULT`.
+  It can probably be held still by pinning `migration_defaults` in the
+  `postgres` block, which is worth proving against ash_postgres's snapshot
+  comparison before anyone relies on it — and proving it is 0.10.0 work.
+- **`timestamptz` columns**, as an option on the bases. `AshPostgres.Timestamptz`
+  is a different storage type, so switching is an `ALTER COLUMN … TYPE` on
+  tables that may be large, per tenant for a per-tenant host. A patch may not
+  require a migration; this one requires several.

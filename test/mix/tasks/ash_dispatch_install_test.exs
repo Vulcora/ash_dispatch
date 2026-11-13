@@ -57,6 +57,8 @@ defmodule Mix.Tasks.AshDispatch.InstallTest do
     Rewrite.Source.get(source, :content)
   end
 
+  defp notices(igniter), do: Enum.join(igniter.notices, "\n")
+
   defp collect(content, fun) do
     content
     |> Code.string_to_quoted!()
@@ -174,6 +176,47 @@ defmodule Mix.Tasks.AshDispatch.InstallTest do
     refute content(igniter, "lib/test/notifications/notification.ex") =~ ~r/^\s*belongs_to/m
 
     assert_has_notice(igniter, &(&1 =~ "mix ash_dispatch.gen.recipient_resolver"))
+  end
+
+  # The notification and preference resources this installer writes have a
+  # UUID v7 primary key, whose migration default is `uuid_generate_v7()`. A
+  # repo that does not install ash_postgres's `ash-functions` never gets that
+  # function, and CREATE TABLE fails — for a host that creates a tenant's
+  # tables when the tenant is created, on every tenant (#50).
+  describe "uuid_generate_v7()" do
+    test "a repo without ash-functions is warned, with how to check and how to fix" do
+      igniter = install()
+
+      assert_has_notice(igniter, &(&1 =~ "does not list the \"ash-functions\" extension"))
+      assert_has_notice(igniter, &(&1 =~ "to_regprocedure('public.uuid_generate_v7()')"))
+      assert_has_notice(igniter, &(&1 =~ ~s|def installed_extensions, do: ["ash-functions"]|))
+      assert_has_notice(igniter, &(&1 =~ "primary_key: :uuid"))
+    end
+
+    test "a repo that installs them is left alone" do
+      repo = """
+      defmodule Test.Repo do
+        use AshPostgres.Repo, otp_app: :test
+
+        def installed_extensions, do: ["ash-functions"]
+      end
+      """
+
+      igniter =
+        test_project(files: %{"lib/test/repo.ex" => repo, "lib/test/accounts/user.ex" => @user})
+        |> Igniter.compose_task("ash_dispatch.install", ["--yes"])
+
+      refute notices(igniter) =~ "ash-functions"
+    end
+
+    test "no repo at all: the missing-repo notice, and not this one" do
+      igniter =
+        test_project(files: %{"lib/test/accounts/user.ex" => @user})
+        |> Igniter.compose_task("ash_dispatch.install", ["--yes"])
+
+      assert_has_notice(igniter, &(&1 =~ "No Ecto repo found"))
+      refute notices(igniter) =~ "ash-functions"
+    end
   end
 
   # A minimal Phoenix web layer: `phx_test_project/1` needs the phx_new

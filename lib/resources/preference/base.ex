@@ -60,6 +60,10 @@ defmodule AshDispatch.Resources.Preference.Base do
     (since 0.9.4). The `tenant` column keeps working either way — for a
     per-tenant resource it is a redundant copy of what the schema says, and the
     library writes and filters both. See the Tenancy guide
+  - `:primary_key` - `:uuid_v7` (the default, unchanged) or `:uuid`. The v7
+    key's migration default is `uuid_generate_v7()`, which your database must
+    have; `:uuid` uses `gen_random_uuid()`, which is built in. See
+    `AshDispatch.Resources.PrimaryKey` and the Tenancy guide (since 0.9.4-rc.2)
 
   ## Policies
 
@@ -100,6 +104,11 @@ defmodule AshDispatch.Resources.Preference.Base do
 
     # 0.9.4; see `AshDispatch.Tenancy.Base`. Absent, nothing is emitted.
     multitenancy_block = AshDispatch.Tenancy.Base.block(Keyword.get(opts, :multitenancy))
+
+    # 0.9.4-rc.2; see `AshDispatch.Resources.PrimaryKey`. Absent, `:uuid_v7`,
+    # which is what every release since 0.9.0 has emitted here.
+    primary_key =
+      AshDispatch.Resources.PrimaryKey.attribute(:uuid_v7, Keyword.get(opts, :primary_key))
 
     postgres_block =
       if postgres? do
@@ -143,7 +152,7 @@ defmodule AshDispatch.Resources.Preference.Base do
       unquote(policies_block)
 
       attributes do
-        uuid_v7_primary_key :id
+        unquote(primary_key)
 
         attribute :tenant, :string do
           public? true

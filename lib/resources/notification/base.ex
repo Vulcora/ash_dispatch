@@ -45,6 +45,10 @@ defmodule AshDispatch.Resources.Notification.Base do
     the library ever mentions a tenant to it. The `tenant` ATTRIBUTE below is a
     different thing and is always there: it says which tenant a notification
     belongs to, in one table. See the Tenancy guide.
+  - `:primary_key` - `:uuid_v7` (the default, unchanged) or `:uuid`. The v7
+    key's migration default is `uuid_generate_v7()`, which your database must
+    have; `:uuid` uses `gen_random_uuid()`, which is built in. See
+    `AshDispatch.Resources.PrimaryKey` and the Tenancy guide (since 0.9.4-rc.2).
   """
 
   @doc false
@@ -159,6 +163,11 @@ defmodule AshDispatch.Resources.Notification.Base do
     # is what 0.9.3 generated; the `tenant` COLUMN has been here since 0.9.0
     # either way, and the two are different things.
     multitenancy_block = AshDispatch.Tenancy.Base.block(Keyword.get(opts, :multitenancy))
+
+    # 0.9.4-rc.2; see `AshDispatch.Resources.PrimaryKey`. Absent, `:uuid_v7`,
+    # which is what every release since 0.9.0 has emitted here.
+    primary_key =
+      AshDispatch.Resources.PrimaryKey.attribute(:uuid_v7, Keyword.get(opts, :primary_key))
 
     quote do
       # The authorizer MUST be present: without one, `authorize?: true` is a
@@ -409,7 +418,7 @@ defmodule AshDispatch.Resources.Notification.Base do
       end
 
       attributes do
-        uuid_v7_primary_key :id
+        unquote(primary_key)
 
         attribute :user_id, :uuid do
           public? true
