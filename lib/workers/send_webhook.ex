@@ -73,6 +73,7 @@ defmodule AshDispatch.Workers.SendWebhook do
 
   alias AshDispatch.Delivery
   alias AshDispatch.ReceiptStatus
+  alias AshDispatch.Transports.WebhookUrl
 
   require Logger
 
@@ -85,7 +86,11 @@ defmodule AshDispatch.Workers.SendWebhook do
   ## Job Args
 
   - `receipt_id` - DeliveryReceipt UUID
-  - `webhook_url` - Full webhook URL
+  - `webhook_url` - Full webhook URL, or
+  - `webhook_url_env` - the NAME of the environment variable that holds it,
+    read when the job runs (see `AshDispatch.Transports.WebhookUrl`). The
+    Slack and Discord transports send this one for a channel with
+    `metadata.webhook_url_env`, so the URL is never stored in `oban_jobs.args`.
   - `payload` - JSON payload to send (encoded by the HTTP client)
   - `raw_body` - optional pre-serialised body, sent verbatim. Takes
     precedence over `payload`; required when the request is signed, so the
@@ -103,6 +108,12 @@ defmodule AshDispatch.Workers.SendWebhook do
   `:blocked`, `:dry_run` or an allow-list gets a `:skipped` receipt and no HTTP
   call. The allow-list is matched against the receipt's recipient — for a
   `:webhook` channel that is the receiver, not the URL.
+
+  ## The URL in the log
+
+  A webhook URL is a credential, so no log line carries it: every line shows
+  `AshDispatch.Transports.WebhookUrl.mask/1` (scheme and host) instead, at
+  every level and on every outcome.
   """
   @impl Oban.Worker
   def perform(%Oban.Job{args: args}) do
@@ -153,6 +164,8 @@ defmodule AshDispatch.Workers.SendWebhook do
       {:error, reason} ->
         ReceiptStatus.mark_failed(receipt, reason)
 
+        url = resolved_url(args)
+
         if permanent?(reason) do
           # `{:cancel, _}` stops Oban's retries. A 4xx means the RECEIVER
           # rejected THIS request — an unknown channel, a revoked webhook URL,
@@ -161,12 +174,16 @@ defmodule AshDispatch.Workers.SendWebhook do
           # queue that looks busy. The receipt is already `failed`, and that
           # is the answer.
           Logger.warning(
-            "Webhook permanently rejected for receipt #{receipt.id}: #{inspect(reason)}"
+            "Webhook permanently rejected for receipt #{receipt.id}: " <>
+              WebhookUrl.scrub(inspect(reason), url)
           )
 
           {:cancel, reason}
         else
-          Logger.error("Webhook failed for receipt #{receipt.id}: #{inspect(reason)}")
+          Logger.error(
+            "Webhook failed for receipt #{receipt.id}: " <> WebhookUrl.scrub(inspect(reason), url)
+          )
+
           {:error, reason}
         end
     end
@@ -217,14 +234,51 @@ defmodule AshDispatch.Workers.SendWebhook do
   # the Elks SMS backend does, rather than with an UndefinedFunctionError.
   defp send_webhook(args) do
     if Code.ensure_loaded?(Req) do
-      post_webhook(args)
+      request(args)
     else
       {:error, "req is missing — add {:req, \"~> 0.5\"} to send webhooks"}
     end
   end
 
-  defp post_webhook(args) do
-    webhook_url = args["webhook_url"]
+  @doc """
+  Sends the job's request and returns what `perform/1` acts on.
+
+  The URL comes from `AshDispatch.Transports.WebhookUrl.resolve/1`: the job's
+  `"webhook_url"`, or the variable named by `"webhook_url_env"`, read now. An
+  unset variable is `{:error, reason}` naming the variable; the receipt is
+  marked failed and Oban retries, so setting the variable and waiting is enough.
+
+  Extra Req options come from
+  `config :ash_dispatch, AshDispatch.Workers.SendWebhook, req_options: [...]`,
+  passed straight into `Req.post/2` — a test stub, a proxy.
+  """
+  @spec request(map()) :: {:ok, map()} | {:error, term()}
+  def request(args) do
+    case WebhookUrl.resolve(args) do
+      {:ok, webhook_url} ->
+        post_webhook(webhook_url, args)
+
+      {:error, reason} ->
+        Logger.error("Webhook not sent for receipt #{args["receipt_id"]}: #{reason}")
+        {:error, reason}
+    end
+  end
+
+  defp resolved_url(args) do
+    case WebhookUrl.resolve(args) do
+      {:ok, url} -> url
+      _ -> nil
+    end
+  end
+
+  defp req_options do
+    :ash_dispatch
+    |> Application.get_env(__MODULE__, [])
+    |> Keyword.get(:req_options, [])
+  end
+
+  defp post_webhook(webhook_url, args) do
+    masked = WebhookUrl.mask(webhook_url)
     payload = args["payload"]
     headers = args["headers"] || %{"Content-Type" => "application/json"}
 
@@ -238,7 +292,7 @@ defmodule AshDispatch.Workers.SendWebhook do
 
     Logger.debug("""
     Sending webhook:
-    URL: #{webhook_url}
+    URL: #{masked}
     Payload: #{inspect(payload, pretty: true)}
     Headers: #{inspect(headers)}
     """)
@@ -252,7 +306,7 @@ defmodule AshDispatch.Workers.SendWebhook do
                receive_timeout: 10_000,
                # We handle retries via Oban
                retry: false
-             ]
+             ] ++ req_options()
          ) do
       {:ok, %{status: status} = response} when status in 200..299 ->
         # Success - extract any useful info from response
@@ -262,7 +316,7 @@ defmodule AshDispatch.Workers.SendWebhook do
           body: response.body
         }
 
-        Logger.info("Webhook delivered successfully: status=#{status}, url=#{webhook_url}")
+        Logger.info("Webhook delivered successfully: status=#{status}, url=#{masked}")
         {:ok, response_data}
 
       {:ok, %{status: status, body: body}} ->
@@ -274,14 +328,19 @@ defmodule AshDispatch.Workers.SendWebhook do
         }
 
         Logger.warning(
-          "Webhook HTTP error: status=#{status}, url=#{webhook_url}, body=#{inspect(body)}"
+          "Webhook HTTP error: status=#{status}, url=#{masked}, body=" <>
+            WebhookUrl.scrub(inspect(body), webhook_url)
         )
 
         {:error, error}
 
       {:error, error} ->
         # Network error, timeout, etc.
-        Logger.error("Webhook request failed: #{inspect(error)}, url=#{webhook_url}")
+        Logger.error(
+          "Webhook request failed: " <>
+            WebhookUrl.scrub(inspect(error), webhook_url) <> ", url=#{masked}"
+        )
+
         {:error, error}
     end
   end
