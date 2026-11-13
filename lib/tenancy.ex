@@ -282,32 +282,36 @@ defmodule AshDispatch.Tenancy do
   def from_job_args(_args), do: {:ok, nil}
 
   @doc """
-  Whether an error is Postgres saying there is nothing there to read — a tenant
-  that was named but whose schema or tables were never created.
+  Whether an error is Postgres refusing a **schema name**: `3F000`,
+  `invalid_schema_name`.
 
-  Worth telling apart: it will not fix itself, so the job is cancelled rather
-  than retried five times against a schema that is still not there.
+  Worth telling apart, because it will not fix itself: nothing the library can
+  do makes a schema exist, so the job is cancelled rather than retried five
+  times against a name Postgres will refuse five more times.
 
-  Two forms, because a missing schema is reported as a missing *relation* when
-  the name is qualified (`42P01`, not `3F000`), and because Ash sometimes
-  carries the Postgrex error as a struct and sometimes as the text of one.
+  `42P01` (`undefined_table`) is deliberately **not** on that list, and
+  0.9.4-rc.0 had it there. `42P01` is what Postgres says for a schema that
+  exists but whose tables are not migrated yet — the normal state of a tenant
+  between `create schema` and `mix ash.migrate`, and the normal state of every
+  tenant during a deploy that adds a table. Cancelling on it destroyed every
+  send enqueued in that window: a cancelled Oban job never runs again, and the
+  receipt was left `:scheduled` for good. It is also what a missing schema
+  looks like when the relation name is qualified, so `42P01` cannot tell the
+  two apart — and between "retry a tenant that will never exist five times"
+  and "throw away a tenant's mail because a migration was still running", the
+  first is the cheap mistake. It is also what 0.9.3 did.
+
+  Only the structured error is read. 0.9.4-rc.0 also searched the error's free
+  **text** for `"42P01"`/`"undefined_table"`, so any nested message that
+  happened to mention either — about `public.oban_jobs`, say — was read as a
+  missing tenant and cancelled the send.
   """
   @spec missing_schema?(term()) :: boolean()
   def missing_schema?(error) do
     error |> flatten() |> Enum.any?(&schema_error?/1)
   end
 
-  @missing_codes [:invalid_schema_name, :undefined_table]
-  @missing_text ["invalid_schema_name", "undefined_table", "3F000", "42P01"]
-
-  defp schema_error?(%{postgres: %{code: code}}), do: code in @missing_codes
-
-  defp schema_error?(%{error: text}) when is_binary(text),
-    do: Enum.any?(@missing_text, &String.contains?(text, &1))
-
-  defp schema_error?(text) when is_binary(text),
-    do: Enum.any?(@missing_text, &String.contains?(text, &1))
-
+  defp schema_error?(%{postgres: %{code: :invalid_schema_name}}), do: true
   defp schema_error?(_error), do: false
 
   defp flatten(%{errors: errors}) when is_list(errors),
