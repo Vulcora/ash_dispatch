@@ -82,8 +82,6 @@ defmodule AshDispatch.Workers.ScrubSensitiveContent do
     end
   end
 
-  def perform(_job), do: scrub(nil)
-
   # The `prefix:` is the whole of this worker's tenancy, and it is the bug this
   # release had to fix: the query is raw Ecto against a table NAME, so without
   # a prefix every run read the repo's default schema. For a host with
@@ -116,7 +114,7 @@ defmodule AshDispatch.Workers.ScrubSensitiveContent do
   end
 
   defp prefix_opts(nil), do: []
-  defp prefix_opts(tenant), do: [prefix: AshDispatch.Tenancy.key(tenant)]
+  defp prefix_opts(tenant), do: [prefix: AshDispatch.Tenancy.receipt_prefix(tenant)]
 
   @doc false
   # The two limits: `{cutoff, stranded_cutoff}`. The cap is never shorter than

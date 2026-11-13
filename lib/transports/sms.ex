@@ -113,7 +113,7 @@ defmodule AshDispatch.Transports.SMS do
   # The worker reads the receipt by id, so it needs to know which schema to
   # read it from. Absent for a host without tenants, as before.
   defp put_tenant(args, nil), do: args
-  defp put_tenant(args, tenant), do: Map.put(args, "tenant", Tenancy.key(tenant))
+  defp put_tenant(args, tenant), do: Map.put(args, "tenant", Tenancy.receipt_prefix(tenant))
 
   defp update_receipt_with_job(receipt, {:ok, job}) do
     # Re-read: under Oban's inline mode the worker has already finished and the

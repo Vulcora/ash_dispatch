@@ -91,10 +91,66 @@ defmodule AshDispatch.Tenancy do
   def preferences_per_tenant?, do: multitenant?(Config.preference_resource())
 
   @doc """
-  The tenant as the library stores and compares it — `AshDispatch.Context.tenant_key/1`.
+  The tenant as the library stores it in the `tenant` **column** —
+  `AshDispatch.Context.tenant_key/1`.
+
+  This is not a schema name. For a tenant that is a struct it is the struct's
+  `:id`, which `Ash.ToTenant` is free to turn into something else entirely
+  (`"org_" <> id`, `org.schema`). Use `prefix/2` for anything that becomes a
+  schema name.
   """
   @spec key(term()) :: String.t() | nil
   def key(tenant), do: Context.tenant_key(tenant)
+
+  @doc """
+  The tenant as a **schema name**: what Ash itself would prefix `resource`'s
+  table with, as a string.
+
+  This is `Ash.ToTenant.to_tenant/2` — the protocol Ash applies on every read
+  and write — and it is the only correct answer for a value the library has to
+  *serialise* and later hand back to Ash: an Oban job's args, the cron
+  fan-out's args, the scrub's raw `prefix:`, the outgoing tenant tag, and the
+  comparison in `AshDispatch.Tenants`.
+
+  `key/1` is not that answer. `Ash.ToTenant`'s own moduledoc teaches
+
+      def to_tenant(%{id: id}, _resource), do: "org_\#{id}"
+
+  so for a struct tenant the two disagree, and a job whose args say `"42"`
+  reads a schema that does not exist. (0.9.4-rc.0 used `key/1` here; see the
+  CHANGELOG.)
+
+  For a string, atom or integer tenant `Ash.ToTenant` is the identity, so this
+  answers exactly what `key/1` does — which is why routing these paths through
+  it changes nothing for a host that names its tenants with strings.
+
+  A tenant with no `Ash.ToTenant` implementation falls back to `key/1`: a plain
+  map has meant its `:id` since 0.9.0, and Ash would refuse it as a tenant
+  anyway. A term that is neither raises
+  `AshDispatch.Tenancy.UnsupportedTenantError` rather than letting
+  `Protocol.UndefinedError` out of the middle of a dispatch.
+  """
+  @spec prefix(term(), term()) :: String.t() | nil
+  def prefix(resource, tenant)
+  def prefix(_resource, nil), do: nil
+
+  def prefix(resource, tenant) do
+    case Ash.ToTenant.impl_for(tenant) do
+      nil -> Context.tenant_key(tenant)
+      _impl -> tenant |> Ash.ToTenant.to_tenant(resource) |> Context.tenant_key()
+    end
+  end
+
+  @doc """
+  `prefix/2` for the configured delivery receipt resource.
+
+  Every value the library serialises is read back against the receipt — the
+  send workers read the receipt, the scrub updates its table, the webhook tag
+  names the schema its receipt is in — so they all have to agree on one string,
+  and this is it.
+  """
+  @spec receipt_prefix(term()) :: String.t() | nil
+  def receipt_prefix(tenant), do: prefix(Config.delivery_receipt_resource(), tenant)
 
   @doc """
   Remembers the tenant a record was read or written with, on the record.
@@ -123,11 +179,34 @@ defmodule AshDispatch.Tenancy do
   Reads what `remember/2` stored, and falls back to the tenant Ash itself
   records in a struct's metadata — a record the host loaded and handed us
   carries that one, and it is as good an answer.
+
+  The fallback asks the resource first, like every other function here. Ash
+  writes `__metadata__.tenant` from the changeset's or query's tenant on every
+  action, for **any** resource, multitenant or not — Ash *tolerates* a tenant
+  it will not use, which is the premise this whole release rests on. So a host
+  whose app passes `tenant:` to every Ash call (normal in a multi-tenant
+  Phoenix app) hands the library receipts carrying a tenant in metadata, and
+  until 0.9.4-rc.1 that tenant went into the send job's args and could get the
+  job **cancelled** by `AshDispatch.Tenants.check/1` — on a host whose
+  receipts are in the public schema and always were.
+
+  The `#{inspect(@metadata_key)}` key needs no such gate: `remember/2` only
+  writes it for a multitenant resource.
   """
   @spec of(term()) :: term()
-  def of(%{__metadata__: metadata}) when is_map(metadata) do
-    Map.get(metadata, @metadata_key) || Map.get(metadata, :tenant)
+  def of(record)
+
+  def of(%resource{__metadata__: metadata}) when is_map(metadata) do
+    case Map.get(metadata, @metadata_key) do
+      nil -> if multitenant?(resource), do: Map.get(metadata, :tenant)
+      remembered -> remembered
+    end
   end
+
+  # A pseudo-receipt (the `:broadcast` and `:oban` transports get a plain map)
+  # is not a resource, so there is nothing to ask and nothing of Ash's to read.
+  def of(%{__metadata__: metadata}) when is_map(metadata),
+    do: Map.get(metadata, @metadata_key)
 
   def of(_record), do: nil
 
@@ -226,32 +305,36 @@ defmodule AshDispatch.Tenancy do
   def from_job_args(_args), do: {:ok, nil}
 
   @doc """
-  Whether an error is Postgres saying there is nothing there to read — a tenant
-  that was named but whose schema or tables were never created.
+  Whether an error is Postgres refusing a **schema name**: `3F000`,
+  `invalid_schema_name`.
 
-  Worth telling apart: it will not fix itself, so the job is cancelled rather
-  than retried five times against a schema that is still not there.
+  Worth telling apart, because it will not fix itself: nothing the library can
+  do makes a schema exist, so the job is cancelled rather than retried five
+  times against a name Postgres will refuse five more times.
 
-  Two forms, because a missing schema is reported as a missing *relation* when
-  the name is qualified (`42P01`, not `3F000`), and because Ash sometimes
-  carries the Postgrex error as a struct and sometimes as the text of one.
+  `42P01` (`undefined_table`) is deliberately **not** on that list, and
+  0.9.4-rc.0 had it there. `42P01` is what Postgres says for a schema that
+  exists but whose tables are not migrated yet — the normal state of a tenant
+  between `create schema` and `mix ash.migrate`, and the normal state of every
+  tenant during a deploy that adds a table. Cancelling on it destroyed every
+  send enqueued in that window: a cancelled Oban job never runs again, and the
+  receipt was left `:scheduled` for good. It is also what a missing schema
+  looks like when the relation name is qualified, so `42P01` cannot tell the
+  two apart — and between "retry a tenant that will never exist five times"
+  and "throw away a tenant's mail because a migration was still running", the
+  first is the cheap mistake. It is also what 0.9.3 did.
+
+  Only the structured error is read. 0.9.4-rc.0 also searched the error's free
+  **text** for `"42P01"`/`"undefined_table"`, so any nested message that
+  happened to mention either — about `public.oban_jobs`, say — was read as a
+  missing tenant and cancelled the send.
   """
   @spec missing_schema?(term()) :: boolean()
   def missing_schema?(error) do
     error |> flatten() |> Enum.any?(&schema_error?/1)
   end
 
-  @missing_codes [:invalid_schema_name, :undefined_table]
-  @missing_text ["invalid_schema_name", "undefined_table", "3F000", "42P01"]
-
-  defp schema_error?(%{postgres: %{code: code}}), do: code in @missing_codes
-
-  defp schema_error?(%{error: text}) when is_binary(text),
-    do: Enum.any?(@missing_text, &String.contains?(text, &1))
-
-  defp schema_error?(text) when is_binary(text),
-    do: Enum.any?(@missing_text, &String.contains?(text, &1))
-
+  defp schema_error?(%{postgres: %{code: :invalid_schema_name}}), do: true
   defp schema_error?(_error), do: false
 
   defp flatten(%{errors: errors}) when is_list(errors),

@@ -43,9 +43,13 @@ defmodule AshDispatch.UserPreference.Resource do
 
   @impl true
   def user_allows?(user_id, event_id, transport, opts) do
-    tenant = Context.tenant_key(Keyword.get(opts, :tenant))
+    # The tenant travels as the host gave it. `Context.tenant_key/1` is the
+    # `tenant` COLUMN and is derived where the column is read or written; the
+    # raw term is what Ash gets, so `Ash.ToTenant` decides the schema. Reducing
+    # it up here sent a struct tenant's rows to a schema named after its `:id`.
+    tenant = Keyword.get(opts, :tenant)
     category = category_key(Keyword.get(opts, :category))
-    key = scope_key(tenant, event_id, category)
+    key = scope_key(Context.tenant_key(tenant), event_id, category)
 
     rows =
       case UserPreference.scope_get(key) do
@@ -77,10 +81,10 @@ defmodule AshDispatch.UserPreference.Resource do
 
   @impl true
   def prefetch(user_ids, opts) do
-    tenant = Context.tenant_key(Keyword.get(opts, :tenant))
+    tenant = Keyword.get(opts, :tenant)
     category = category_key(Keyword.get(opts, :category))
     event_id = Keyword.get(opts, :event_id)
-    key = scope_key(tenant, event_id, category)
+    key = scope_key(Context.tenant_key(tenant), event_id, category)
 
     cached = UserPreference.scope_get(key) || %{users: MapSet.new(), rows: []}
     missing = Enum.reject(user_ids, &MapSet.member?(cached.users, &1))
@@ -189,7 +193,6 @@ defmodule AshDispatch.UserPreference.Resource do
   """
   @spec settings(any(), term(), keyword()) :: [map()]
   def settings(user_id, tenant, opts \\ []) do
-    tenant = Context.tenant_key(tenant)
     events = configurable_events(opts)
     rows = read_all(tenant, user_id)
 
@@ -230,22 +233,23 @@ defmodule AshDispatch.UserPreference.Resource do
       |> scope_attrs()
       |> Map.put(:enabled, enabled == true)
 
+    tenant = scope_tenant(scope)
     action_opts = Keyword.take(opts, [:actor, :authorize?])
 
     # An existing row is updated, so the answer does not depend on the data
     # layer's upsert treating nil keys as equal; `:set` upserts as well,
     # which covers two writers racing on Postgres.
-    case find_rows(attrs, action_opts) do
+    case find_rows(attrs, tenant, action_opts) do
       {:ok, [row | _]} ->
         row
         |> Ash.Changeset.for_update(:update, %{enabled: attrs.enabled}, action_opts)
-        |> Tenancy.set(attrs.tenant)
+        |> Tenancy.set(tenant)
         |> Ash.update(action_opts)
 
       {:ok, []} ->
         resource()
         |> Ash.Changeset.for_create(:set, attrs, action_opts)
-        |> Tenancy.set(attrs.tenant)
+        |> Tenancy.set(tenant)
         |> Ash.create(action_opts)
 
       {:error, error} ->
@@ -261,12 +265,13 @@ defmodule AshDispatch.UserPreference.Resource do
   @spec clear(map() | keyword(), keyword()) :: :ok | {:error, term()}
   def clear(scope, opts \\ []) do
     attrs = scope_attrs(scope)
+    tenant = scope_tenant(scope)
 
-    with {:ok, rows} <- find_rows(attrs, Keyword.take(opts, [:actor, :authorize?])) do
+    with {:ok, rows} <- find_rows(attrs, tenant, Keyword.take(opts, [:actor, :authorize?])) do
       Enum.reduce_while(rows, :ok, fn row, :ok ->
         case Ash.destroy(
                row,
-               Keyword.take(opts, [:actor, :authorize?]) ++ tenant_opts(attrs.tenant)
+               Keyword.take(opts, [:actor, :authorize?]) ++ tenant_opts(tenant)
              ) do
           :ok -> {:cont, :ok}
           {:error, error} -> {:halt, {:error, error}}
@@ -277,14 +282,14 @@ defmodule AshDispatch.UserPreference.Resource do
 
   # ── private ─────────────────────────────────────────────────────────
 
-  defp find_rows(attrs, opts) do
+  defp find_rows(attrs, tenant, opts) do
     resource()
     |> Ash.Query.filter(transport == ^attrs.transport)
     |> filter_eq(:tenant, attrs.tenant)
     |> filter_eq(:user_id, attrs.user_id)
     |> filter_eq(:event_id, attrs[:event_id])
     |> filter_eq(:category, attrs[:category])
-    |> Ash.read(opts ++ tenant_opts(attrs.tenant))
+    |> Ash.read(opts ++ tenant_opts(tenant))
   end
 
   # The scope's tenant is both the `tenant` COLUMN and, for a preference
@@ -292,6 +297,10 @@ defmodule AshDispatch.UserPreference.Resource do
   # Writing and filtering both means one code path for the two kinds of host:
   # for a per-tenant resource the column is a redundant copy of what the schema
   # already says, and for a public one it is the only thing that says it.
+  #
+  # They are not the same string, though. The column is
+  # `AshDispatch.Context.tenant_key/1` and the schema is `Ash.ToTenant`'s
+  # answer, so the raw tenant — not its key — is what goes to Ash.
   defp tenant_opts(tenant), do: Tenancy.opts(resource(), tenant)
 
   # Registry channels are the DSL's keyword lists; resolved ones are structs.
@@ -321,7 +330,12 @@ defmodule AshDispatch.UserPreference.Resource do
       resource()
       |> Ash.Query.for_read(
         :for_scope,
-        %{tenant: tenant, event_id: event_id, category: category, user_ids: ids},
+        %{
+          tenant: Context.tenant_key(tenant),
+          event_id: event_id,
+          category: category,
+          user_ids: ids
+        },
         authorize?: false
       )
       |> Ash.read!([authorize?: false] ++ tenant_opts(tenant))
@@ -335,7 +349,7 @@ defmodule AshDispatch.UserPreference.Resource do
   defp read_all(tenant, user_id) do
     resource()
     |> Ash.Query.new()
-    |> filter_eq(:tenant, tenant)
+    |> filter_eq(:tenant, Context.tenant_key(tenant))
     |> then(fn query ->
       if is_nil(user_id),
         do: Ash.Query.filter(query, is_nil(user_id)),
@@ -348,6 +362,10 @@ defmodule AshDispatch.UserPreference.Resource do
 
   defp filter_eq(query, field, value),
     do: Ash.Query.filter(query, ^Ash.Expr.ref(field) == ^value)
+
+  # The tenant exactly as the caller gave it — for Ash, which asks
+  # `Ash.ToTenant`. `scope_attrs/1` reduces it for the column; this does not.
+  defp scope_tenant(scope), do: scope |> Map.new() |> Map.get(:tenant)
 
   defp scope_attrs(scope) do
     scope = Map.new(scope)

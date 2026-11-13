@@ -32,7 +32,14 @@ defmodule AshDispatch.Workers.SendSMS do
     # One job per receipt. A "send now" while the original is still queued must
     # not become two messages to the same phone — and neither may the retry
     # cron while Oban's own backoff retry is still waiting (`:retryable`).
-    unique: [keys: [:receipt_id], states: [:available, :scheduled, :executing, :retryable]]
+    # `:tenant` too since 0.9.4-rc.1: a receipt id is unique per schema,
+    # not across them, so without it the key no longer describes the job.
+    # Benign for a host with UUID ids and absent from the args of every
+    # job a host without tenants enqueues, which makes it a no-op there.
+    unique: [
+      keys: [:receipt_id, :tenant],
+      states: [:available, :scheduled, :executing, :retryable]
+    ]
 
   alias AshDispatch.Config
   alias AshDispatch.ContentMap

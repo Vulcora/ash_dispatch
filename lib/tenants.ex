@@ -32,17 +32,39 @@ defmodule AshDispatch.Tenants do
   ## `known?/1`
 
   A tenant can also arrive from **outside**: in the tag a provider echoes back
-  on a webhook, or in the args of an Oban job. A tenant is a Postgres schema
-  name, so a string that reaches a query unchecked chooses which schema is
-  read. Nothing in this library ever lets an outside tenant through without
-  asking:
+  on a webhook, in a webhook endpoint's path, or in the args of an Oban job. A
+  tenant is a Postgres schema name, so a string that reaches a query unchecked
+  chooses which schema is read. Every tenant the library reads back rather than
+  one the host handed it goes through `check/1` first:
 
       @impl true
       def known?(tenant), do: tenant in all()
 
   The callback is optional; without it, membership in `all/0` is the answer,
-  which is correct and costs a list. Implement it when `all/0` is expensive
-  enough that you would rather answer with one query.
+  which is correct and costs a list — **once per check**, which is once per
+  send job and once per unauthenticated POST to the webhook endpoint, the one
+  place in the library an outsider can trigger work. So implement it as soon
+  as that endpoint is public, or whenever `all/0` is a query you would rather
+  not run per request:
+
+      @impl true
+      def known?(tenant) do
+        MyApp.Accounts.Organisation
+        |> Ash.Query.filter(schema == ^tenant and active == true)
+        |> Ash.exists?(authorize?: false)
+      end
+
+  ## What is not checked
+
+  The `:tenant` a host passes to `AshDispatch.Helpers.NotificationLoader`,
+  `AshDispatch.Helpers.CounterLoader`,
+  `AshDispatch.UserPreference.Resource.put/3`, `AshDispatch.Preview.render/3`
+  or the LiveView hook. Those are the host's own calls, in its own request,
+  with a value it has already authorised — the same value it passes to its own
+  `Ash` calls — and checking them would add a query per bell render and refuse
+  a tenant the host's own queries accept. `check/1` is public for a host that
+  wants the library's answer about a value it took from a request. See the
+  Tenancy guide.
 
   ## Without it
 
@@ -76,12 +98,23 @@ defmodule AshDispatch.Tenants do
   def all do
     case AshDispatch.Config.tenants() do
       nil -> []
-      source -> source |> ask() |> List.wrap()
+      source -> listed(source)
     end
   rescue
     error ->
       Logger.error(
         "ash_dispatch: :tenants could not be read (#{Exception.message(error)}); " <>
+          "treating it as no tenants."
+      )
+
+      []
+  catch
+    # A `DBConnection` timeout in a host's `all/0` exits rather than raising,
+    # and used to take the whole cron entry job down with it instead of being
+    # logged like any other unreadable list.
+    kind, value ->
+      Logger.error(
+        "ash_dispatch: :tenants could not be read (#{kind} #{inspect(value)}); " <>
           "treating it as no tenants."
       )
 
@@ -118,6 +151,14 @@ defmodule AshDispatch.Tenants do
       Logger.error(
         "ash_dispatch: the :tenants check raised for #{inspect(tenant)} " <>
           "(#{Exception.message(error)}); the tenant is refused."
+      )
+
+      {:error, :unknown_tenant}
+  catch
+    kind, value ->
+      Logger.error(
+        "ash_dispatch: the :tenants check #{kind} for a tenant " <>
+          "(#{inspect(value)}); the tenant is refused."
       )
 
       {:error, :unknown_tenant}
@@ -163,20 +204,33 @@ defmodule AshDispatch.Tenants do
             "{module, function, args}, or a zero-argument function."
   end
 
+  # The source `check/1` already read is passed in, so the host's list is asked
+  # for at most once per check: `all/0` would read `:tenants` a second time to
+  # find the same source. With `known?/1` the list is not asked for at all,
+  # which is the whole reason that callback exists.
   defp ask_known?(module, tenant) when is_atom(module) do
     if Code.ensure_loaded?(module) and function_exported?(module, :known?, 1) do
       module.known?(tenant) == true
     else
-      member?(tenant)
+      member?(tenant, listed(module))
     end
   end
 
-  defp ask_known?(_source, tenant), do: member?(tenant)
+  defp ask_known?(source, tenant), do: member?(tenant, listed(source))
 
-  # Compared as the library stores a tenant, so a host that answers with
-  # structs and a tag that comes back as a string still agree.
-  defp member?(tenant) do
-    key = AshDispatch.Context.tenant_key(tenant)
-    Enum.any?(all(), &(AshDispatch.Context.tenant_key(&1) == key))
+  defp listed(source), do: source |> ask() |> List.wrap()
+
+  # Compared as SCHEMA NAMES — `Ash.ToTenant` — so a host that answers with
+  # structs and a tag that comes back as a string still agree, and the gate
+  # approves exactly the strings that can be read.
+  #
+  # `AshDispatch.Context.tenant_key/1` was the comparison until 0.9.4-rc.1, and
+  # for a host whose `all/0` answers with structs it reduced both sides to the
+  # struct's `:id`: the gate then approved an id that is not a schema name, so
+  # it was no protection at all. For a string tenant the two are the same
+  # function.
+  defp member?(tenant, tenants) do
+    prefix = AshDispatch.Tenancy.receipt_prefix(tenant)
+    Enum.any?(tenants, &(AshDispatch.Tenancy.receipt_prefix(&1) == prefix))
   end
 end

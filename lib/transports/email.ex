@@ -169,7 +169,7 @@ defmodule AshDispatch.Transports.Email do
         full_job_args(receipt, context, channel)
       end
 
-    put_unless_nil(args, "tenant", AshDispatch.Tenancy.key(Map.get(context, :tenant)))
+    put_unless_nil(args, "tenant", AshDispatch.Tenancy.receipt_prefix(Map.get(context, :tenant)))
   end
 
   @doc false

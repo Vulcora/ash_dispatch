@@ -135,7 +135,15 @@ defmodule AshDispatch.Notifier.CounterHandler do
         user -> [user]
       end
     else
-      context = %{data: %{record: record}}
+      # The action's tenant goes into the context, because that is where
+      # `resolve_recipients_for_audience/2` reads it from: a filter-based
+      # audience is a read of the host's user resource, and without a tenant
+      # it raises for a per-tenant one and resolves to nobody.
+      context = %{
+        data: %{record: record},
+        tenant: Keyword.get(opts, :ash_dispatch_tenant)
+      }
+
       channel = %{audience: audience}
       AshDispatch.Event.Helpers.resolve_recipients_for_audience(context, channel)
     end
@@ -164,7 +172,10 @@ defmodule AshDispatch.Notifier.CounterHandler do
         RecordReader.safe_get(record, user_id_field)
 
       path when is_list(path) ->
-        case load_and_traverse_path(record, path) do
+        # In the action's tenant: `load_and_traverse_path/3` was given a
+        # `tenant` parameter in 0.9.4-rc.0 and this, its only caller, still
+        # passed two arguments — so the `Ash.load/3` below it never saw one.
+        case load_and_traverse_path(record, path, Keyword.get(opts, :ash_dispatch_tenant)) do
           {:ok, user_id} ->
             user_id
 
@@ -178,7 +189,7 @@ defmodule AshDispatch.Notifier.CounterHandler do
     end
   end
 
-  defp load_and_traverse_path(record, path, tenant \\ nil) do
+  defp load_and_traverse_path(record, path, tenant) do
     {relationships, [_final_field]} = Enum.split(path, -1)
 
     load_opts =

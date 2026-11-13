@@ -394,20 +394,20 @@ defmodule AshDispatch.Dispatcher do
       not channel_should_send?(context, channel, event_config) ->
         should_send_skip(context, channel)
 
-      # Receipts live in one schema per tenant and this dispatch does not know
-      # which. Asked once per channel, and refused rather than written to
-      # `public`: a receipt in the wrong schema is worse than no receipt,
-      # because it looks like one.
-      tenant_missing?(context, channel) ->
+      # Something this dispatch would write lives in one schema per tenant and
+      # it does not know which. Asked once per channel, and refused rather
+      # than written to `public`: a row in the wrong schema is worse than no
+      # row, because it looks like one.
+      resource = per_tenant_resource(context, channel) ->
         Logger.error("""
-        AshDispatch: this dispatch has no tenant, and #{inspect(Config.delivery_receipt_resource())}
-        stores receipts per tenant. Nothing was sent.
+        AshDispatch: this dispatch has no tenant, and #{inspect(resource)}
+        stores its rows per tenant. Nothing was sent.
 
         Event: #{context.event_id} (#{channel.transport}/#{channel.audience})
 
         Pass `tenant:` to `Dispatcher.dispatch/4`, or run the action that triggers
         the event with a tenant. An event that genuinely has no tenant needs
-        receipts that are not per tenant (see AshDispatch.Tenancy).
+        resources that are not per tenant (see AshDispatch.Tenancy).
         """)
 
         {:error, :tenant_required}
@@ -422,10 +422,30 @@ defmodule AshDispatch.Dispatcher do
     end
   end
 
-  defp tenant_missing?(context, channel) do
-    is_nil(Map.get(context, :tenant)) and
-      not skip_receipt_for_transport?(channel.transport) and
-      Tenancy.receipts_per_tenant?()
+  # Which of the library's resources this dispatch would have to write without
+  # a tenant, or `nil`.
+  #
+  # Until 0.9.4-rc.1 only the receipt was consulted, so a host that switched
+  # only `Notification.Base` or `Preference.Base` to `:context` got
+  # `TenantRequired` from deep inside the in-app create or the preference
+  # read — which `ReceiptStatus.mark_failed` turns into an Oban retry, for
+  # ever — instead of the loud refusal this release is proud of.
+  defp per_tenant_resource(context, channel) do
+    if is_nil(Map.get(context, :tenant)) do
+      cond do
+        not skip_receipt_for_transport?(channel.transport) and Tenancy.receipts_per_tenant?() ->
+          Config.delivery_receipt_resource()
+
+        channel.transport == :in_app and Tenancy.notifications_per_tenant?() ->
+          Config.notification_resource()
+
+        Tenancy.preferences_per_tenant?() ->
+          Config.preference_resource()
+
+        true ->
+          nil
+      end
+    end
   end
 
   defp should_send_skip(context, channel) do
@@ -956,14 +976,24 @@ defmodule AshDispatch.Dispatcher do
       actor_id: extract_user_id_from_recipient(context.actor || context.user),
       source_type: source_type,
       source_id: source_id,
-      locale: locale,
-      # For a receipt resource built with `tenant_column: true`: which tenant
-      # this receipt was for, in one table. Dropped by `skip_unknown_inputs`
-      # for a resource without the column, which includes every per-tenant
-      # receipt — there the schema already says it.
-      tenant: Context.tenant_key(context.tenant)
+      locale: locale
       # Note: scheduled_for removed - Oban handles scheduling via schedule_in parameter
     }
+
+    # For a receipt resource built with `tenant_column: true`: which tenant
+    # this receipt was for, in one table. Dropped by `skip_unknown_inputs` for
+    # a resource without the column, which includes every per-tenant receipt —
+    # there the schema already says it.
+    #
+    # `maybe_put/3`, not a key with a nil value: `skip_unknown_inputs` drops an
+    # input the action does not accept and does NOT drop one it does, and Ash
+    # applies an attribute's default only when the input is ABSENT. A host with
+    # a receipt resource of its own that already has a `tenant` attribute its
+    # `:create` accepts — explicitly supported, and the reason
+    # `skip_unknown_inputs` is here at all — therefore had the library's
+    # explicit `nil` defeat its own default on every dispatch without a
+    # tenant. On a host that opted into nothing.
+    attrs = maybe_put(attrs, :tenant, Context.tenant_key(context.tenant))
 
     # Add recipient name to content if available
     content =

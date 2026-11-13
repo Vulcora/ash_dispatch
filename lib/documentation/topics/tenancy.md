@@ -38,6 +38,30 @@ mentioned to Ash at all. It asks the resource, never the presence of a tenant �
 Ash *tolerates* a tenant on a resource without multitenancy, and a library
 should not rely on being ignored.
 
+### If your tenants are structs
+
+They can be. `Ash.ToTenant` is what turns one into a schema name, and its own
+documentation teaches the shape where the schema is **not** the struct's `:id`:
+
+```elixir
+defimpl Ash.ToTenant, for: MyApp.Accounts.Organisation do
+  def to_tenant(%{id: id}, _resource), do: "org_#{id}"
+end
+```
+
+Everything the library has to serialise and hand back to Ash — an Oban job's
+args, the cron fan-out's args, the scrub's `prefix:`, the outgoing tenant tag,
+the comparison in `AshDispatch.Tenants` — goes through that protocol
+(`AshDispatch.Tenancy.prefix/2`). So `tenant: org` works wherever a string
+works.
+
+The `tenant` **column** is a different thing and still holds
+`AshDispatch.Context.tenant_key/1`: a struct's `:id`. For a tenant whose
+schema is not its id those two strings differ, and a report that joins the
+column against your schema names needs your own mapping. Making the column
+hold the schema name is a 0.10.0 change — it would rewrite what is already
+stored.
+
 ## Per-tenant receipts: what to add
 
 ### 1. Switch the resources over
@@ -118,9 +142,59 @@ This is needed for two things, and it is not optional for either:
   tenants otherwise. Without this, nothing is retried and nothing is scrubbed —
   and the workers say so once per VM rather than reporting success every five
   minutes;
-- a tenant that arrives **from outside** — a provider's webhook tag, an Oban
-  job's args — is held against `c:AshDispatch.Tenants.known?/1` before it
-  reaches a query. A tenant is a Postgres schema name.
+- a tenant the **library** reads back, rather than one you passed it, is held
+  against `c:AshDispatch.Tenants.known?/1` before it reaches a query. A tenant
+  is a Postgres schema name.
+
+### Exactly which tenants the library checks
+
+Three, and they are the three the library did not get from your own code:
+
+| Where it came from | Checked |
+|---|---|
+| An Oban job's args (`AshDispatch.Tenancy.from_job_args/1`) | yes |
+| A provider webhook's tenant tag | yes, and refused when it cannot be checked |
+| A provider webhook's route param (`process_webhook(params, tenant: ...)`) | yes, and refused when it cannot be checked and your receipts are per tenant |
+| A fanned-out cron job's args | yes |
+| `:tenant` on `NotificationLoader.load_recent/2`, `unread_count/1`, `mark_as_read/2`, `CounterLoader.load_counters_for_user/2`, `UserPreference.Resource.put/3`, `Preview.render/3`, the LiveView assign | **no** |
+
+The last row is deliberate and is yours. Those are calls your own code makes,
+inside your own request, with a tenant you have already authorised — the same
+value you pass to your own `Ash` calls. Holding it against `c:AshDispatch.Tenants.all/0`
+would add a query per bell render and per settings page, and would make the
+library refuse a tenant your own queries accept (one that exists but is not
+`active == true` in the `all/0` above, say).
+
+So if any of those takes a tenant straight from a request parameter or a
+socket assign, check it where you check everything else about that request.
+`AshDispatch.Tenants.check/1` is public if you want the library's answer:
+
+```elixir
+with :ok <- AshDispatch.Tenants.check(params["tenant"]) do
+  NotificationLoader.load_recent(user.id, tenant: params["tenant"])
+end
+```
+
+`UserPreference.Resource.put/3` is the sharpest of them: `attrs.tenant`
+becomes the schema a row is written to, so a LiveView param wired straight
+into it is a cross-tenant write.
+
+### `c:AshDispatch.Tenants.known?/1`
+
+Optional, and **strongly recommended once your webhook endpoint is public**.
+Without it, membership in `all/0` is the answer, and `all/0` runs once per
+check — which is once per send job and once per unauthenticated POST to the
+webhook endpoint, the one place in the library an outsider can trigger work.
+With it, nothing is listed:
+
+```elixir
+@impl true
+def known?(tenant) do
+  MyApp.Accounts.Organisation
+  |> Ash.Query.filter(schema == ^tenant and active == true)
+  |> Ash.exists?(authorize?: false)
+end
+```
 
 ### 4. Pass the tenant where you dispatch
 
@@ -168,7 +242,9 @@ in the order to prefer them:
    ```
 
    Nothing depends on what the provider echoes back, so it works for every
-   provider.
+   provider. It needs `:tenants` like the others: a path segment is a value
+   from outside, and with per-tenant receipts it is a Postgres schema name.
+   Without that configuration this path is refused rather than trusted.
 2. **A provider tag**: `config :ash_dispatch, webhook_tenant_tag: true` sends an
    `X-AshDispatch-Tenant` header with every message and reads it back out of
    the payload. Only switch this on behind
@@ -182,6 +258,12 @@ in the order to prefer them:
 Whichever it is, a webhook that names a tenant its receipt was not sent from
 finds nothing: the message id exists in one schema only. Nothing is fanned out
 across schemas looking for it.
+
+A refusal and "no such message" are the same answer, `{:error, :not_found}`.
+They used to differ, which made the endpoint a list of your customers to
+anyone who could POST to it. Your log keeps the distinction. Do not hand the
+reason back in the response body — the controller example in
+`AshDispatch.WebhookHandlers.Resend` shows what to return instead.
 
 ### 7. `job_args: :minimal` is now your default
 
@@ -198,6 +280,27 @@ config :ash_dispatch, job_args: :full      # the old shape, if you want it back
 
 It costs one receipt read per send on the first attempt. Every retry already
 paid it.
+
+Two consequences worth knowing:
+
+- the worker refuses to send a letter the job does not carry and the receipt
+  does not hold either, and records the receipt `:failed_permanent` with the
+  reason. Under `:full` the job carries the letter, so this only bites when
+  there is nothing to send;
+- `from` is addressing, not message content, so it comes from
+  `:default_from_name`/`:default_from_email` as it does under `:full`. An
+  event that sets its own still wins.
+
+## While you are deploying
+
+A 0.9.3 node that picks up a 0.9.4 fanned-out cron job ignores
+`args["tenant"]` and runs the public pass instead — which finds nothing and
+reports success. Harmless, and it stops the moment every node is on 0.9.4;
+worth knowing if a rolling deploy leaves one node behind over a cron window.
+
+In the other direction a 0.9.3 job carries no `"tenant"`, reads back as `nil`,
+and behaves exactly as it did, which is what makes this safe to deploy while
+jobs are in flight.
 
 ## Only the `tenant` column
 
@@ -230,8 +333,9 @@ and no new column unless asked. `job_args` stays `:full`. The cron plan stays
 one pass with no tenant. `:tenants` is never consulted.
 
 That is asserted rather than claimed: `test/tenancy/compatibility_test.exs`
-spies on the resources and fails if one of them is ever handed a tenant, and
-the 0.9.3 suite runs unchanged.
+spies on the resources and fails if one of them is ever handed a tenant, an
+AST walk over `lib/` fails if a tenant reaches Ash or the repo without going
+through `AshDispatch.Tenancy`, and the 0.9.3 suite runs unchanged.
 
 ## Release candidate
 
@@ -240,3 +344,7 @@ application before it is called final. The parts a first host should watch:
 the first `mix ash.codegen` after switching a resource over, the cron fan-out
 under a few hundred tenants, and whatever its provider does with the tenant tag
 if it uses one.
+
+An independent review of rc.0 found eleven things, including three that lost
+mail on a host doing exactly what this page says. They are fixed in rc.1 — see
+the CHANGELOG for what each of them was.

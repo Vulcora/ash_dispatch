@@ -53,13 +53,14 @@ defmodule AshDispatch.Tenancy.WebhookTest do
     end
 
     # A tenant is a schema name, so an unrecognised one is refused before any
-    # query runs.
+    # query runs. The refusal is spelled `:not_found` — the same answer an
+    # unknown message id gets — so the endpoint cannot be asked which tenants
+    # exist. See `Resend.process_webhook/2`.
     test "a tenant the host does not recognise is refused, not queried" do
       _receipt = sent_receipt!("tenant_a", "prov-3")
 
       for unknown <- ["public", "pg_catalog", "tenant_c"] do
-        assert {:error, :unknown_tenant} =
-                 Resend.process_webhook(opened("prov-3"), tenant: unknown)
+        assert {:error, :not_found} = Resend.process_webhook(opened("prov-3"), tenant: unknown)
       end
     end
   end
@@ -115,12 +116,14 @@ defmodule AshDispatch.Tenancy.WebhookTest do
           "headers" => [%{"name" => Resend.tenant_header(), "value" => "public"}]
         })
 
-      assert {:error, :unknown_tenant} = Resend.process_webhook(payload)
+      assert {:error, :not_found} = Resend.process_webhook(payload)
     end
 
-    # The tag comes from outside, so "I cannot check it" is not a reason to
-    # trust it — unlike a tenant the host's own router supplied.
-    test "a tag is refused when the host has not said which tenants exist" do
+    # Both sources come from outside, so "I cannot check it" is not a reason to
+    # trust either of them. rc.0 trusted the route param here; a path segment
+    # is a value from outside too, and with per-tenant receipts it is a schema
+    # name.
+    test "neither a tag nor a route tenant is read when the host has not said which tenants exist" do
       _receipt = sent_receipt!("tenant_a", "prov-7")
       Application.delete_env(:ash_dispatch, :tenants)
 
@@ -129,11 +132,8 @@ defmodule AshDispatch.Tenancy.WebhookTest do
           "headers" => [%{"name" => Resend.tenant_header(), "value" => "tenant_a"}]
         })
 
-      assert {:error, :unknown_tenant} = Resend.process_webhook(payload)
-
-      # While an explicit tenant from the host's own route still works: it did
-      # not come from the payload.
-      assert {:ok, _} = Resend.process_webhook(opened("prov-7"), tenant: "tenant_a")
+      assert {:error, :not_found} = Resend.process_webhook(payload)
+      assert {:error, :not_found} = Resend.process_webhook(opened("prov-7"), tenant: "tenant_a")
     end
 
     test "and nothing is read from the payload at all when the tag is switched off" do

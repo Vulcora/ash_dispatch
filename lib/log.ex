@@ -67,6 +67,40 @@ defmodule AshDispatch.Log do
   def reason(term) when is_binary(term), do: redact_text(term)
   def reason(term), do: term |> inspect() |> redact_text()
 
+  @default_window_ms 60_000
+
+  @doc """
+  Runs `fun` at most once per `window` milliseconds for `key`, per VM.
+
+  For a log line an outsider can provoke. The webhook endpoint is the one
+  place in the library a stranger can trigger work, and a refusal there used
+  to write a `Logger.error` per request — so anyone could fill the host's log,
+  at the level its alerting watches, with a loop.
+
+  The key must NOT include the value from the request, or rotating it defeats
+  the throttle. Returns `:logged` or `:throttled`.
+  """
+  @spec throttled(term(), non_neg_integer(), (-> any())) :: :logged | :throttled
+  def throttled(key, window \\ @default_window_ms, fun) do
+    now = System.monotonic_time(:millisecond)
+    last = :persistent_term.get({__MODULE__, :throttle, key}, nil)
+
+    if is_nil(last) or now - last >= window do
+      :persistent_term.put({__MODULE__, :throttle, key}, now)
+      fun.()
+      :logged
+    else
+      :throttled
+    end
+  end
+
+  @doc "Forgets a `throttled/3` key, so the next call logs. For tests."
+  @spec forget_throttle(term()) :: :ok
+  def forget_throttle(key) do
+    :persistent_term.erase({__MODULE__, :throttle, key})
+    :ok
+  end
+
   defp mode, do: Application.get_env(:ash_dispatch, :log_recipients, :redacted)
 
   defp full(value) when is_binary(value), do: value

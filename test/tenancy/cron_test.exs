@@ -148,17 +148,35 @@ defmodule AshDispatch.Tenancy.CronTest do
       assert untouched.retry_count == 0
     end
 
-    test "the entry job fans out instead of working, so a tenant's failure is its own" do
-      _a = failed_receipt!("tenant_a")
+    test "the entry job fans out instead of working" do
+      a = failed_receipt!("tenant_a")
 
-      # No Oban is running in this suite, so the fan-out cannot enqueue —
-      # which is itself the property: it reports the failures and returns :ok
-      # rather than letting one tenant's problem end the run.
-      assert :ok = RetryFailedDeliveries.perform(%Oban.Job{args: %{}})
+      # No Oban is running yet, so nothing can be enqueued — and a run that
+      # enqueued nothing says so. It answered `:ok` until 0.9.4-rc.1, so a
+      # fan-out that did nothing was recorded by Oban as a success.
+      assert {:error, reason} = RetryFailedDeliveries.perform(%Oban.Job{args: %{}})
+      assert reason =~ "not one of 2 tenant passes could be enqueued"
 
       # And it did not do the work itself.
-      assert Ash.get!(PerTenant.Receipt, _a.id, authorize?: false, tenant: "tenant_a").status ==
+      assert Ash.get!(PerTenant.Receipt, a.id, authorize?: false, tenant: "tenant_a").status ==
                :failed
+    end
+
+    test "and against a live Oban it enqueues one pass per tenant" do
+      start_oban()
+      a = failed_receipt!("tenant_a")
+      b = failed_receipt!("tenant_b")
+
+      # The inline engine runs each inserted job immediately, so "one pass per
+      # tenant was enqueued" is visible as "each tenant's receipt was retried
+      # in its own schema". Nothing in the suite exercised the fan-out against
+      # an Oban that can accept an insert before this.
+      assert :ok = RetryFailedDeliveries.perform(%Oban.Job{args: %{}})
+
+      for {tenant, receipt} <- [{"tenant_a", a}, {"tenant_b", b}] do
+        retried = Ash.get!(PerTenant.Receipt, receipt.id, authorize?: false, tenant: tenant)
+        assert retried.retry_count == 1
+      end
     end
 
     test "one tenant failing does not stop the next: each pass is its own job" do

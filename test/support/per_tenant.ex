@@ -164,6 +164,51 @@ defmodule AshDispatch.Test.PerTenant.Tenants do
   def all, do: Application.get_env(:ash_dispatch, :test_tenants, ["tenant_a", "tenant_b"])
 end
 
+defmodule AshDispatch.Test.PerTenant.Org do
+  @moduledoc """
+  A tenant exactly as `Ash.ToTenant`'s own moduledoc teaches one: a struct
+  whose schema is **not** its `:id`.
+
+  `%Org{id: "a"}` lives in the schema `tenant_a`. That is the shape the library
+  has to serialise correctly — into an Oban job's args, the cron fan-out, the
+  scrub's `prefix:` and the tenant tag — and 0.9.4-rc.0 reduced it to `"a"`
+  instead, so every send for it was cancelled and no tenant was ever scrubbed.
+
+  The `defimpl` lives here rather than in a test file on purpose: `mix.exs`
+  consolidates protocols outside `:dev`, and only `test/support` is compiled
+  before consolidation runs. A real host compiles its own impl into its own
+  app, where it is picked up the same way.
+  """
+  defstruct [:id]
+
+  defimpl Ash.ToTenant do
+    def to_tenant(%{id: id}, _resource), do: "tenant_#{id}"
+  end
+end
+
+defmodule AshDispatch.Test.PerTenant.Schemaless do
+  @moduledoc """
+  A tenant struct that names its schema directly and has no `:id` at all —
+  the other half of `Ash.ToTenant`'s moduledoc ("it could also be something
+  like `organization.schema`").
+  """
+  defstruct [:schema]
+
+  defimpl Ash.ToTenant do
+    def to_tenant(%{schema: schema}, _resource), do: schema
+  end
+end
+
+defmodule AshDispatch.Test.PerTenant.StructTenants do
+  @moduledoc "A host whose `:tenants` answers with its own structs."
+  @behaviour AshDispatch.Tenants
+
+  alias AshDispatch.Test.PerTenant.Org
+
+  @impl true
+  def all, do: [%Org{id: "a"}, %Org{id: "b"}]
+end
+
 defmodule AshDispatch.Test.PerTenant.Meeting do
   @moduledoc """
   A resource with events, so a whole dispatch can be run inside a tenant.

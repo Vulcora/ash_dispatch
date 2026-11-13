@@ -44,8 +44,20 @@ defmodule AshDispatch.Tenancy.Cron do
     cond do
       tenant = args["tenant"] || args[:tenant] ->
         case Tenants.check(tenant) do
-          {:error, :unknown_tenant} -> :no_tenants
-          _ok_or_not_configured -> {:run, tenant}
+          :ok ->
+            {:run, tenant}
+
+          {:error, :unknown_tenant} ->
+            :no_tenants
+
+          # `:tenants` was configured when the fan-out wrote this job's args
+          # and is not now. The value is the library's own, from the host's own
+          # `all/0`, so it is allowed through for the same reason a send job's
+          # is — but it used to go through in silence, and it reaches the
+          # scrub's raw `prefix:`.
+          {:error, :not_configured} ->
+            Tenants.warn_if_missing("A fanned-out cron job carries a tenant")
+            {:run, tenant}
         end
 
       not Tenancy.receipts_per_tenant?() ->
@@ -60,12 +72,17 @@ defmodule AshDispatch.Tenancy.Cron do
   end
 
   @doc """
-  Enqueues one job of `worker` per tenant.
+  Enqueues one job of `worker` per tenant, at most one per tenant at a time.
 
   A tenant whose job cannot be enqueued is logged and the rest go on: the whole
   point of the fan-out is that one tenant cannot take the others down with it.
+
+  `:ok`, or `{:error, reason}` when nothing could be enqueued and something
+  tried. A run that did nothing used to answer `:ok` and be recorded by Oban
+  as a success — the failure mode `no_tenants/1` is explicitly written to
+  avoid, arrived at by another road.
   """
-  @spec fan_out(module(), [term()]) :: :ok
+  @spec fan_out(module(), [term()]) :: :ok | {:error, String.t()}
   def fan_out(worker, tenants) do
     {enqueued, failed} =
       Enum.reduce(tenants, {0, 0}, fn tenant, {ok, bad} ->
@@ -83,9 +100,25 @@ defmodule AshDispatch.Tenancy.Cron do
         end
       end)
 
-    Logger.info(
-      "#{inspect(worker)}: #{enqueued} tenant passes enqueued" <>
-        if(failed > 0, do: ", #{failed} could not be", else: "")
+    report(worker, enqueued, failed)
+  end
+
+  # One line a tick was noise on the happy path; it says something only when
+  # something is wrong, and `debug` otherwise.
+  defp report(worker, enqueued, 0) do
+    Logger.debug("#{inspect(worker)}: #{enqueued} tenant passes enqueued")
+    :ok
+  end
+
+  defp report(worker, 0, failed) do
+    reason = "#{inspect(worker)}: not one of #{failed} tenant passes could be enqueued"
+    Logger.error(reason)
+    {:error, reason}
+  end
+
+  defp report(worker, enqueued, failed) do
+    Logger.warning(
+      "#{inspect(worker)}: #{enqueued} tenant passes enqueued, #{failed} could not be"
     )
 
     :ok
@@ -104,8 +137,39 @@ defmodule AshDispatch.Tenancy.Cron do
     :ok
   end
 
+  # One pass per tenant in flight, which is what the design document promised
+  # the fan-out would give ("Oban's `unique` keeps a slow tenant from being
+  # enqueued twice") and what neither worker nor this call actually declared.
+  # Without it every tick added one more pass per tenant whatever was still
+  # queued — with the installer's retry entry and a few hundred tenants, a few
+  # hundred jobs a minute — and two passes over one tenant could run at once.
+  # `RetryFailedDeliveries` has `max_attempts: 1` and reads, transitions and
+  # re-enqueues receipts with no lock of its own.
+  #
+  # Declared here rather than on the worker on purpose: `Oban.Plugins.Cron`
+  # inserts the crontab ENTRY job itself, and a `unique` on the worker would
+  # apply to that insert too — one with `keys: [:tenant]` against an entry
+  # job whose args are `%{}` could hold the entry job back across ticks, for
+  # every host, tenants or not.
+  @unique [
+    period: :infinity,
+    keys: [:tenant],
+    states: [:available, :scheduled, :executing, :retryable]
+  ]
+
+  @doc """
+  The job the fan-out enqueues for one tenant, as an `Ecto.Changeset`.
+
+  Public so the uniqueness can be asserted on the thing that is actually
+  inserted, rather than on a changeset a test built the same way by hand.
+  """
+  @spec job(module(), term()) :: Ecto.Changeset.t()
+  def job(worker, tenant) do
+    worker.new(%{"tenant" => Tenancy.receipt_prefix(tenant)}, unique: @unique)
+  end
+
   defp enqueue(worker, tenant) do
-    case %{"tenant" => Tenancy.key(tenant)} |> worker.new() |> Oban.insert() do
+    case worker |> job(tenant) |> Oban.insert() do
       {:ok, _job} -> :ok
       {:error, reason} -> {:error, reason}
     end

@@ -197,8 +197,63 @@ Later, if asked for:
   finds `context.user` in `data` rather than taking the action's actor, as it
   always has; switching it would change what such an event module reads as
   its subject.
-- The receipt carries `actor_id` but no `tenant`; per-tenant receipt reports
-  read it through the source record for now.
+- ~~The receipt carries `actor_id` but no `tenant`; per-tenant receipt reports
+  read it through the source record for now.~~ **Resolved in 0.9.4:**
+  `tenant_column: true` on `DeliveryReceipt.Base` adds the column, and
+  `multitenancy: :context` puts the receipts in the tenant's own schema
+  instead. See the Tenancy guide.
 - `Preference.Base`'s upsert relies on `NULLS NOT DISTINCT` (Postgres 15+);
   `UserPreference.Resource.put/3` updates an existing row itself, so it also
   works on data layers without it.
+
+## 11. The `tenant` column and the schema disagree for a struct tenant — 0.10.0
+
+Found by the independent review of 0.9.4-rc.0.
+
+`AshDispatch.Context.tenant_key/1` reduces a tenant to a string for the
+`tenant` **column**: a struct by its `:id`. Which **schema** that tenant's rows
+live in is `Ash.ToTenant`'s answer, and `Ash.ToTenant`'s own example turns
+`%{id: id}` into `"org_" <> id`. For a host whose tenants are structs the two
+are therefore different strings, and 0.9.4-rc.1 keeps them different on
+purpose: everything that becomes a schema name goes through
+`AshDispatch.Tenancy.prefix/2`, and the column still gets the key.
+
+That leaves the column holding something that is not the tenant's schema name,
+so a report that joins `tenant` against the schema list needs the host's own
+mapping. Making the column hold `Ash.ToTenant`'s answer is the obvious fix and
+it is a **0.10.0** change: the column has meant `tenant_key/1` since 0.9.0, so
+changing it rewrites what is already stored and needs a migration and a
+backfill. Both are outside what a 0.9.x patch may do.
+
+Two smaller pieces travel with it:
+
+- `AshDispatch.PolicyChecks.PreferenceWriter`'s `in_action_tenant?/2` compares
+  `tenant_key/1` of the column against `tenant_key/1` of the Ash tenant. That
+  is consistent with the column as it is written today and would have to change
+  with it.
+- `AshDispatch.Context.tenant_key/1`'s `%{id: _}` clause means a plain map (no
+  `Ash.ToTenant` implementation) still answers its `:id` for the schema too,
+  because there is nothing else to ask. Ash itself refuses such a tenant on a
+  per-tenant resource, so this only keeps 0.9.x behaviour for the column.
+
+## 12. `applicable_for_user?/1` cannot be given a tenant — 0.10.0
+
+Found by the independent review of 0.9.4-rc.0.
+
+The DSL's `manual_trigger_filter` runs through
+`AshDispatch.Event.Helpers.evaluate_user_filter/3`, which takes a tenant since
+0.9.4-rc.1 — but the only caller on that path is the generated
+`c:AshDispatch.Event.applicable_for_user?/1`, and the callback has no tenant to
+give it. So for a host whose users are per tenant the filter still answers
+`false` and the event is hidden from the manual-trigger list.
+
+Nothing is sent or lost: the callback's own docs say it "is **only** used for
+filtering the manual trigger event list in admin UIs. It does NOT affect
+normal event dispatch." The dispatch path (`should_send_filter`, through
+`c:AshDispatch.Event.should_send?/2`) has the context and is fixed.
+
+Why not in 0.9.x: the fix is a tenant on the callback, and a host may have
+overridden `applicable_for_user?/1`. Generating an `applicable_for_user?/2`
+beside it and preferring that would silently stop calling such a host's
+override — a patch must not do that. 0.10.0 can change the callback to take a
+context, with a deprecation path for `/1`.

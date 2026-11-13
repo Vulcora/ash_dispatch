@@ -23,8 +23,19 @@ defmodule AshDispatch.Tenancy.Job do
     it would read the same unrecognised schema name five more times, and it is
     the one input here an attacker with write access to `oban_jobs` could have
     chosen.
-  - **A tenant whose schema does not exist** — cancelled too, for the same
-    reason: Postgres will not grow the schema on the second attempt.
+  - **A schema name Postgres refuses** (`3F000`) — cancelled too, for the same
+    reason: nothing the library can do makes that name resolvable.
+
+  ## What is retried
+
+  **A tenant whose tables are not there** (`42P01`). That is a tenant between
+  `create schema` and `mix ash.migrate`, or any tenant during a deploy that
+  adds a table, and it fixes itself in seconds — so Oban's backoff gets it,
+  which is what 0.9.3 did. 0.9.4-rc.0 cancelled on it and destroyed every send
+  enqueued in that window.
+
+  ## Other outcomes
+
   - **A receipt that is not in that tenant** — `{:error, :receipt_not_found}`,
     which is what a job for tenant A edited to say tenant B produces: the id
     exists in A's schema and nowhere else. Nothing is sent, and the receipt in
@@ -53,7 +64,7 @@ defmodule AshDispatch.Tenancy.Job do
         fetch(resource, receipt_id, tenant)
 
       {:error, reason} ->
-        Logger.error(
+        Logger.warning(
           "AshDispatch: refusing a send job for receipt #{inspect(receipt_id)}: #{reason}. " <>
             "A tenant is a schema name, so an unrecognised one is never read from."
         )
@@ -71,7 +82,7 @@ defmodule AshDispatch.Tenancy.Job do
   """
   @spec put_tenant(map(), struct()) :: map()
   def put_tenant(args, receipt) do
-    case Tenancy.key(Tenancy.of(receipt)) do
+    case Tenancy.receipt_prefix(Tenancy.of(receipt)) do
       nil -> args
       tenant -> Map.put(args, "tenant", tenant)
     end
@@ -90,13 +101,13 @@ defmodule AshDispatch.Tenancy.Job do
       end
   end
 
-  # "There is nothing there to read" is only read as a missing tenant schema
-  # when a tenant was actually named. For a host without tenants a missing
-  # table is a deploy that went wrong, and Oban retrying it is the behaviour
-  # that release had.
+  # Only a schema name Postgres itself refuses (`3F000`) is a reason to cancel,
+  # and only when a tenant was actually named. A missing TABLE is retried: it
+  # is a migration that has not finished, and for a host without tenants it is
+  # a deploy that went wrong — Oban retrying it is the behaviour 0.9.3 had.
   defp classify(error, tenant) do
     if not is_nil(tenant) and Tenancy.missing_schema?(error) do
-      {:cancel, "tenant #{inspect(tenant)} has no schema to read the receipt from"}
+      {:cancel, "tenant #{inspect(tenant)} is not a schema name Postgres accepts"}
     else
       {:error, error}
     end

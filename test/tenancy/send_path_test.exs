@@ -143,15 +143,26 @@ defmodule AshDispatch.Tenancy.SendPathTest do
       assert sent_emails() == []
     end
 
-    test "a tenant the host recognises but that has no schema is cancelled, not retried" do
+    # 0.9.4-rc.0 cancelled here, on `42P01`. Postgres says `42P01` both for a
+    # schema that does not exist and for a schema whose tables are not migrated
+    # YET, and the second is the normal state of a tenant between
+    # `create schema` and `mix ash.migrate` — so cancelling threw away a
+    # tenant's mail for a migration that was still running. Retrying a tenant
+    # that will never exist costs five attempts; the other mistake costs the
+    # letter. See `AshDispatch.Tenancy.missing_schema?/1`.
+    test "a tenant the host recognises but that has no tables is retried, not cancelled" do
       receipt = receipt!("tenant_a", %{status: :scheduled})
       Application.put_env(:ash_dispatch, :test_tenants, ["tenant_a", "tenant_gone"])
 
-      assert {:cancel, reason} =
+      assert {:error, _reason} =
                SendEmail.perform(%Oban.Job{args: job_args(receipt, "tenant_gone")})
 
-      assert reason =~ "no schema"
       assert sent_emails() == []
+
+      # And the receipt in the tenant it really is in is untouched, so the
+      # retry has something to send.
+      assert Ash.get!(PerTenant.Receipt, receipt.id, authorize?: false, tenant: "tenant_a").status ==
+               :scheduled
     end
 
     test "a job from before 0.9.4 carries no tenant and behaves as it did" do
