@@ -144,6 +144,45 @@ defmodule AshDispatch.Workers.ScrubSensitiveContentPostgresTest do
     assert content == %{"recipient_name" => "A"}
   end
 
+  test "a sensitive Slack receipt loses both copies of its text" do
+    # Slack and Discord carry the body TWICE in `content`: under `message`,
+    # which `AshDispatch.Preview` renders from, and under
+    # `notification_message`, which the transport reads for the payload's
+    # `"text"`. A scrub that knew only the first left the second in the
+    # database for good — the whole point of the window is that neither stays.
+    receipt!(1,
+      body_text: nil,
+      body_html: nil,
+      content: ~s({
+        "message": "Your code is 123456",
+        "notification_message": "Your code is 123456",
+        "transport": "slack"
+      })
+    )
+
+    assert scrub() == 1
+    assert {@marker, nil, content} = row(1)
+    refute Map.has_key?(content, "message")
+    refute Map.has_key?(content, "notification_message")
+    assert content == %{"transport" => "slack"}
+  end
+
+  test "picks up a receipt whose only remaining copy is notification_message" do
+    # What a receipt scrubbed by a version that did not know the key looks
+    # like: `message` gone, `notification_message` left behind. The where
+    # clause has to name it too, or nothing ever revisits that row and the
+    # text stays past every window.
+    receipt!(1,
+      body_text: @marker,
+      body_html: nil,
+      content: ~s({"notification_message": "Your code is 123456"})
+    )
+
+    assert scrub() == 1
+    assert {@marker, nil, content} = row(1)
+    assert content == %{}
+  end
+
   test "picks up a receipt scrubbed before 0.8.7, whose content still holds a body" do
     receipt!(1, body_text: @marker, body_html: nil)
 
