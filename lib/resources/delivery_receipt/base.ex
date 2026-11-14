@@ -138,6 +138,13 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
         extensions: unquote(all_extensions),
         notifiers: unquote(extra_notifiers)
 
+      @doc false
+      # This base declares no counters, events or metas of its own — see
+      # `AshDispatch.Resources.Base`. Stated rather than left to
+      # `function_exported?/3`, so that a counter added here later cannot
+      # silently start deciding `sdk: :if_events` for every host.
+      def __ash_dispatch_base_content__, do: %{counters: []}
+
       unquote(multitenancy_block)
 
       postgres do

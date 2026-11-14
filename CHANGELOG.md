@@ -94,6 +94,10 @@ fix" are not the same sentence.
   client's static files since 0.8.0, and a patch release does not stop writing
   files a host already has. Set it, run `mix ash.codegen`, delete the files
   once.
+  **Correction (0.9.4-rc.4):** "in your resources" was the wrong sentence.
+  As shipped in rc.2 this counted every counter it found, and
+  `Notification.Base` declares one — so `:if_events` was `:always` for every
+  host with an in-app inbox. It means "declared by you" from rc.4 on.
 - **`primary_key:` on all three `Base` macros** (`:uuid_v7` or `:uuid`), and
   through `AshDispatch.Setup`, which passes it on. For a host whose database
   will not define functions: `:uuid` means `gen_random_uuid()`, built into

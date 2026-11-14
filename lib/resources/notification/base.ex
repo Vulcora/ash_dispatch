@@ -191,6 +191,13 @@ defmodule AshDispatch.Resources.Notification.Base do
       require Ash.Query
       require Ash.Expr
 
+      @doc false
+      # What this library declared on this resource, as opposed to what the
+      # host declared. Read by `AshDispatch.Resources.Base` and, through it,
+      # by `sdk: :if_events` — which must not count the unread counter below
+      # as a reason to generate a TypeScript client (#50).
+      def __ash_dispatch_base_content__, do: %{counters: [:unread_notifications]}
+
       unquote(multitenancy_block)
       unquote(postgres_block)
 

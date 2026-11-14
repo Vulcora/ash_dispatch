@@ -57,8 +57,15 @@ mix ash_dispatch.gen
 > ```
 >
 > Nothing is written and `mix ash.codegen --check` passes with none of these
-> files on disk. `sdk: :if_events` writes them only when your app has events
-> or counters. See the [Code Generation guide](code-generation.md).
+> files on disk.
+>
+> `sdk: :if_events` writes them only when your app declares events, counters,
+> a `resource_meta` or an `entity_changes` block **of its own**. The
+> `unread_notifications` counter that `Notification.Base` brings does not
+> count — but note that it is the counter `NotificationBell` and
+> `useNotifications` read, so if you use the in-app bell you want the client
+> and `sdk: true` (the default) is your switch, not `:if_events`. See the
+> [Code Generation guide](code-generation.md).
 
 ---
 

@@ -824,8 +824,12 @@ defmodule AshDispatch.Config do
   - unset — derive the path from `config :ash_typescript, output_file:`
 
   `config :ash_dispatch, sdk:` is the companion switch: `true` (the default),
-  `false`, or `:if_events` to write the SDK only when this app has events,
-  counters, a `resource_meta` or an `entity_changes` block. See
+  `false`, or `:if_events` to write the SDK only when this app declares
+  events, counters, a `resource_meta` or an `entity_changes` block **of its
+  own**. What `AshDispatch.Resources.Notification.Base` and friends declare
+  does not count — but the counter one of them brings,
+  `unread_notifications`, is the one the generated bell reads, so a host that
+  uses the in-app bell wants `sdk: true` rather than `:if_events`. See
   `Mix.Tasks.AshDispatch.Gen` and the Code Generation guide.
   """
   @spec sdk_output_path() :: String.t() | false | nil
