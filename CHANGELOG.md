@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Slack and Discord now receive the body that was declared. The dispatcher
+  wrote it under `:message`, while both transports read `:notification_message`
+  for the payload's only required text field (`"text"` and `"content"`), so a
+  `content: [notification_message: ...]` channel — and a module's
+  `notification_message/2` — posted a payload whose text was `nil`.
 - **A delayed email was sent early by the stranded-receipt sweep.** A channel
   timed `{:in, seconds}` beyond the grace period (30 minutes by default), or
   `{:at, datetime}`, leaves its receipt in `:scheduled` with an Oban job that
