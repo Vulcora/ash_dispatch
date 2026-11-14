@@ -2128,11 +2128,42 @@ defmodule AshDispatch.Dispatcher do
 
   defp apply_channel_load(context, _channel), do: context
 
-  # Always resolve event module at runtime via EventResolver
-  # Compile-time resolution is unreliable due to module compilation order
-  # (event modules compile after resources, so Code.ensure_loaded? fails)
+  # The event's module: the one its config names, and otherwise the registry's
+  # for this event id.
+  #
+  # The registry lookup stays the general answer, because most configs name no
+  # module: the DSL transformer derives the module NAME at compile time, when
+  # the event modules have not been compiled yet and `Code.ensure_loaded?`
+  # says no, so it persists `module: nil` and the registry — which derives the
+  # same name at runtime, when it does load — is what finds it. Compile-time
+  # resolution is unreliable for exactly that reason.
   # Warning is only logged in dispatch_event.ex on first resolution failure
-  defp resolve_event_module(_event_config, context) do
+  #
+  # But a config that DOES name a module names the only module there is, and
+  # the registry has no say in it: a caller that builds its own context and
+  # event config — the documented `dispatch_channel/3` path — has no registry
+  # entry to be found, and until this read `:module`, its `recipients/2` was
+  # never called. The dispatch fell through to audience-based resolution and
+  # reached nobody, so an event had to be registered on a resource just to
+  # have its recipients resolved. The same config was already trusted for the
+  # event's `should_send?/2` guard (`channel_should_send?/3`).
+  #
+  # A name that does not load is no module at all — the derived name of an
+  # event module the host never wrote reaches the config the same way — so it
+  # falls back as before. Nothing else is asked of it: the registry's module is
+  # not validated either, and every callback on it goes through
+  # `EventResolver.call_if_exported/4`.
+  defp resolve_event_module(event_config, context) do
+    case event_config[:module] do
+      module when is_atom(module) and not is_nil(module) ->
+        if Code.ensure_loaded?(module), do: module, else: registry_event_module(context)
+
+      _other ->
+        registry_event_module(context)
+    end
+  end
+
+  defp registry_event_module(context) do
     case EventResolver.find_module(context.event_id) do
       {:ok, m} -> m
       {:error, :not_found} -> nil
