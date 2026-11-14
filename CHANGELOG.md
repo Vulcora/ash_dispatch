@@ -7,6 +7,148 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.4-rc.4] - 2026-11-14
+
+### What the first host found in rc.2
+
+rc.2 answered three things the first per-tenant host reported (#50). It took
+rc.2 and came back with three more: one of the two answers did not catch the
+case it was written for, the other was on in every configuration, and the
+third — the one rc.2 declined to build until somebody wanted it — is now
+wanted. `sdk: false` worked exactly as documented, and nothing else moved
+between rc.1 and rc.2.
+
+1. **The installer's `uuid_generate_v7()` warning could not see the host's
+   case.** It looked for the string `"ash-functions"` in the repo's source.
+   The host's repo listed it and the function was missing anyway: ash_postgres
+   emits `uuid_generate_v7()` only when it is *not* relying on the server's
+   own, which it derives from `min_pg_version/0` (`major >= 18`), and that
+   host's `ash-functions` migration had been generated while the answer was
+   18. Lowering it to 17 afterwards does not rewrite a file already on disk.
+2. **`sdk: :if_events` was `:always`** for any host using
+   `Notification.Base`. The base declares the `unread_notifications` counter,
+   rc.2 counted every counter it found, and the host saw
+   `Found 0 events, 1 counters` while declaring none.
+3. **The timestamps the library writes from Elixir are now on a clock the host
+   can supply.** rc.2 wrote this down (BACKLOG 13) rather than building it,
+   because a clock nothing persisted reads is worse than no clock. A host has
+   asked.
+
+### Added
+
+- **`AshDispatch.Doctor`**, the `uuid_generate_v7()` check that asks the
+  database — which is the only check that can settle it. `check/1` returns
+  `:ok` or `{:error, %AshDispatch.Doctor.Error{}}` whose message carries the
+  exact migration to add; `check!/1` raises it. For a boot that should refuse
+  to start, or a test:
+
+      test "the database has what ash_dispatch's tables need" do
+        assert :ok = AshDispatch.Doctor.check()
+      end
+
+  It asks for the function **this** host's migrations name — read from the
+  repo the way ash_postgres decides it, `use_builtin_uuidv7_function?/0` — and
+  for the one an existing table's column `DEFAULT` names when the two have
+  come apart. Where the function exists in a schema this connection cannot
+  resolve, it says which schema and what the `search_path` is, which is the
+  per-tenant trap rather than a missing migration. It opens no connection of
+  its own, so the repo must be started.
+- **`mix ash_dispatch.doctor`**, the same check from a shell, exit 1 on a
+  problem, for a deploy script or a CI job.
+- **`config :ash_dispatch, clock: {Module, :function, args}`**, read by
+  `AshDispatch.Clock`, and **nothing else in the library asks what time it
+  is**. Unset it is `DateTime.utc_now/0`, byte-for-byte what every release
+  before this one did. `clock: MyApp.Clock` means that module's `utc_now/0`,
+  and any 0-arity function is accepted.
+
+  Through it: `occurred_at`, `sent_at`, `read_at`, `seen_at`, `archived_at`,
+  `last_retry_at`, the cut-off `RetryFailedDeliveries` compares
+  `last_retry_at` against, both cut-offs in `ScrubSensitiveContent`,
+  `AshDispatch.Workers.Stranded`'s staleness bounds,
+  `AshDispatch.Context`'s `:now` (so the broadcast payload's timestamp comes
+  from it without anyone passing anything), a webhook envelope's `sent_at`
+  and a Resend event's `webhook_received_at`.
+
+  **Not** through it, in both cases on purpose and both written down in
+  `AshDispatch.Clock`'s moduledoc: `inserted_at`/`updated_at`, which are
+  Ash's and whose default is the one value ash_postgres turns into a column
+  `DEFAULT` (0.10.0, BACKLOG 13); and the Resend webhook's timestamp
+  tolerance, which compares our wall clock against the *sender's* to reject a
+  replayed signature — a frozen clock would let a stale one through. The
+  "Generated at" banners in the code generators are build-time text and are
+  not a stored or compared value.
+
+### Changed
+
+- **`mix ash_dispatch.install` reads three things about `uuid_generate_v7()`
+  instead of one**, all from the project's files and still with no database
+  connection: whether `installed_extensions/0` lists `"ash-functions"`, what
+  `min_pg_version/0` answers, and whether a migration that installs Ash's
+  functions defines the function (`FUNCTION uuid_generate_v7` — the
+  definition, not the `fragment("uuid_generate_v7()")` column default that
+  every table migration mentions). It warns in three distinct cases now,
+  including the host's: the extension listed, the answer lowered to 17, and
+  the migration still without the function. **Every notice says plainly that
+  listing the extension is not sufficient** and gives
+  `SELECT to_regprocedure('public.uuid_generate_v7()')` as the authoritative
+  check, with `AshDispatch.Doctor` beside it.
+- **`sdk: :if_events` counts what the host declared.** Each `Base` macro now
+  states what it declared on the resource it builds
+  (`AshDispatch.Resources.Base`), and the generator discounts it. A host with
+  the three bases and nothing else generates nothing; one event, or one
+  counter of its own, and the client appears. `mix ash_dispatch.gen --verbose`
+  says how many of the counters it found came from the bases.
+
+  **`true` and `false` are unchanged.** That matters here: the generated
+  `NotificationBell` and `useNotifications` read `unread_notifications`, so a
+  host that uses the in-app bell needs the client **for** the base's counter
+  and `sdk: true` (the default) is how it says so. `:if_events` is the wrong
+  switch for that host — an inbox is not an event, and `:if_events` would
+  also start writing the client the day it declares its first one. The Code
+  Generation guide has a table of the three wishes and their spellings.
+
+### Documentation
+
+- **The Tenancy guide says that listing the extension is not sufficient**, in
+  those words, and gives the SQL check as authoritative. A new section
+  explains why a repo that lists `"ash-functions"` can lack the function:
+  ash_postgres's `use_builtin_uuidv7_function?/0`, the fact that the
+  `ash-functions` migration is generated once, and that
+  `mix igniter.install ash_postgres` fills `min_pg_version/0` in from the
+  *local* `postgres -V` — which is how 18 gets written into a project that
+  deploys against 17.
+- **The install guide's Prerequisites say the same**, with
+  `mix ash_dispatch.doctor` and `AshDispatch.Doctor.check!/1` next to the SQL.
+- **The testing guide documents the clock**, with a frozen-clock module a host
+  can copy, a test asserting on the instant it chose, and a second one moving
+  the clock an hour so `RetryFailedDeliveries` finds a receipt without
+  waiting. The table of "whose clock" now has a row a host can answer *yes*
+  to, and says why the other two rows still cannot move.
+- **The changelog's rc.2 entry carries a correction**: "`:if_events` … has
+  events, counters … in your resources" was the wrong sentence for what rc.2
+  shipped.
+- **BACKLOG 13** records the migration-free half as done and keeps the two
+  halves that need 0.10.0 — `inserted_at`/`updated_at` on the same clock, and
+  `timestamptz` columns — with the reason each one is a migration. Both are
+  now only the migration question: the clock they would read already exists.
+
+### Compatibility
+
+Still a patch. No migration, no column changed, and no default changed for a
+host that has not opted in. `occurred_at` moved onto the clock without
+touching its migration, because its default was already an `{m, f, a}` tuple
+and ash_postgres derives a column `DEFAULT` only from a function capture — a
+test pins that, and pins that `inserted_at`/`updated_at` still carry Ash's
+own `&DateTime.utc_now/0`.
+
+Upgrading from rc.2 or rc.3 and setting none of the new options gives you what
+rc.3 gave you, with one exception, which is the fix: `sdk: :if_events` on a
+host that declared nothing of its own now generates nothing, where before it
+generated the client. A host that wants the client should say `sdk: true`.
+
+1147 tests pass with a database and 1038 without, none failing (1102 and 995
+on rc.3; 45 added).
+
 ## [0.9.4-rc.3] - 2026-11-14
 
 ### Slack and Discord webhook URLs stay out of the job table and the log
