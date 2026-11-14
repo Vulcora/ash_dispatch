@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An event module named in `event_config[:module]` now resolves the recipients.** `Dispatcher.dispatch_channel/3` only ever asked the event registry, so a module passed explicitly — the documented path for a caller that builds its own context — never had its `recipients/2` called and the dispatch reached nobody; an event had to be registered on a resource just to have its recipients resolved. Without a `:module` nothing changes: the registry stays the fallback.
 - Slack and Discord now receive the body that was declared. The dispatcher
   wrote it under `:message`, while both transports read `:notification_message`
   for the payload's only required text field (`"text"` and `"content"`), so a
