@@ -91,12 +91,22 @@ defmodule AshDispatch.Workers.ScrubSensitiveContentTest do
       raw = for {:raw, r} <- parts, into: "", do: r
       assert raw =~ "- 'html_body'"
       assert raw =~ "- 'text_body'"
+
+      # Every key the dispatcher writes a body to. `notification_message` is
+      # the one Slack and Discord read for their payload text; a scrub that
+      # knew only `message` left their copy behind.
+      assert raw =~ "- 'message'"
+      assert raw =~ "- 'notification_message'"
     end
 
     test "picks up a receipt whose content still holds a body", %{query: query} do
       wheres = Enum.map_join(query.wheres, " ", &Macro.to_string(&1.expr))
       assert wheres =~ "html_body"
       assert wheres =~ "text_body"
+
+      # Named here too, or a receipt whose only remaining copy is
+      # `notification_message` is never revisited.
+      assert wheres =~ "notification_message"
     end
   end
 end

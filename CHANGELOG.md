@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for the payload's only required text field (`"text"` and `"content"`), so a
   `content: [notification_message: ...]` channel — and a module's
   `notification_message/2` — posted a payload whose text was `nil`.
+- `AshDispatch.Workers.ScrubSensitiveContent` removes `notification_message`
+  from `content` too, and names it in the clause that decides which receipts
+  still hold a body. Without it a `sensitive_content: true` event with a Slack
+  or Discord channel would keep its text past the retention window under the
+  key the fix above starts writing.
 
 ## [0.9.4-rc.3] - 2026-11-14
 

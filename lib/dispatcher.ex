@@ -1493,14 +1493,12 @@ defmodule AshDispatch.Dispatcher do
           # `nil`: the declared body reached the receipt and never reached
           # Discord. `:message` stays because the receipt is read by more than
           # the transport — `AshDispatch.Preview` renders a non-email channel's
-          # body from it, and `AshDispatch.Workers.ScrubSensitiveContent`
-          # removes it by name.
+          # body from it.
           #
-          # That scrub does NOT know `:notification_message`, so a
-          # `sensitive_content: true` event with a Slack or Discord channel now
-          # keeps its text past the retention window. It is one more
-          # subtraction in that worker's JSONB fragment, and it belongs in its
-          # own change rather than hidden in this one.
+          # `AshDispatch.Workers.ScrubSensitiveContent` subtracts both names,
+          # and has to: a `sensitive_content: true` event with a Slack or
+          # Discord channel would otherwise keep its text past the retention
+          # window under whichever key the scrub did not know.
           text =
             interpolate(
               content_config[:message] || content_config[:notification_message],
