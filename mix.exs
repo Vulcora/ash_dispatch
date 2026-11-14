@@ -187,7 +187,9 @@ defmodule AshDispatch.MixProject do
           AshDispatch.Dsl.Sections
         ],
         Testing: [
-          AshDispatch.Test
+          AshDispatch.Test,
+          AshDispatch.Doctor,
+          AshDispatch.Doctor.Error
         ]
       ],
       before_closing_head_tag: &before_closing_head_tag/1,

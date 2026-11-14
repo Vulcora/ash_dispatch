@@ -27,6 +27,57 @@ defmodule Mix.Tasks.AshDispatch.InstallTest do
   end
   """
 
+  # The repo in the shapes the `uuid_generate_v7()` check has to tell apart.
+  @repo_plain """
+  defmodule Test.Repo do
+    use AshPostgres.Repo, otp_app: :test
+
+    def installed_extensions, do: ["ash-functions"]
+  end
+  """
+
+  @repo_15 """
+  defmodule Test.Repo do
+    use AshPostgres.Repo, otp_app: :test
+
+    def installed_extensions, do: ["ash-functions"]
+    def min_pg_version, do: %Version{major: 15, minor: 0, patch: 0}
+  end
+  """
+
+  @repo_18 """
+  defmodule Test.Repo do
+    use AshPostgres.Repo, otp_app: :test
+
+    def installed_extensions, do: ["ash-functions"]
+    def min_pg_version, do: %Version{major: 18, minor: 0, patch: 0}
+  end
+  """
+
+  # ash_postgres's `ash-functions` migration, as it comes out when it is
+  # relying on the server's own uuidv7() — the file the first host had.
+  @migration_v18 """
+  defmodule Test.Repo.Migrations.InstallAshFunctions do
+    use Ecto.Migration
+
+    def up do
+      execute("CREATE OR REPLACE FUNCTION ash_raise_error(json_data jsonb) RETURNS BOOLEAN AS $$ BEGIN END $$ LANGUAGE PLPGSQL")
+    end
+  end
+  """
+
+  # The same, generated while it was not.
+  @migration_v17 """
+  defmodule Test.Repo.Migrations.InstallAshFunctions do
+    use Ecto.Migration
+
+    def up do
+      execute("CREATE OR REPLACE FUNCTION ash_raise_error(json_data jsonb) RETURNS BOOLEAN AS $$ BEGIN END $$ LANGUAGE PLPGSQL")
+      execute("CREATE OR REPLACE FUNCTION uuid_generate_v7() RETURNS UUID AS $$ BEGIN END $$ LANGUAGE PLPGSQL")
+    end
+  end
+  """
+
   @generated %{
     "lib/test/notifications/notification.ex" => Test.Notifications.Notification,
     "lib/test/notifications.ex" => Test.Notifications,
@@ -44,6 +95,26 @@ defmodule Mix.Tasks.AshDispatch.InstallTest do
     test_project(files: files)
     |> then(&if(opts[:ash_typescript], do: add_ash_typescript(&1), else: &1))
     |> Igniter.compose_task("ash_dispatch.install", ["--yes" | argv])
+  end
+
+  # The installer against a given repo source, and optionally one migration
+  # already on disk.
+  defp install_with(repo, migration \\ nil) do
+    files = %{"lib/test/repo.ex" => repo, "lib/test/accounts/user.ex" => @user}
+
+    files =
+      if migration do
+        Map.put(
+          files,
+          "priv/repo/migrations/20260101000000_install_ash_functions.exs",
+          migration
+        )
+      else
+        files
+      end
+
+    test_project(files: files)
+    |> Igniter.compose_task("ash_dispatch.install", ["--yes"])
   end
 
   defp add_ash_typescript(igniter) do
@@ -193,20 +264,19 @@ defmodule Mix.Tasks.AshDispatch.InstallTest do
       assert_has_notice(igniter, &(&1 =~ "primary_key: :uuid"))
     end
 
-    test "a repo that installs them is left alone" do
-      repo = """
-      defmodule Test.Repo do
-        use AshPostgres.Repo, otp_app: :test
-
-        def installed_extensions, do: ["ash-functions"]
+    # The sentence the first host asked for: the source check cannot settle it,
+    # and the notice must not let anyone believe it did (#50).
+    test "every notice says that listing the extension is not sufficient" do
+      for igniter <- [install(), install_with(@repo_18), install_with(@repo_15, @migration_v18)] do
+        assert_has_notice(igniter, &(&1 =~ "Listing the extension is NOT enough"))
+        assert_has_notice(igniter, &(&1 =~ "the only answer that counts"))
+        assert_has_notice(igniter, &(&1 =~ "AshDispatch.Doctor.check!()"))
+        assert_has_notice(igniter, &(&1 =~ "mix ash_dispatch.doctor"))
       end
-      """
+    end
 
-      igniter =
-        test_project(files: %{"lib/test/repo.ex" => repo, "lib/test/accounts/user.ex" => @user})
-        |> Igniter.compose_task("ash_dispatch.install", ["--yes"])
-
-      refute notices(igniter) =~ "ash-functions"
+    test "a repo that installs them is left alone" do
+      refute notices(install_with(@repo_plain)) =~ "ash-functions"
     end
 
     test "no repo at all: the missing-repo notice, and not this one" do
@@ -216,6 +286,91 @@ defmodule Mix.Tasks.AshDispatch.InstallTest do
 
       assert_has_notice(igniter, &(&1 =~ "No Ecto repo found"))
       refute notices(igniter) =~ "ash-functions"
+    end
+
+    # The case rc.2's check could not see. ash_postgres emits the function only
+    # when it is not relying on the server's own, which it derives from
+    # `min_pg_version/0` (`major >= 18`).
+    test "min_pg_version 18 is warned about even though the extension is listed" do
+      igniter = install_with(@repo_18)
+
+      assert_has_notice(igniter, &(&1 =~ "will NOT create\nuuid_generate_v7()"))
+      assert_has_notice(igniter, &(&1 =~ "only on PostgreSQL 18 and later"))
+      assert_has_notice(igniter, &(&1 =~ "OLDEST Postgres the application runs"))
+      assert_has_notice(igniter, &(&1 =~ "postgres -V"))
+    end
+
+    test "Version.parse! is read as well as %Version{}" do
+      repo = """
+      defmodule Test.Repo do
+        use AshPostgres.Repo, otp_app: :test
+
+        def installed_extensions, do: ["ash-functions"]
+        def min_pg_version, do: Version.parse!("18.0.0")
+      end
+      """
+
+      assert_has_notice(install_with(repo), &(&1 =~ "answers 18 or more"))
+    end
+
+    # The host's own state: they lowered the answer to 17 afterwards, and the
+    # migration already on disk was not rewritten.
+    test "an ash-functions migration without the function is warned about" do
+      igniter = install_with(@repo_15, @migration_v18)
+
+      assert_has_notice(igniter, &(&1 =~ "does not create uuid_generate_v7()"))
+      assert_has_notice(igniter, &(&1 =~ "does not rewrite a file already on disk"))
+      assert_has_notice(igniter, &(&1 =~ "mix ash.codegen install_ash_functions"))
+    end
+
+    test "an ash-functions migration that does create it is left alone" do
+      refute notices(install_with(@repo_15, @migration_v17)) =~ "ash-functions"
+    end
+
+    # A table migration mentions `uuid_generate_v7()` as a column DEFAULT. That
+    # is the use, not the definition, and must not be mistaken for it.
+    test "a column default is not mistaken for the function's definition" do
+      migration = """
+      defmodule Test.Repo.Migrations.AddNotifications do
+        use Ecto.Migration
+
+        def up do
+          create table(:notifications, primary_key: false) do
+            add :id, :uuid, null: false, default: fragment("uuid_generate_v7()"), primary_key: true
+          end
+        end
+      end
+      """
+
+      igniter = install_with(@repo_15, migration)
+
+      refute notices(igniter) =~ "does not create uuid_generate_v7()"
+    end
+  end
+
+  describe "diagnose_uuid_generate_v7/2" do
+    alias Mix.Tasks.AshDispatch.Install
+
+    test "the three inputs, and what each decides" do
+      assert Install.diagnose_uuid_generate_v7("use AshPostgres.Repo", :none) ==
+               {:warn, :no_extension}
+
+      assert Install.diagnose_uuid_generate_v7(@repo_15, :none) == :ok
+      assert Install.diagnose_uuid_generate_v7(@repo_15, :installed_with_function) == :ok
+
+      assert Install.diagnose_uuid_generate_v7(@repo_15, :installed_without_function) ==
+               {:warn, :migration_without_function}
+
+      # 18 wins over the migrations: it also decides what the NEXT codegen
+      # writes as the column default of a new table, which an older server
+      # cannot resolve either.
+      assert Install.diagnose_uuid_generate_v7(@repo_18, :installed_with_function) ==
+               {:warn, :builtin_assumed}
+    end
+
+    test "a repo with no min_pg_version at all is not assumed to be 18" do
+      # ash_postgres assumes 13 and warns about it itself.
+      assert Install.diagnose_uuid_generate_v7(@repo_plain, :none) == :ok
     end
   end
 

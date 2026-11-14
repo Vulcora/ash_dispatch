@@ -15,9 +15,15 @@ defmodule AshDispatch.Resources.PrimaryKey do
   `default: fragment("uuid_generate_v7()")` into the migration. That function
   is not built into Postgres before 18: ash_postgres creates it, in the
   `ash-functions` migration, and only for a repo whose `installed_extensions/0`
-  lists `"ash-functions"`. Where it is missing, `CREATE TABLE` fails — and for
-  a host that creates a tenant's tables when the tenant is created, that means
-  no tenant can be created at all (#50).
+  lists `"ash-functions"` — and not even then if `min_pg_version/0` answers 18
+  or more, because it relies on the server's own `uuidv7()` instead. Where the
+  function is missing, `CREATE TABLE` fails — and for a host that creates a
+  tenant's tables when the tenant is created, that means no tenant can be
+  created at all (#50).
+
+  Listing the extension therefore proves nothing on its own.
+  `AshDispatch.Doctor.check!/1` asks the database, which is the only answer
+  that counts.
 
   Installing the function is the better answer and the guides say how. This
   option is for a host that cannot: a managed database that will not define

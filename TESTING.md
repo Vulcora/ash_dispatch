@@ -47,6 +47,19 @@ library ships helpers for it — see the *Previews and testing* guide
 (`AshDispatch.Test.assert_all_render/1`, `AshDispatch.Preview`) once you are
 on 0.8.6.
 
+One test worth having in your app is the one the library cannot run for you:
+
+```elixir
+test "the database has what ash_dispatch's tables need" do
+  assert :ok = AshDispatch.Doctor.check()
+end
+```
+
+`AshDispatch.Doctor` asks the database whether `uuid_generate_v7()` resolves,
+which no check of your source can settle — a repo can list the
+`"ash-functions"` extension and not have the function. `mix ash_dispatch.doctor`
+is the same check from a shell, for a deploy script.
+
 ## The tenancy suite
 
 `test/tenancy/` is the per-tenant half, and every file in it is tagged
