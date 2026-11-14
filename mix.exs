@@ -127,6 +127,7 @@ defmodule AshDispatch.MixProject do
           AshDispatch.Event.RecipientExtractor,
           AshDispatch.Dispatcher,
           AshDispatch.Context,
+          AshDispatch.Clock,
           AshDispatch.Log,
           AshDispatch.Channel
         ],

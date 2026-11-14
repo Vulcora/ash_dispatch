@@ -1020,6 +1020,10 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     1
   end
 
+  # The `Generated at:` banners below stay on `DateTime.utc_now/0` rather than
+  # `AshDispatch.Clock`: they are build-time text in a generated file, and
+  # nothing stores or compares them. A host's clock has no business deciding
+  # what a code generator writes into a comment.
   defp generate_events_typescript_content(events) do
     event_ids =
       events

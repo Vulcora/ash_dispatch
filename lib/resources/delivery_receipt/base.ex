@@ -342,6 +342,13 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
         # a host that does not ask for it needs no migration.
         unquote(tenant_attribute)
 
+        # NOT on `AshDispatch.Clock`, deliberately. Ash's `timestamps` macro
+        # defaults both to the capture `&DateTime.utc_now/0`, which is the
+        # exact value ash_postgres matches on to write
+        # `DEFAULT (now() AT TIME ZONE 'utc')` into the migration. Anything
+        # else there makes the next `mix ash.codegen` in every host emit an
+        # `ALTER COLUMN ... DROP DEFAULT`, and a patch may not require a
+        # migration. BACKLOG 13 keeps it for 0.10.0.
         timestamps(public?: true)
       end
 
@@ -496,7 +503,7 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
 
           change fn changeset, _ ->
             changeset
-            |> Ash.Changeset.change_attribute(:sent_at, DateTime.utc_now())
+            |> Ash.Changeset.change_attribute(:sent_at, AshDispatch.Clock.utc_now())
             |> Ash.Changeset.change_attribute(:error_message, nil)
           end
         end
@@ -534,7 +541,7 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
 
             changeset
             |> Ash.Changeset.change_attribute(:retry_count, retry_count + 1)
-            |> Ash.Changeset.change_attribute(:last_retry_at, DateTime.utc_now())
+            |> Ash.Changeset.change_attribute(:last_retry_at, AshDispatch.Clock.utc_now())
           end
 
           # Enqueue a new Oban job to process this retry
@@ -582,7 +589,7 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
           change fn changeset, _ ->
             changeset
             |> Ash.Changeset.change_attribute(:retry_count, 0)
-            |> Ash.Changeset.change_attribute(:last_retry_at, DateTime.utc_now())
+            |> Ash.Changeset.change_attribute(:last_retry_at, AshDispatch.Clock.utc_now())
           end
 
           change {AshDispatch.Changes.EnqueueRetryJob, []}

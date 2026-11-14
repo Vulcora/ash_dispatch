@@ -192,7 +192,7 @@ defmodule AshDispatch.Channel do
   def calculate_delay(%__MODULE__{time: :immediate}), do: 0
 
   def calculate_delay(%__MODULE__{time: {:at, datetime}}) do
-    DateTime.diff(datetime, DateTime.utc_now(), :second)
+    DateTime.diff(datetime, AshDispatch.Clock.utc_now(), :second)
   end
 
   def calculate_delay(%__MODULE__{time: {:window, _window}}), do: 0

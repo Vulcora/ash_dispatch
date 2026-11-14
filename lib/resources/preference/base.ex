@@ -197,6 +197,13 @@ defmodule AshDispatch.Resources.Preference.Base do
           description "Whether deliveries in this scope are wanted"
         end
 
+        # NOT on `AshDispatch.Clock`, deliberately. Ash's `timestamps` macro
+        # defaults both to the capture `&DateTime.utc_now/0`, which is the
+        # exact value ash_postgres matches on to write
+        # `DEFAULT (now() AT TIME ZONE 'utc')` into the migration. Anything
+        # else there makes the next `mix ash.codegen` in every host emit an
+        # `ALTER COLUMN ... DROP DEFAULT`, and a patch may not require a
+        # migration. BACKLOG 13 keeps it for 0.10.0.
         timestamps(public?: true)
       end
 

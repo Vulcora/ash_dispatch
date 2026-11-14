@@ -93,7 +93,7 @@ defmodule AshDispatch.Workers.ScrubSensitiveContent do
         :ok
 
       event_ids ->
-        {cutoff, stranded_cutoff} = cutoffs(DateTime.utc_now())
+        {cutoff, stranded_cutoff} = cutoffs(AshDispatch.Clock.utc_now())
 
         {count, _} =
           Config.repo().update_all(

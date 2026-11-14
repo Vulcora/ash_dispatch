@@ -273,7 +273,7 @@ defmodule AshDispatch.Resources.Notification.Base do
             metadata = Ash.Changeset.get_attribute(changeset, :metadata) || %{}
 
             occurred_at =
-              Ash.Changeset.get_attribute(changeset, :occurred_at) || DateTime.utc_now()
+              Ash.Changeset.get_attribute(changeset, :occurred_at) || AshDispatch.Clock.utc_now()
 
             changeset
             |> Ash.Changeset.change_attribute(:metadata, metadata)
@@ -323,13 +323,13 @@ defmodule AshDispatch.Resources.Notification.Base do
         update :mark_as_seen do
           accept []
           require_atomic? false
-          change set_attribute(:seen_at, &DateTime.utc_now/0)
+          change set_attribute(:seen_at, &AshDispatch.Clock.utc_now/0)
         end
 
         update :archive do
           accept []
           require_atomic? false
-          change set_attribute(:archived_at, &DateTime.utc_now/0)
+          change set_attribute(:archived_at, &AshDispatch.Clock.utc_now/0)
         end
 
         update :unarchive do
@@ -352,11 +352,11 @@ defmodule AshDispatch.Resources.Notification.Base do
           require_atomic? false
 
           change set_attribute(:read, true)
-          change set_attribute(:read_at, &DateTime.utc_now/0)
+          change set_attribute(:read_at, &AshDispatch.Clock.utc_now/0)
 
           change fn changeset, _context ->
             if is_nil(changeset.data.seen_at) do
-              Ash.Changeset.change_attribute(changeset, :seen_at, DateTime.utc_now())
+              Ash.Changeset.change_attribute(changeset, :seen_at, AshDispatch.Clock.utc_now())
             else
               changeset
             end
@@ -478,10 +478,17 @@ defmodule AshDispatch.Resources.Notification.Base do
           description "Optional source identifier for the notification"
         end
 
+        # The MFA form, not `&AshDispatch.Clock.utc_now/0`, and that matters:
+        # ash_postgres derives a column DEFAULT only from a function CAPTURE
+        # (it matches `&DateTime.utc_now/0` and writes
+        # `(now() AT TIME ZONE 'utc')`), and maps an `{m, f, a}` default to
+        # none at all. This was already `{DateTime, :utc_now, []}`, so the
+        # migration ash_postgres generates for this column is byte-for-byte
+        # what it was — no migration, which is what a 0.9.x patch may do.
         attribute :occurred_at, :utc_datetime_usec do
           public? true
           allow_nil? false
-          default {DateTime, :utc_now, []}
+          default {AshDispatch.Clock, :utc_now, []}
           description "When the event that triggered this notification occurred"
         end
 
@@ -534,6 +541,13 @@ defmodule AshDispatch.Resources.Notification.Base do
           description "When the user archived the notification; archived ones are not unread"
         end
 
+        # NOT on `AshDispatch.Clock`, deliberately. Ash's `timestamps` macro
+        # defaults both to the capture `&DateTime.utc_now/0`, which is the
+        # exact value ash_postgres matches on to write
+        # `DEFAULT (now() AT TIME ZONE 'utc')` into the migration. Anything
+        # else there makes the next `mix ash.codegen` in every host emit an
+        # `ALTER COLUMN ... DROP DEFAULT`, and a patch may not require a
+        # migration. BACKLOG 13 keeps it for 0.10.0.
         timestamps(public?: true)
       end
 

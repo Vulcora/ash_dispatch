@@ -54,7 +54,7 @@ defmodule AshDispatch.Workers.Stranded do
   """
   @spec action(DateTime.t() | NaiveDateTime.t(), keyword()) :: action()
   def action(age_reference, opts \\ []) do
-    now = Keyword.get(opts, :now) || DateTime.utc_now()
+    now = Keyword.get(opts, :now) || AshDispatch.Clock.utc_now()
     stuck_after = Keyword.get(opts, :stuck_after_minutes, @default_stuck_after_minutes) * 60
     stale_after = Keyword.get(opts, :stale_after_hours, @default_stale_after_hours) * 3600
 
@@ -75,7 +75,7 @@ defmodule AshDispatch.Workers.Stranded do
   """
   @spec close_reason(DateTime.t() | NaiveDateTime.t(), keyword()) :: String.t()
   def close_reason(age_reference, opts \\ []) do
-    now = Keyword.get(opts, :now) || DateTime.utc_now()
+    now = Keyword.get(opts, :now) || AshDispatch.Clock.utc_now()
     hours = div(age_in_seconds(age_reference, now), 3600)
 
     "Stranded in :scheduled for #{hours}h with no live job — too old to send, " <>

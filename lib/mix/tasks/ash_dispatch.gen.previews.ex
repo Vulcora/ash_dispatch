@@ -349,6 +349,8 @@ defmodule Mix.Tasks.AshDispatch.Gen.Previews do
             variant: ch.variant
           }
         end),
+      # Build-time text, not a stored or compared value, so not
+      # `AshDispatch.Clock` — see its moduledoc.
       generated_at: DateTime.utc_now() |> DateTime.to_iso8601()
     }
 

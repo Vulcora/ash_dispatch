@@ -155,6 +155,11 @@ defmodule AshDispatch.WebhookHandlers.Resend do
 
   defp decode_secret(_), do: {:error, :invalid_secret}
 
+  # The one time source in the library that is NOT `AshDispatch.Clock`, and
+  # the reason is the whole point of the check: this compares our wall clock
+  # against the SENDER's, to reject a replayed signature. A host clock that is
+  # frozen or travelled would let a stale signature through, or refuse a fresh
+  # one. `:now` is here for tests, as it has been.
   defp check_freshness(ts, opts) do
     tolerance = Keyword.get(opts, :tolerance_s, @default_tolerance_s)
     now = Keyword.get(opts, :now, System.system_time(:second))
@@ -474,7 +479,7 @@ defmodule AshDispatch.WebhookHandlers.Resend do
   defp webhook_event_entry(event_type, data) do
     %{
       event_type =>
-        Map.put(data, "webhook_received_at", DateTime.utc_now() |> DateTime.to_iso8601())
+        Map.put(data, "webhook_received_at", AshDispatch.Clock.utc_now() |> DateTime.to_iso8601())
     }
   end
 
