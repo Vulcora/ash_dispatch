@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **An event module named in `event_config[:module]` now resolves the recipients.** `Dispatcher.dispatch_channel/3` only ever asked the event registry, so a module passed explicitly — the documented path for a caller that builds its own context — never had its `recipients/2` called and the dispatch reached nobody; an event had to be registered on a resource just to have its recipients resolved. Without a `:module` nothing changes: the registry stays the fallback.
+
 ## [0.9.4-rc.3] - 2026-11-14
 
 ### Slack and Discord webhook URLs stay out of the job table and the log
