@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Slack and Discord now receive the body that was declared. The dispatcher
+  wrote it under `:message`, while both transports read `:notification_message`
+  for the payload's only required text field (`"text"` and `"content"`), so a
+  `content: [notification_message: ...]` channel — and a module's
+  `notification_message/2` — posted a payload whose text was `nil`.
+
 ## [0.9.4-rc.3] - 2026-11-14
 
 ### Slack and Discord webhook URLs stay out of the job table and the log

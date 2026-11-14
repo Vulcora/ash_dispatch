@@ -1483,28 +1483,53 @@ defmodule AshDispatch.Dispatcher do
           # `maybe_put` rather than a literal key: `interpolate(nil, _)`
           # returns `nil`, and a `%{message: nil}` would overwrite the module
           # callback's text with nothing in hybrid mode. See `:webhook` below.
-          %{}
-          |> maybe_put(
-            :message,
+          #
+          # BOTH keys carry the body, and the reason is the transport:
+          # `AshDispatch.Transports.Discord` builds its `"content"` — the one
+          # required field of a Discord webhook payload — from
+          # `get_content(content, :notification_message)`, which is also the
+          # "Expected content structure" its moduledoc documents. A branch that
+          # wrote only `:message` therefore sent a payload whose text was
+          # `nil`: the declared body reached the receipt and never reached
+          # Discord. `:message` stays because the receipt is read by more than
+          # the transport — `AshDispatch.Preview` renders a non-email channel's
+          # body from it, and `AshDispatch.Workers.ScrubSensitiveContent`
+          # removes it by name.
+          #
+          # That scrub does NOT know `:notification_message`, so a
+          # `sensitive_content: true` event with a Slack or Discord channel now
+          # keeps its text past the retention window. It is one more
+          # subtraction in that worker's JSONB fragment, and it belongs in its
+          # own change rather than hidden in this one.
+          text =
             interpolate(
               content_config[:message] || content_config[:notification_message],
               context
             )
-          )
+
+          %{}
+          |> maybe_put(:message, text)
+          |> maybe_put(:notification_message, text)
           |> Map.put(:webhook_url, channel.webhook_url)
 
         :slack ->
           # `maybe_put` rather than a literal key: `interpolate(nil, _)`
           # returns `nil`, and a `%{message: nil}` would overwrite the module
           # callback's text with nothing in hybrid mode. See `:webhook` below.
-          %{}
-          |> maybe_put(
-            :message,
+          #
+          # Both keys, for the reason spelled out under `:discord` above:
+          # `AshDispatch.Transports.Slack` reads
+          # `get_content(content, :notification_message)` for the payload's
+          # `"text"`, and `:message` alone left that `nil`.
+          text =
             interpolate(
               content_config[:message] || content_config[:notification_message],
               context
             )
-          )
+
+          %{}
+          |> maybe_put(:message, text)
+          |> maybe_put(:notification_message, text)
           |> Map.put(:webhook_url, channel.webhook_url)
 
         :sms ->
@@ -1909,6 +1934,25 @@ defmodule AshDispatch.Dispatcher do
             action_label: module.action_label(context, channel),
             notification_type: get_notification_type(module, context)
           }
+
+        transport when transport in [:slack, :discord] ->
+          # The other half of the same mismatch the inline branches carried.
+          # These two transports read the body from `:notification_message` —
+          # Slack's `"text"`, Discord's `"content"` — and both fell through to
+          # the catch-all below, which writes `:message` only. So a module-based
+          # Slack or Discord event posted a payload whose text was `nil`, and
+          # `notification_message/2` returning the right string changed nothing
+          # about what arrived.
+          #
+          # One branch for both: they differ in the name of the field, not in
+          # where it comes from.
+          #
+          # Both keys, as in the inline branches, so the two paths cannot
+          # disagree about which one holds the body when `Map.merge/2` puts
+          # them together in hybrid mode.
+          text = module.notification_message(context, channel)
+
+          %{message: text, notification_message: text}
 
         :webhook ->
           # The same keys as `:in_app`, and for the same reason: the receiver
