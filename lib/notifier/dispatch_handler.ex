@@ -293,7 +293,7 @@ defmodule AshDispatch.Notifier.DispatchHandler do
       source: :resource_action,
       locale: locale,
       base_url: get_base_url(),
-      now: DateTime.utc_now(),
+      now: AshDispatch.Clock.utc_now(),
       metadata: %{
         action: action && action.name,
         action_type: action && action.type

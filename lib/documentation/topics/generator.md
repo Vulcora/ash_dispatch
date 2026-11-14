@@ -410,9 +410,11 @@ config :ash_dispatch,
 ```
 
 With `sdk: false` nothing is written and `mix ash.codegen --check` passes with
-no SDK files on disk; `sdk: :if_events` writes them only when the app has
-events, counters, a `resource_meta` or an `entity_changes` block. See the
-[Code Generation guide](code-generation.md).
+no SDK files on disk; `sdk: :if_events` writes them only when the app declares
+events, counters, a `resource_meta` or an `entity_changes` block **of its
+own** — the `unread_notifications` counter `Notification.Base` brings does not
+count, though it is the one the bell reads, so a host that uses the bell wants
+`sdk: true`. See the [Code Generation guide](code-generation.md).
 
 ---
 

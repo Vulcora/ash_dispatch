@@ -1,7 +1,7 @@
 defmodule AshDispatch.MixProject do
   use Mix.Project
 
-  @version "0.9.4-rc.3"
+  @version "0.9.4-rc.4"
   @description "Event-driven notification system for Ash Framework with multiple transport types"
   @source_url "https://github.com/Vulcora/ash_dispatch"
 
@@ -127,6 +127,7 @@ defmodule AshDispatch.MixProject do
           AshDispatch.Event.RecipientExtractor,
           AshDispatch.Dispatcher,
           AshDispatch.Context,
+          AshDispatch.Clock,
           AshDispatch.Log,
           AshDispatch.Channel
         ],
@@ -187,7 +188,9 @@ defmodule AshDispatch.MixProject do
           AshDispatch.Dsl.Sections
         ],
         Testing: [
-          AshDispatch.Test
+          AshDispatch.Test,
+          AshDispatch.Doctor,
+          AshDispatch.Doctor.Error
         ]
       ],
       before_closing_head_tag: &before_closing_head_tag/1,

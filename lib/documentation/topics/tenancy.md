@@ -323,14 +323,76 @@ Where the function is missing, `CREATE TABLE` fails. Nothing warns you at
 compile time, the migration looks ordinary, and the error arrives from the
 database.
 
-### How to check
+### How to check: ask the database, and nothing else
+
+**Listing the extension is not sufficient.** It is necessary, and it is the
+part that is easy to see in a diff, and a repo can list it while the function
+is absent — which is exactly what happened to the first per-tenant host. Only
+one check settles it:
 
 ```sql
 SELECT to_regprocedure('public.uuid_generate_v7()');
 ```
 
-`NULL` means it is not there. `mix ash_dispatch.install` runs the same check
-against your repo's source and says so.
+`NULL` means it is not there. That answer is authoritative; every other check
+in this library, `mix ash_dispatch.install`'s warnings included, reads your
+project's files and can only tell you that something *looks* wrong.
+
+From inside the application — at boot, or as a test:
+
+```elixir
+AshDispatch.Doctor.check!()
+```
+
+```bash
+mix ash_dispatch.doctor
+```
+
+`AshDispatch.Doctor` asks the database the same question, for the function
+*your* repo's migrations actually name, and for the one an existing table's
+column DEFAULT names if the two have come apart. It raises with the migration
+to add. It needs the repo started and opens no connection of its own.
+
+### Why a repo that lists the extension can still lack the function
+
+ash_postgres creates `uuid_generate_v7()` only when it is **not** relying on
+the server's own. It decides that from `min_pg_version/0`:
+
+```elixir
+def use_builtin_uuidv7_function? do
+  %Version{major: major} = min_pg_version()
+  major >= 18
+end
+```
+
+At 18 or more it leaves the function out of the `ash-functions` migration
+entirely, and writes `fragment("uuidv7()")` — PostgreSQL's own, which exists
+only from 18 — as the column default of every new table.
+
+Two things follow, and both have bitten:
+
+- **The `ash-functions` migration is generated once.** What it contains
+  depends on what `min_pg_version/0` answered *at the time*. Lowering the
+  answer from 18 to 17 afterwards does not rewrite a file already on disk, and
+  ash_postgres has no reason to write a new one: the extension is already
+  installed as far as its snapshot is concerned. The repo lists
+  `"ash-functions"`, the migration ran, and the function is not there.
+- **`min_pg_version/0` is often wrong by accident.**
+  `mix igniter.install ash_postgres` fills it in from the *local*
+  `postgres -V`. A developer on Postgres 18 gets 18 written into a project
+  that deploys against 17.
+
+So `min_pg_version/0` must be the **oldest** Postgres the application ever
+runs against — not the newest, and not the one on the machine that generated
+the migration. Set it, then generate the migration again:
+
+```bash
+mix ash.codegen install_ash_functions
+mix ash.migrate
+```
+
+and check the database afterwards, because that is the only answer that
+counts.
 
 ### The migration to add it
 
@@ -386,9 +448,9 @@ end
 ```
 
 That is ash_postgres's own definition, copied; keep taking it from
-ash_postgres rather than from here if the two ever differ. On Postgres 18 and
-later ash_postgres uses the built-in `uuidv7()` instead and creates nothing —
-tell it which server you are on with `min_pg_version/0` on the repo.
+ash_postgres rather than from here if the two ever differ.
+`AshDispatch.Doctor.migration_to_add/0` returns the same text, so the error it
+raises carries it.
 
 ### If you create a tenant's tables when the tenant is created
 
