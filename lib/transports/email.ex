@@ -87,9 +87,17 @@ defmodule AshDispatch.Transports.Email do
     # evaluates one verdict per person — reading `context.user` here applied
     # the event subject's verdict to all N.
     Preferences.with_consent(receipt, context, channel, event_config, fn ->
-      result = enqueue_email_job_for_receipt(receipt, context, channel)
+      # A channel with `time: {:digest, window}` holds the email for the
+      # recipient's digest instead of enqueuing it (`AshDispatch.Digest`). The
+      # consent above has already been given, exactly as for a send now.
+      case AshDispatch.Digest.window_for(receipt, context, channel, event_config) do
+        nil ->
+          result = enqueue_email_job_for_receipt(receipt, context, channel)
+          {:ok, update_receipt_with_job(receipt, result, channel)}
 
-      {:ok, update_receipt_with_job(receipt, result, channel)}
+        window ->
+          AshDispatch.Digest.batch(receipt, window, context, channel)
+      end
     end)
   rescue
     error ->
@@ -236,13 +244,29 @@ defmodule AshDispatch.Transports.Email do
   # Public-but-undocumented so the encode → decode round-trip is testable
   # without an Oban instance.
   def resolve_attachments(context, channel) do
-    event_attachments =
-      case EventResolver.find_module(context.event_id) do
-        {:ok, module} -> EventResolver.attachments(module, context, channel)
-        _ -> []
-      end
+    Enum.map(default_attachments() ++ event_attachments(context, channel), &encode_attachment/1)
+  end
 
-    Enum.map(default_attachments() ++ event_attachments, &encode_attachment/1)
+  @doc false
+  # The event's own attachments (`attachments/2`), not encoded. An email that
+  # has any is never held for a digest: they exist only in the send job's
+  # args, and a batched email has no job until it is released.
+  def event_attachments(context, channel) do
+    case EventResolver.find_module(Map.get(context, :event_id)) do
+      {:ok, module} -> EventResolver.attachments(module, context, channel)
+      _ -> []
+    end
+  end
+
+  @doc false
+  # Job args carrying the app-wide `default_email_attachments` (an inline
+  # logo a shared layout references), for a send that has no original job to
+  # carry them from: a released or digest email. `%{}` when there are none.
+  def default_attachment_args do
+    case default_attachments() do
+      [] -> %{}
+      attachments -> %{"attachments" => Enum.map(attachments, &encode_attachment/1)}
+    end
   end
 
   # App-wide attachments included in EVERY outgoing email, configured as
@@ -374,6 +398,10 @@ defmodule AshDispatch.Transports.Email do
     |> Channel.calculate_delay()
     |> max(0)
   end
+
+  # A digest channel never reaches the scheduler: its emails are batched (or,
+  # when the digest does not apply, sent now).
+  def schedule_seconds(%Channel{time: {:digest, _window}}), do: 0
 
   def schedule_seconds(%Channel{time: {:window, _window}}) do
     Channel.warn_window_deprecated()

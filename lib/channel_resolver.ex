@@ -235,6 +235,7 @@ defmodule AshDispatch.ChannelResolver do
       nil -> {:in, 0}
       {:in, _} = time -> time
       {:at, _} = time -> time
+      {:digest, _} = time -> time
       seconds when is_integer(seconds) -> {:in, seconds}
       _ -> {:in, 0}
     end
@@ -245,6 +246,7 @@ defmodule AshDispatch.ChannelResolver do
       nil -> {:in, 0}
       {:in, _} = time -> time
       {:at, _} = time -> time
+      {:digest, _} = time -> time
       seconds when is_integer(seconds) -> {:in, seconds}
       _ -> {:in, 0}
     end

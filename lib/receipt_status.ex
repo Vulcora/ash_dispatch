@@ -191,6 +191,49 @@ defmodule AshDispatch.ReceiptStatus do
   end
 
   @doc """
+  Holds an email receipt for a digest (`:pending` → `:batched`), storing what
+  the digest needs under `content["digest"]`. See `AshDispatch.Digest`.
+  """
+  @spec batch(struct(), map()) :: {:ok, struct()} | {:error, term()}
+  def batch(receipt, digest) when is_map(digest) do
+    receipt
+    |> changeset(:batch, %{digest: digest})
+    |> Ash.update(authorize?: false)
+    |> remember(receipt)
+  end
+
+  @doc """
+  Sends a batched receipt on its own after all (`:batched` → `:scheduled`):
+  it was the only email in its digest window.
+  """
+  @spec release(struct(), keyword()) :: {:ok, struct()} | {:error, term()}
+  def release(receipt, opts \\ []) do
+    attrs =
+      case Keyword.get(opts, :oban_job_id) do
+        nil -> %{}
+        job_id -> %{oban_job_id: job_id}
+      end
+
+    receipt
+    |> changeset(:release, attrs)
+    |> Ash.update(authorize?: false)
+    |> remember(receipt)
+  end
+
+  @doc """
+  Marks a batched receipt as delivered inside the digest `digest_receipt_id`
+  (`:batched` → `:digested`). Fails when the receipt is no longer batched,
+  which is what keeps one email out of two digests.
+  """
+  @spec mark_digested(struct(), term()) :: {:ok, struct()} | {:error, term()}
+  def mark_digested(receipt, digest_receipt_id) do
+    receipt
+    |> changeset(:mark_digested, %{digest_receipt_id: to_string(digest_receipt_id)})
+    |> Ash.update(authorize?: false)
+    |> remember(receipt)
+  end
+
+  @doc """
   Refuses to send a receipt: it ends in "failed_permanent" whatever its status,
   through "failed" from "pending", which has no direct transition.
   """

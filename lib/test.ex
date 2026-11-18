@@ -63,6 +63,19 @@ defmodule AshDispatch.Test do
         }
 
   @doc """
+  Sends every email waiting for a digest now, whatever its window
+  (`AshDispatch.Digest`): for a test that dispatches on a digest channel and
+  then asserts on what was sent. One waiting email goes out as itself, two or
+  more to one address as their digest — exactly as when the window is due.
+
+  Options: `:tenant`, for a host whose receipts are per tenant.
+  """
+  @spec flush_digests(keyword()) :: :ok
+  def flush_digests(opts \\ []) do
+    AshDispatch.Digest.sweep(Keyword.get(opts, :tenant), force: true)
+  end
+
+  @doc """
   Renders every row of `AshDispatch.Preview.events/0` for every seed and
   returns one `t:result/0` per letter. See the moduledoc for the options and
   the checks.

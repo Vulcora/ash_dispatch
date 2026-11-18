@@ -109,6 +109,7 @@ defmodule AshDispatch.MixProject do
         "lib/documentation/topics/recipient-resolution.md",
         "lib/documentation/topics/recipient-extractor.md",
         "lib/documentation/topics/user-preferences.md",
+        "lib/documentation/topics/digests.md",
         "lib/documentation/topics/tenancy.md",
         "lib/documentation/topics/oban-configuration.md",
         "lib/documentation/topics/previews-and-testing.md",
@@ -165,7 +166,13 @@ defmodule AshDispatch.MixProject do
         Workers: [
           AshDispatch.Workers.SendEmail,
           AshDispatch.Workers.SendWebhook,
-          AshDispatch.Workers.RetryFailedDeliveries
+          AshDispatch.Workers.RetryFailedDeliveries,
+          AshDispatch.Workers.FlushDigests
+        ],
+        Digests: [
+          AshDispatch.Digest,
+          AshDispatch.DigestRenderer,
+          AshDispatch.DigestRenderer.Default
         ],
         Resources: [
           AshDispatch.Resources.DeliveryReceipt,

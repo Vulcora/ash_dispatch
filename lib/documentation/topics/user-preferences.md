@@ -503,37 +503,24 @@ per recipient, inside the delivery path, and its `false` marks the receipt
 notification silently disappears into a table nobody delivers from, with a
 receipt that says the user opted out.
 
-Until digests are a library feature (see [Planned: per-recipient
-digests](#planned-per-recipient-digests)), model "digest mode" as what the user
-asked for — no individual delivery — and own the digest itself in your app:
+Digests are a library feature: a channel opts in with `time: {:digest,
+window}`, and a person's choice of *when* is the separate, optional
+`c:AshDispatch.UserPreference.user_digest_mode/2`:
 
 ```elixir
 @impl true
-def user_allows?(user_id, _event_id, _transport, opts) do
-  category = opts[:category]
-
+def user_digest_mode(user_id, _opts) do
   case get_user_preferences(user_id) do
-    {:ok, prefs} ->
-      # Digest mode simply means: no individual delivery for this category.
-      # Nothing is written here — accumulating and sending the digest is a
-      # separate, scheduled job in your app that reads the same preferences.
-      category not in prefs.disabled_categories and
-        not digest_mode?(prefs, category)
-
-    _ ->
-      true
+    {:ok, %{mail_frequency: :daily}} -> :daily
+    {:ok, %{mail_frequency: :immediate}} -> :off
+    _ -> :default
   end
-end
-
-defp digest_mode?(prefs, category) do
-  # User gets a daily digest instead of individual emails
-  Enum.member?(prefs.digest_categories, category)
 end
 ```
 
-Your digest job then owns its own accumulation, its own watermark, and its own
-receipts — and a failure there is visible instead of being a mail that never
-arrived.
+`user_allows?/4` still says *whether*; `user_digest_mode/2` only ever says
+*when*, and only for channels that asked for a digest. See the
+[Digests](digests.md) guide.
 
 ### Pattern 4: Time-Based Preferences
 
@@ -985,30 +972,18 @@ def user_allows?(user_id, event_id, transport, opts) do
 end
 ```
 
-## Planned: per-recipient digests
+## Digests
 
-Digest delivery — "don't mail me every mention, mail me once a day" — is a
-planned library feature, not something to build inside `user_allows?/4`. The
-names below are **reserved** so apps don't paint over them; nothing of this
-ships yet, and none of it is callable today.
-
-| Reserved | What it will be |
-| --- | --- |
-| channel time `{:digest, window}` | A delivery time alongside `{:in, …}` / `{:at, …}`: accumulate instead of delivering now |
-| `AshDispatch.Resources.DigestEntry.Base` | The accumulation resource, one row per (user, event, window), holding the same rendered content receipts hold |
-| `AshDispatch.Workers.FlushDigests` | The scheduled flush: collect a window's entries per user, render one mail, deliver through the normal receipt path |
-| `user_digest_mode/2` callback | Per-user, per-category window resolution (`:off`, `:daily`, `:weekly`) on the preference behaviour |
-
-Two properties are deliberate and will not change: the digest unit is **per
-recipient** (one body per user, not one body for everyone), and every delivery
-still produces a `DeliveryReceipt` — a digest is a delivery, not a silence.
-
-If you build digests in your app in the meantime, avoid these names, keep the
-opt-out in `user_allows?/4` (so it keeps agreeing with the send path), and keep
-accumulation out of the predicate.
+Per-recipient digests — "don't mail me every comment, mail me once they
+stop" — are in the library: see the [Digests](digests.md) guide. The names
+reserved here before they shipped are used as reserved, with one change:
+there is no separate `DigestEntry` resource. A batched email *is* its
+receipt, in the new `:batched` state, holding the same rendered letter it
+always held; a separate entry table would have been a second copy of it.
 
 ## See Also
 
 - [Recipient Resolution](recipient-resolution.md) - Finding notification recipients
 - [Getting Started](../tutorials/getting-started.md) - Basic setup
+- [Digests](digests.md) - Several emails to one person, as one
 - [DSL Reference](../dsls/DSL-AshDispatch-Resource.md) - Event configuration

@@ -155,6 +155,12 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
     # retry immediately instead of waiting a further cycle.
     sweep_stranded(tenant)
 
+    # Digests whose flush job was lost or raced (`AshDispatch.Digest`): every
+    # group that is due goes out now, so a missing job costs at most one retry
+    # interval. A group that is not due yet is left to its own job. Errors are
+    # logged inside and never stop the retry pass.
+    AshDispatch.Digest.sweep(tenant)
+
     case Ash.read(query, [authorize?: false] ++ Tenancy.opts(resource, tenant)) do
       {:ok, receipts} ->
         receipts = Enum.map(receipts, &Tenancy.remember(&1, tenant))

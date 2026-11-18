@@ -654,6 +654,29 @@ defmodule AshDispatch.Event do
   @callback gate(info :: AshDispatch.Gate.Info.t()) ::
               true | false | nil | :ok | {:ok, boolean()} | {false, String.t()} | {:error, term()}
 
+  @doc """
+  What this email contributes to a digest (`time: {:digest, window}` on the
+  channel, see `AshDispatch.Digest`). Optional.
+
+  Return a map; string or atom keys. The default renderer reads `title`,
+  `summary`, `url` and `label` (the link's text); a host renderer may read
+  anything else it puts here. Missing keys fall back to the email's subject
+  (`title`) and the first paragraph of its text body (`summary`).
+
+  Called once, when the email is batched — the item is stored on the receipt
+  like the rest of the letter, so the digest says what the event said then.
+
+      def digest_item(context, _channel) do
+        %{
+          title: "Order \#{context.data.order.number} shipped",
+          summary: "Tracking: \#{context.data.order.tracking_number}",
+          url: order_url(context.data.order),
+          label: "Track the parcel"
+        }
+      end
+  """
+  @callback digest_item(context(), channel()) :: map()
+
   # Optional advanced callbacks
   @callback template_variant(context(), channel()) :: atom() | nil
   @callback should_send?(context(), channel()) :: boolean()
@@ -677,6 +700,7 @@ defmodule AshDispatch.Event do
     action_url: 2,
     extra_content: 2,
     attachments: 2,
+    digest_item: 2,
     prepare_template_assigns: 2,
     sample_data: 0,
     sample_data: 1,

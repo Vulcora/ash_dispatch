@@ -906,6 +906,7 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
   defp format_time(nil), do: "immediate"
   defp format_time({:in, seconds}), do: "delayed (#{seconds}s)"
   defp format_time({:at, %DateTime{} = dt}), do: "scheduled (#{DateTime.to_iso8601(dt)})"
+  defp format_time({:digest, window}), do: "digest (#{inspect(window)})"
   defp format_time(_), do: "unknown"
 
   defp get_required_context(event_id) do
