@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.4-rc.5] - 2026-11-18
+
 ### Per-recipient digests
 
 A person who gets a status change, three comments and a reassignment in two
