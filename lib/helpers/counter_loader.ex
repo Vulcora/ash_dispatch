@@ -84,7 +84,6 @@ defmodule AshDispatch.Helpers.CounterLoader do
 
   require Logger
   require Ash.Query
-  import Ash.Expr
 
   @doc """
   Load all counter values for a specific user.
@@ -378,27 +377,10 @@ defmodule AshDispatch.Helpers.CounterLoader do
     )
   end
 
-  # Apply query_filter handling list values with `in` (matching BroadcastCounterUpdate).
-  defp apply_query_filter(query, nil), do: query
-  defp apply_query_filter(query, []), do: query
-
-  defp apply_query_filter(query, query_filter) when is_list(query_filter) do
-    if Keyword.keyword?(query_filter) do
-      Enum.reduce(query_filter, query, fn {field, value}, acc_query ->
-        if is_list(value) do
-          Ash.Query.filter(acc_query, ^ref(field) in ^value)
-        else
-          Ash.Query.filter(acc_query, ^ref(field) == ^value)
-        end
-      end)
-    else
-      query
-    end
-  end
-
-  defp apply_query_filter(query, query_filter) do
-    Ash.Query.filter(query, ^query_filter)
-  end
+  # The same filter the broadcast applies (`AshDispatch.CounterFilter`), so the
+  # first count and every update after it count the same rows.
+  defp apply_query_filter(query, query_filter),
+    do: AshDispatch.CounterFilter.apply(query, query_filter)
 
   # Apply scope expression with actor context.
   #

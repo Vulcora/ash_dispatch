@@ -216,32 +216,11 @@ defmodule AshDispatch.Notifier.CounterHandler do
 
   # ── Query filter / scope / filter_by_record — preserved verbatim ──
 
-  defp apply_query_filter(query, nil), do: query
-  defp apply_query_filter(query, []), do: query
-
-  defp apply_query_filter(query, query_filter) when is_list(query_filter) do
-    if Keyword.keyword?(query_filter) do
-      Enum.reduce(query_filter, query, fn {field, value}, acc_query ->
-        import Ash.Query
-        import Ash.Expr
-
-        if is_list(value) do
-          filter(acc_query, ^ref(field) in ^value)
-        else
-          filter(acc_query, ^ref(field) == ^value)
-        end
-      end)
-    else
-      Logger.warning(
-        "[AshDispatch.Notifier.CounterHandler] Unknown query_filter format (non-keyword list): #{inspect(query_filter)}"
-      )
-
-      query
-    end
-  end
-
+  # The filter itself is `AshDispatch.CounterFilter`, shared with the loader
+  # that renders the first count. A filter that cannot be applied is logged
+  # and the count is taken without it, as before.
   defp apply_query_filter(query, query_filter) do
-    Ash.Query.filter(query, ^query_filter)
+    AshDispatch.CounterFilter.apply(query, query_filter)
   rescue
     e ->
       Logger.warning(

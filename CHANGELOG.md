@@ -65,6 +65,17 @@ A `sensitive_content` event, an event with attachments of its own (they live
 only in the send job's args), and a manual dispatch with a recipient
 override. They are sent at once, as if the channel had no digest time.
 
+### Fixed
+
+- **`Notification.Base`'s `unread_notifications` counter counted 0 for
+  everyone** (since 0.9.0). Its `query_filter: [read: false, archived_at:
+  nil]` became `archived_at == nil`, which Ash — like SQL — never finds true.
+  In a keyword `query_filter`, `nil` now means `is_nil`. The broadcast
+  (`Notifier.CounterHandler`) and the first count a page renders
+  (`Helpers.CounterLoader`) had a copy each of this code; they now share
+  one, so the two cannot disagree again. Found by the first host to run a
+  0.9 release candidate with the in-app centre on, from its test log.
+
 ### Compatibility
 
 Nothing changes for a host that does not put `{:digest, …}` on a channel.
