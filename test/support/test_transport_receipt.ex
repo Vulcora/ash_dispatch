@@ -110,5 +110,24 @@ defmodule AshDispatch.Test.TransportReceipt do
       accept [:error_message]
       change set_attribute(:status, :failed)
     end
+
+    update :batch do
+      require_atomic? false
+      argument :digest, :map, allow_nil?: false
+      change set_attribute(:status, :batched)
+      change {AshDispatch.Changes.PutDigest, []}
+    end
+
+    update :release do
+      accept [:oban_job_id]
+      change set_attribute(:status, :scheduled)
+    end
+
+    update :mark_digested do
+      require_atomic? false
+      argument :digest_receipt_id, :string, allow_nil?: false
+      change set_attribute(:status, :digested)
+      change {AshDispatch.Changes.PutDigest, []}
+    end
   end
 end

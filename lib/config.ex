@@ -789,6 +789,76 @@ defmodule AshDispatch.Config do
   end
 
   @doc """
+  The Oban queue `AshDispatch.Workers.FlushDigests` runs in. Defaults to
+  `:emails`, the queue the emails a digest replaces run in.
+
+      config :ash_dispatch, digest_queue: :emails
+  """
+  @spec digest_queue() :: atom()
+  def digest_queue do
+    Application.get_env(:ash_dispatch, :digest_queue, :emails)
+  end
+
+  @doc """
+  The module that renders a digest (`AshDispatch.DigestRenderer`). Defaults to
+  `AshDispatch.DigestRenderer.Default`, a plain English list.
+
+      config :ash_dispatch, digest_renderer: MyApp.DigestRenderer
+  """
+  @spec digest_renderer() :: module()
+  def digest_renderer do
+    Application.get_env(:ash_dispatch, :digest_renderer, AshDispatch.DigestRenderer.Default)
+  end
+
+  @doc """
+  The longest a `{:quiet, seconds}` digest waits after its first email, in
+  seconds, however often new ones arrive. Defaults to 1800 (30 minutes). A
+  window that names its own (`{:quiet, seconds, max_wait}`) wins.
+  """
+  @spec digest_max_wait() :: pos_integer()
+  def digest_max_wait do
+    Application.get_env(:ash_dispatch, :digest_max_wait, 1800)
+  end
+
+  @doc """
+  When `:daily` and `:weekly` digests go out, as a `Time` in
+  `digest_time_zone/0`. Defaults to `~T[07:00:00]`.
+  """
+  @spec digest_send_at() :: Time.t()
+  def digest_send_at do
+    case Application.get_env(:ash_dispatch, :digest_send_at, ~T[07:00:00]) do
+      %Time{} = time -> time
+      string when is_binary(string) -> Time.from_iso8601!(string)
+    end
+  end
+
+  @doc """
+  The time zone `digest_send_at/0` is read in. Defaults to `"Etc/UTC"`. Any
+  other zone needs a time zone database (`config :elixir,
+  :time_zone_database, …`); without one the send time is read in UTC and a
+  warning is logged once.
+  """
+  @spec digest_time_zone() :: String.t()
+  def digest_time_zone do
+    Application.get_env(:ash_dispatch, :digest_time_zone, "Etc/UTC")
+  end
+
+  @doc "The weekday `:weekly` digests go out on, 1 (Monday) to 7 (Sunday). Defaults to 1."
+  @spec digest_week_day() :: 1..7
+  def digest_week_day do
+    Application.get_env(:ash_dispatch, :digest_week_day, 1)
+  end
+
+  @doc """
+  The event id a digest's own receipt carries. Defaults to
+  `"ash_dispatch.digest"`; a host that lists receipts by event can rename it.
+  """
+  @spec digest_event_id() :: String.t()
+  def digest_event_id do
+    Application.get_env(:ash_dispatch, :digest_event_id, "ash_dispatch.digest")
+  end
+
+  @doc """
   Whether to compile templates at build time.
 
   Defaults to `false`.

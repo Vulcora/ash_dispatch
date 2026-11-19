@@ -173,6 +173,17 @@ defmodule AshDispatch.Workers.SendEmail do
     |> new()
   end
 
+  @doc false
+  # The same, for a receipt that never had a job of its own — a released or a
+  # digest email (`AshDispatch.Digest`) — with the args it should start with
+  # (the app-wide default attachments).
+  def new_for_receipt(receipt, extra_args) when is_map(extra_args) do
+    %{"receipt_id" => receipt.id}
+    |> Map.merge(extra_args)
+    |> AshDispatch.Tenancy.Job.put_tenant(receipt)
+    |> new()
+  end
+
   defp maybe_put_original_attachments(args, %{oban_job_id: job_id}) when is_integer(job_id) do
     case Config.repo().get(Oban.Job, job_id) do
       %Oban.Job{args: %{"attachments" => attachments}}
@@ -552,31 +563,33 @@ defmodule AshDispatch.Workers.SendEmail do
 
   # Check skip_if_read policy
   defp check_skip_if_read_policy(receipt) do
+    case skip_if_read_reason(receipt) do
+      nil -> :continue
+      reason -> {:skip, reason}
+    end
+  end
+
+  @doc false
+  # The `skip_if_read` verdict for a receipt: a reason to skip it, or `nil`.
+  # Shared with `AshDispatch.Digest`, which leaves an email out of a digest
+  # when its in-app notification was read while it waited.
+  def skip_if_read_reason(receipt) do
     # Get policy from receipt content
-    policy = get_in(receipt.content, ["policy"]) || get_in(receipt.content, [:policy])
+    content = Map.get(receipt, :content) || %{}
+    policy = get_in(content, ["policy"]) || get_in(content, [:policy])
 
     if policy == :skip_if_read || policy == "skip_if_read" do
       # Load notification and check if it's read
       case load_notification(receipt) do
-        {:ok, notification} ->
-          if notification.read do
-            {:skip, "notification already read"}
-          else
-            :continue
-          end
-
-        {:error, _} ->
-          # If we can't load notification, continue with sending
-          :continue
+        {:ok, %{read: true}} -> "notification already read"
+        # If we can't load the notification, or it is unread, send
+        _ -> nil
       end
-    else
-      # No skip_if_read policy - continue
-      :continue
     end
   end
 
   defp load_notification(receipt) do
-    if receipt.notification_id do
+    if Map.get(receipt, :notification_id) do
       # In the receipt's own tenant: the notification it is linked to was
       # created in the same schema, and another tenant's would answer the
       # `skip_if_read` question about somebody else's reading.
@@ -611,6 +624,11 @@ defmodule AshDispatch.Workers.SendEmail do
       is_nil(receipt.user_id) ->
         :send
 
+      # A digest: every email in it passed the preference gate when it was
+      # batched, under its own event's category. The digest has none.
+      digest_receipt?(receipt) ->
+        :send
+
       # Check preferences
       true ->
         category = event_category(receipt)
@@ -628,6 +646,13 @@ defmodule AshDispatch.Workers.SendEmail do
             # (better to send than to silently skip)
             :send
         end
+    end
+  end
+
+  defp digest_receipt?(receipt) do
+    case ContentMap.get_content(Map.get(receipt, :content), :digest) do
+      %{} = digest -> Map.has_key?(digest, "entries") or Map.has_key?(digest, :entries)
+      _ -> false
     end
   end
 

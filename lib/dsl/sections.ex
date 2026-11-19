@@ -165,7 +165,10 @@ defmodule AshDispatch.Dsl.Sections do
           - :immediate or {:in, 0} - Send immediately
           - {:in, seconds} - Delay by seconds
           - {:at, DateTime.t()} - Send at specific time
-          - {:window, map()} - Send within time window
+          - {:digest, window} - Email only: collect into the recipient's digest
+            ({:quiet, seconds}, {:quiet, seconds, max_wait}, :daily, :weekly;
+            see AshDispatch.Digest)
+          - {:window, map()} - Deprecated; sends immediately
           """
         ],
         policy: [

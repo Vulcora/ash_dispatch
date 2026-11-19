@@ -288,6 +288,8 @@ defmodule AshDispatch.Resources.EmailEvent do
   defp serialize_time({:at, %DateTime{} = dt}),
     do: %{type: "scheduled", datetime: DateTime.to_iso8601(dt)}
 
+  defp serialize_time({:digest, window}), do: %{type: "digest", window: inspect(window)}
+
   defp serialize_time(_), do: %{type: "unknown"}
 
   defp has_email_channels?(event), do: Map.get(event, :email_channel_count, 0) > 0

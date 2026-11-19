@@ -7,6 +7,85 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.4-rc.5] - 2026-11-18
+
+### Per-recipient digests
+
+A person who gets a status change, three comments and a reassignment in two
+minutes gets five emails, and reads none of them. The library could delay an
+email (`{:in, seconds}`) or send it at a time (`{:at, …}`), but it could not
+send several as one. Since 0.6.3 the names for that have been reserved and
+documented as planned; this release builds it.
+
+A channel opts in with a digest time:
+
+    [transport: :email, audience: :user, time: {:digest, {:quiet, 300}}]
+
+Its emails are rendered and receipted exactly as before, then held in the new
+`:batched` state instead of getting a send job. When the recipient's window
+is due, one waiting email goes out **as itself**, and two or more go out as
+**one digest** with a receipt of its own; each of them is marked `:digested`
+and points at it. Windows: `{:quiet, seconds}` (a few minutes after the last
+email, capped by `digest_max_wait`), `:daily`, `:weekly`.
+
+### Added
+
+- **`time: {:digest, window}`** on email channels, and `AshDispatch.Digest`.
+- **`DeliveryReceipt.Base`: states `:batched` and `:digested`**, actions
+  `:batch`, `:release` and `:mark_digested`. `:mark_sending` and `:skip` also
+  start from `:batched`, and "send now" accepts a batched receipt (it is then
+  sent on its own). The status is stored as text, so **no migration**: a host
+  that does not use digests sees nothing new.
+- **`AshDispatch.Workers.FlushDigests`**: one job per recipient and window,
+  scheduled for when it is due and moved (not duplicated) by newer emails;
+  without a recipient, a sweep that fans out per tenant.
+- **`RetryFailedDeliveries` sweeps overdue digests** on every run, so a lost
+  flush job costs one retry interval and needs no new crontab entry.
+- **`c:AshDispatch.UserPreference.user_digest_mode/2`** (optional): a
+  person's `:off`, `:default` or own window, asked only for channels that
+  opted in.
+- **`c:AshDispatch.Event.digest_item/2`** (optional): what an email
+  contributes to a digest; otherwise its subject and first paragraph.
+- **`AshDispatch.DigestRenderer`** and a plain default; `config
+  :ash_dispatch, digest_renderer:` for a host's own design.
+- **`AshDispatch.Test.flush_digests/1`**.
+- Config: `digest_queue` (`:emails`), `digest_renderer`, `digest_max_wait`
+  (1800), `digest_send_at` (`~T[07:00:00]`), `digest_time_zone`
+  (`"Etc/UTC"`), `digest_week_day` (1), `digest_event_id`
+  (`"ash_dispatch.digest"`).
+
+### Changed
+
+- **The reserved design, one change:** there is no `DigestEntry.Base`. A
+  batched email *is* its receipt, holding the letter it always held; an entry
+  table would have been a second copy of it, and a second place for the
+  receipt-first pattern to drift.
+
+### Never batched
+
+A `sensitive_content` event, an event with attachments of its own (they live
+only in the send job's args), and a manual dispatch with a recipient
+override. They are sent at once, as if the channel had no digest time.
+
+### Fixed
+
+- **`Notification.Base`'s `unread_notifications` counter counted 0 for
+  everyone** (since 0.9.0). Its `query_filter: [read: false, archived_at:
+  nil]` became `archived_at == nil`, which Ash — like SQL — never finds true.
+  In a keyword `query_filter`, `nil` now means `is_nil`. The broadcast
+  (`Notifier.CounterHandler`) and the first count a page renders
+  (`Helpers.CounterLoader`) had a copy each of this code; they now share
+  one, so the two cannot disagree again. Found by the first host to run a
+  0.9 release candidate with the in-app centre on, from its test log.
+
+### Compatibility
+
+Nothing changes for a host that does not put `{:digest, …}` on a channel.
+Two places that list statuses gained the new ones: the receipt's `status`
+constraint, and the scrub's terminal statuses (`digested`). The stand-in
+receipts in this library's own test support follow the real one, as their
+transition check requires.
+
 ## [0.9.4-rc.4] - 2026-11-14
 
 ### What the first host found in rc.2
