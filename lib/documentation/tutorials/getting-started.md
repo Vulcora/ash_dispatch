@@ -17,8 +17,10 @@ Of your database it asks two things:
   (`NULLS NOT DISTINCT`).
 - **`uuid_generate_v7()`**, for the notification and preference tables. See
   [Your database needs `uuid_generate_v7()`](#your-database-needs-uuid-generate-v7)
-  below — it is one line in your repo, it fails at `CREATE TABLE` if you miss
-  it, and it is the single most common reason a first migration does not run.
+  below — it fails at `CREATE TABLE` if you miss it, and it is the single most
+  common reason a first migration does not run. It is one line in your repo
+  **and** one SQL check: listing the extension does not prove the function is
+  there.
 
 ## Quick Start with Igniter (Recommended)
 
@@ -60,6 +62,10 @@ defmodule MyApp.Repo do
   use AshPostgres.Repo, otp_app: :my_app
 
   def installed_extensions, do: ["ash-functions"]
+
+  # The OLDEST Postgres you run, not the one on this machine. At 18 or more
+  # ash_postgres uses the server's own uuidv7() and creates nothing.
+  def min_pg_version, do: %Version{major: 17, minor: 0, patch: 0}
 end
 ```
 
@@ -68,15 +74,32 @@ mix ash.codegen install_ash_functions
 mix ash.migrate
 ```
 
-To check whether it is already there:
+**Then check, because listing the extension is not sufficient.** A repo can
+list `"ash-functions"` and still not have the function: ash_postgres leaves it
+out when `min_pg_version/0` answers 18 or more, and the migration it already
+wrote is not rewritten when you lower the answer. That is how it reached the
+first per-tenant host. The authoritative check is the database:
 
 ```sql
 SELECT to_regprocedure('public.uuid_generate_v7()');
 ```
 
-`NULL` means it is not, and `mix ash.migrate` will fail at `CREATE TABLE`.
-`mix ash_dispatch.install` runs the same check against your repo's source and
-warns you.
+`NULL` means it is not there, and `mix ash.migrate` will fail at
+`CREATE TABLE`. The same check from inside the application:
+
+```bash
+mix ash_dispatch.doctor
+```
+
+```elixir
+AshDispatch.Doctor.check!()   # at boot, or in a test
+```
+
+`mix ash_dispatch.install` warns when the project's files look wrong — a repo
+that does not list the extension, a `min_pg_version/0` of 18 or more, an
+`ash-functions` migration with no function in it — but it reads files, not
+your database, so it can only raise suspicion. `AshDispatch.Doctor` settles
+it.
 
 If you cannot define functions in your database, ask the bases for a plain v4
 key instead — `gen_random_uuid()` is built into Postgres 13 and later:

@@ -15,6 +15,9 @@ defmodule AshDispatch.Channel do
   - `{:in, seconds}` — deliver after a relative delay
   - `{:at, %DateTime{}}` — deliver at an absolute time (a time in the past
     means now)
+  - `{:digest, window}` — email only: hold it for the recipient's digest,
+    sent when the window is due — `{:quiet, seconds}`, `{:quiet, seconds,
+    max_wait}`, `:daily` or `:weekly`. See `AshDispatch.Digest`
   - `{:window, map}` — **deprecated**, delivers immediately
 
   Only asynchronous transports honour the delay; `:in_app` writes its
@@ -56,6 +59,7 @@ defmodule AshDispatch.Channel do
           :immediate
           | {:in, non_neg_integer()}
           | {:at, DateTime.t()}
+          | {:digest, AshDispatch.Digest.window()}
           | {:window, map()}
   @type policy :: :always | :skip_if_read | {:gate, function()}
   @type variant :: atom() | nil
@@ -168,6 +172,7 @@ defmodule AshDispatch.Channel do
   def normalize_time({:in, _} = time), do: time
   def normalize_time({:at, %DateTime{}} = time), do: time
   def normalize_time({:window, _} = time), do: time
+  def normalize_time({:digest, _} = time), do: time
   def normalize_time(time), do: time
 
   @doc """
@@ -192,7 +197,7 @@ defmodule AshDispatch.Channel do
   def calculate_delay(%__MODULE__{time: :immediate}), do: 0
 
   def calculate_delay(%__MODULE__{time: {:at, datetime}}) do
-    DateTime.diff(datetime, DateTime.utc_now(), :second)
+    DateTime.diff(datetime, AshDispatch.Clock.utc_now(), :second)
   end
 
   def calculate_delay(%__MODULE__{time: {:window, _window}}), do: 0

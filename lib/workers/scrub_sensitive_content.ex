@@ -67,7 +67,10 @@ defmodule AshDispatch.Workers.ScrubSensitiveContent do
   # Nothing is left to send from these. Any other status may still reach the
   # worker, which for a sensitive event reads the body from the receipt alone,
   # so it gets the longer `@stranded_hours`.
-  @terminal ["sent", "skipped", "failed_permanent"]
+  # `digested` is terminal too: the letter went out inside a digest, whose own
+  # receipt is the one that may still be sent. (A sensitive event is never
+  # batched, so this is completeness, not a path in use.)
+  @terminal ["sent", "skipped", "failed_permanent", "digested"]
   @stranded_hours 7 * 24
 
   @doc "The replacement text written into scrubbed `body_text` fields."
@@ -93,7 +96,7 @@ defmodule AshDispatch.Workers.ScrubSensitiveContent do
         :ok
 
       event_ids ->
-        {cutoff, stranded_cutoff} = cutoffs(DateTime.utc_now())
+        {cutoff, stranded_cutoff} = cutoffs(AshDispatch.Clock.utc_now())
 
         {count, _} =
           Config.repo().update_all(

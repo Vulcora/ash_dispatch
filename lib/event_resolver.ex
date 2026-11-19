@@ -505,6 +505,20 @@ defmodule AshDispatch.EventResolver do
   end
 
   @doc """
+  What an email contributes to a digest (optional `digest_item/2`). Events
+  without the callback → `%{}`, and `AshDispatch.Digest` fills in the
+  defaults. A callback that returns something other than a map counts as
+  `%{}`.
+  """
+  @spec digest_item(module(), Context.t(), AshDispatch.Channel.t()) :: map()
+  def digest_item(module, context, channel) do
+    case call_if_exported(module, :digest_item, [context, channel], default: %{}) do
+      %{} = item -> item
+      _ -> %{}
+    end
+  end
+
+  @doc """
   Check if module exports both body_html and body_text callbacks.
   Used to determine if we should use callbacks instead of templates.
   """

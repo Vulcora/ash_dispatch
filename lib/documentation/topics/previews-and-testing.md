@@ -124,9 +124,74 @@ when an event loses a channel or a template instead of quietly checking less.
 ## Time, and whose clock the library writes
 
 A host that controls time through a module of its own — one `MyApp.Clock`
-everything calls, frozen or travelled in tests — does not control the
-timestamps this library writes. That is worth knowing before a test asserts on
-one.
+everything calls, frozen or travelled in tests — controls the timestamps this
+library writes **from Elixir** since 0.9.4-rc.4, and still does not control
+the two Ash fills. The difference matters before a test asserts on either.
+
+### Giving the library your clock
+
+```elixir
+config :ash_dispatch, clock: {MyApp.Clock, :utc_now, []}
+```
+
+Unset, it is `DateTime.utc_now/0` — what every release before 0.9.4-rc.4 did,
+and what a host that sets nothing still gets. A bare module means its
+`utc_now/0` (`clock: MyApp.Clock`), and any 0-arity function is accepted
+(`clock: &MyApp.now/0`).
+
+Everything in the "this library" row of the table below goes through it:
+`occurred_at`, `sent_at`, `read_at`, `seen_at`, `archived_at`,
+`last_retry_at`, the cut-offs `RetryFailedDeliveries` and
+`ScrubSensitiveContent` compare a receipt against, the staleness bounds in
+`AshDispatch.Workers.Stranded`, `AshDispatch.Context`'s `:now` (and therefore the
+broadcast payload's timestamp), a webhook envelope's `sent_at` and a Resend
+event's `webhook_received_at`.
+
+### Freezing time in a test
+
+```elixir
+defmodule MyApp.FrozenClock do
+  @moduledoc "A clock a test can set. One agent, one instant."
+
+  def start_link(at), do: Agent.start_link(fn -> at end, name: __MODULE__)
+  def utc_now, do: Agent.get(__MODULE__, & &1)
+  def travel(to), do: Agent.update(__MODULE__, fn _ -> to end)
+end
+```
+
+```elixir
+test "a notification is stamped with the time the test chose" do
+  frozen = ~U[2026-03-01 12:00:00.000000Z]
+  start_supervised!({MyApp.FrozenClock, frozen})
+  Application.put_env(:ash_dispatch, :clock, {MyApp.FrozenClock, :utc_now, []})
+  on_exit(fn -> Application.delete_env(:ash_dispatch, :clock) end)
+
+  {:ok, notification} =
+    MyApp.Notifications.Notification
+    |> Ash.Changeset.for_create(:create, %{user_id: user.id, title: "t", message: "m"})
+    |> Ash.create()
+
+  assert notification.occurred_at == frozen
+end
+```
+
+The same clock decides the retry cut-off, so a test can put a receipt an hour
+in the "past" and let `RetryFailedDeliveries` find it without waiting:
+
+```elixir
+MyApp.FrozenClock.travel(DateTime.add(frozen, 3600, :second))
+assert :ok = perform_job(AshDispatch.Workers.RetryFailedDeliveries, %{})
+```
+
+Two things it does **not** freeze, and one of them will fail an equality
+assertion:
+
+- **`inserted_at` and `updated_at`.** See below: they are Ash's, not this
+  library's, and moving them is 0.10.0 (BACKLOG 13).
+- **The Resend webhook's timestamp tolerance.** That compares our wall clock
+  against the sender's to reject a replayed signature, so it stays on
+  `System.system_time/1` on purpose. Pass `now:` to
+  `AshDispatch.WebhookHandlers.Resend.verify/4` in a test instead.
 
 ### What the columns are
 
@@ -156,26 +221,35 @@ That default is a safety net for a row inserted by something other than Ash.
 It is not where the value normally comes from: Ash fills both attributes from
 its own `&DateTime.utc_now/0` while it builds the changeset, so what reaches
 the database is the **BEAM's clock**, in the process that did the write, and
-the column default never fires. The same is true of every other timestamp
-above — `occurred_at` defaults to `DateTime.utc_now()`, and `sent_at`,
-`read_at`, `seen_at`, `archived_at` and `last_retry_at` are set by changes
-that call `DateTime.utc_now/0` directly.
+the column default never fires.
 
-So there are two clocks involved and neither of them is yours:
+Three clocks are involved, and one of them is now yours:
 
 | Written by | Clock | Can a host supply it? |
 |---|---|---|
-| `inserted_at`, `updated_at` | the BEAM, through Ash's `timestamps` macro | no |
-| `occurred_at`, `sent_at`, `read_at`, `seen_at`, `archived_at`, `last_retry_at`, … | the BEAM, in this library | no |
+| `occurred_at`, `sent_at`, `read_at`, `seen_at`, `archived_at`, `last_retry_at`, the retry/scrub/stranded cut-offs, `Context`'s `:now` | `AshDispatch.Clock` | **yes**, since 0.9.4-rc.4 |
+| `inserted_at`, `updated_at` | the BEAM, through Ash's `timestamps` macro | no — 0.10.0, BACKLOG 13 |
 | the column DEFAULT, for a non-Ash `INSERT` | the database | no |
 
 `inserted_at` and `updated_at` are `writable?: false`, so an action cannot
 accept them either.
 
+Why those two are not on the clock is worth knowing, because it looks
+arbitrary: Ash's `timestamps` macro defaults them to the literal capture
+`&DateTime.utc_now/0`, and that exact value is what ash_postgres matches on to
+write `DEFAULT (now() AT TIME ZONE 'utc')` into the migration. Anything else
+there makes the next `mix ash.codegen` in *every* host emit an
+`ALTER COLUMN … DROP DEFAULT`, and a patch release may not require a
+migration. `occurred_at` could move because its default was already an
+`{m, f, a}` tuple, which ash_postgres maps to no column default either way.
+
 ### What to do in a test
 
-Do not assert on an exact instant in a library-written timestamp. Assert on
-the ordering or the window:
+With a clock configured, assert on the instant you chose — see *Freezing time
+in a test* above.
+
+Without one, do not assert on an exact instant in a library-written timestamp.
+Assert on the ordering or the window:
 
 ```elixir
 before = DateTime.utc_now()
@@ -185,21 +259,19 @@ receipt = read_the_receipt()
 assert DateTime.compare(receipt.inserted_at, before) in [:gt, :eq]
 ```
 
-If your test freezes time in your own clock module, the library's rows are
-still stamped with the real one, and a strict equality against your frozen
-instant fails. That is the finding behind this section, not a defect: the
-library never claimed to take its time from anywhere else.
+That is still the rule for `inserted_at` and `updated_at` whatever you
+configure: a test that freezes time cannot pin those two, and a strict
+equality against a frozen instant fails.
 
-One seam does exist today. `AshDispatch.Context` carries `:now`, settable per
-dispatch, and the broadcast transport's payload timestamp uses it:
+`AshDispatch.Context`'s `:now` can also be set for one dispatch, which is the
+narrower tool when only that dispatch should see a different time:
 
 ```elixir
 AshDispatch.Dispatcher.dispatch("orders.created", %{order: order}, %{}, now: frozen)
 ```
 
-Nothing that is *persisted* reads it yet. Widening that seam to the values the
-library writes from Elixir is BACKLOG 13; moving the columns to `timestamptz`
-is a migration and therefore 0.10.0.
+Moving the columns to `timestamptz` is a migration and therefore 0.10.0;
+BACKLOG 13 has both halves.
 
 ## Strict templates
 

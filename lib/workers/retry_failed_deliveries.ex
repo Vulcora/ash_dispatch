@@ -117,12 +117,22 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
     end
   end
 
+  @doc false
+  # How recent is too recent: a receipt whose `last_retry_at` is after this is
+  # left for the next pass. On `AshDispatch.Clock`, so a host that configured
+  # one can move this cut-off in a test without waiting for the delay. Public
+  # for that reason only; not API.
+  @spec cutoff(number()) :: DateTime.t()
+  def cutoff(retry_delay_minutes) do
+    DateTime.add(AshDispatch.Clock.utc_now(), -retry_delay_minutes * 60, :second)
+  end
+
   defp run(tenant) do
     max_retries = get_config(:max_retries, @default_max_retries)
     retry_delay_minutes = get_config(:retry_delay_minutes, @default_retry_delay_minutes)
 
     # Calculate cutoff time (don't retry if last attempt was too recent)
-    cutoff_time = DateTime.add(DateTime.utc_now(), -retry_delay_minutes * 60, :second)
+    cutoff_time = cutoff(retry_delay_minutes)
 
     Logger.info(
       "RetryFailedDeliveries: Starting retry job (max_retries=#{max_retries}, delay=#{retry_delay_minutes}m)"
@@ -144,6 +154,12 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
     # this pass is already `:failed` when the query below runs and gets its
     # retry immediately instead of waiting a further cycle.
     sweep_stranded(tenant)
+
+    # Digests whose flush job was lost or raced (`AshDispatch.Digest`): every
+    # group that is due goes out now, so a missing job costs at most one retry
+    # interval. A group that is not due yet is left to its own job. Errors are
+    # logged inside and never stop the retry pass.
+    AshDispatch.Digest.sweep(tenant)
 
     case Ash.read(query, [authorize?: false] ++ Tenancy.opts(resource, tenant)) do
       {:ok, receipts} ->

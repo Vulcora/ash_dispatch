@@ -1,7 +1,7 @@
 defmodule AshDispatch.MixProject do
   use Mix.Project
 
-  @version "0.9.4-rc.3"
+  @version "0.9.4-rc.5"
   @description "Event-driven notification system for Ash Framework with multiple transport types"
   @source_url "https://github.com/Vulcora/ash_dispatch"
 
@@ -109,6 +109,7 @@ defmodule AshDispatch.MixProject do
         "lib/documentation/topics/recipient-resolution.md",
         "lib/documentation/topics/recipient-extractor.md",
         "lib/documentation/topics/user-preferences.md",
+        "lib/documentation/topics/digests.md",
         "lib/documentation/topics/tenancy.md",
         "lib/documentation/topics/oban-configuration.md",
         "lib/documentation/topics/previews-and-testing.md",
@@ -127,6 +128,7 @@ defmodule AshDispatch.MixProject do
           AshDispatch.Event.RecipientExtractor,
           AshDispatch.Dispatcher,
           AshDispatch.Context,
+          AshDispatch.Clock,
           AshDispatch.Log,
           AshDispatch.Channel
         ],
@@ -164,7 +166,13 @@ defmodule AshDispatch.MixProject do
         Workers: [
           AshDispatch.Workers.SendEmail,
           AshDispatch.Workers.SendWebhook,
-          AshDispatch.Workers.RetryFailedDeliveries
+          AshDispatch.Workers.RetryFailedDeliveries,
+          AshDispatch.Workers.FlushDigests
+        ],
+        Digests: [
+          AshDispatch.Digest,
+          AshDispatch.DigestRenderer,
+          AshDispatch.DigestRenderer.Default
         ],
         Resources: [
           AshDispatch.Resources.DeliveryReceipt,
@@ -187,7 +195,9 @@ defmodule AshDispatch.MixProject do
           AshDispatch.Dsl.Sections
         ],
         Testing: [
-          AshDispatch.Test
+          AshDispatch.Test,
+          AshDispatch.Doctor,
+          AshDispatch.Doctor.Error
         ]
       ],
       before_closing_head_tag: &before_closing_head_tag/1,

@@ -80,6 +80,11 @@ defmodule AshDispatch.Context do
     checker as `opts[:tenant]` (since 0.8.8) and stored on in-app
     notifications (since 0.9.0); see `tenant_key/1`.
   - `:base_url` - Base URL for link building
+  - `:now` - This dispatch's idea of now, read by the broadcast transport's
+    payload timestamp. Absent, `AshDispatch.Clock.utc_now/0`, which is
+    `DateTime.utc_now/0` unless the host configured a clock — so a host that
+    sets `config :ash_dispatch, clock:` gets its clock here too, without
+    passing anything. Since 0.9.4-rc.4
   - `:metadata` - Additional metadata
   - `:opts` - Additional options
 
@@ -105,7 +110,7 @@ defmodule AshDispatch.Context do
       tenant: Keyword.get(opts, :tenant),
       source: Keyword.get(opts, :source),
       base_url: Keyword.get(opts, :base_url, get_default_base_url()),
-      now: Keyword.get(opts, :now, DateTime.utc_now()),
+      now: Keyword.get(opts, :now, AshDispatch.Clock.utc_now()),
       metadata: Keyword.get(opts, :metadata, %{}),
       opts: Map.new(opts)
     }

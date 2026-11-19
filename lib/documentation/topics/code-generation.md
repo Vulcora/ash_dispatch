@@ -189,11 +189,38 @@ in it:
 config :ash_dispatch, sdk: :if_events
 ```
 
-"Something" is any event, counter, `resource_meta` or `entity_changes` block
-in your resources. This is **opt-in rather than the default**: a host with none
-of those has been getting the client's static files since 0.8.0, and a patch
-release does not stop writing files a host already has. Set it, run
-`mix ash.codegen`, and delete the files yourself the once.
+"Something of yours" is any event, counter, `resource_meta` or
+`entity_changes` block **you** declared. What this library's own `Base` macros
+declare does not count, and that distinction is the whole of it:
+`AshDispatch.Resources.Notification.Base` writes an `unread_notifications`
+counter into your notification resource, so in 0.9.4-rc.2 — which counted
+every counter it found — `:if_events` was `:always` for every host with an
+in-app inbox. `mix ash_dispatch.gen --verbose` says how many of the counters
+it found came from the bases.
+
+This is **opt-in rather than the default**: a host with none of those has been
+getting the client's static files since 0.8.0, and a patch release does not
+stop writing files a host already has. Set it, run `mix ash.codegen`, and
+delete the files yourself the once.
+
+### Which switch do you want?
+
+The bell is the case to be careful about. `useCounter`, `NotificationBell` and
+`useNotifications` in the generated client all read
+`unread_notifications` — so a host that uses the in-app bell **does** need the
+SDK, even with no events of its own, and `:if_events` is the wrong switch for
+it. An inbox is not an event, and the library will not guess that for you.
+Say which you mean:
+
+| What you want | The spelling |
+|---|---|
+| The client, because you use the in-app bell or the inbox hooks — events or no events | `config :ash_dispatch, sdk: true` (the default; leaving it out is the same) |
+| The client only once you declare an event, counter, `resource_meta` or `entity_changes` of your own | `config :ash_dispatch, sdk: :if_events` |
+| Never the client, whatever you declare | `config :ash_dispatch, sdk: false` |
+
+Both wishes at once — "the bell now, and nothing else ever" — is `sdk: true`:
+`:if_events` would also start writing the client the day you add your first
+event, which is the opposite of what you asked for.
 
 Both keys are also read in the app-scoped spelling, if that is where the rest
 of your AshDispatch config lives:

@@ -194,7 +194,7 @@ defmodule AshDispatch.Transports.Webhook do
       "content" => content_map(receipt),
       # The signing key never travels inside the body it signs.
       "metadata" => metadata |> Map.drop(forbidden_metadata_keys()) |> stringify_keys(),
-      "sent_at" => DateTime.utc_now() |> DateTime.to_iso8601()
+      "sent_at" => AshDispatch.Clock.utc_now() |> DateTime.to_iso8601()
     }
   end
 

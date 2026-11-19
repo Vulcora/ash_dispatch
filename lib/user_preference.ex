@@ -152,7 +152,29 @@ defmodule AshDispatch.UserPreference do
   """
   @callback prefetch(user_ids :: [any()], opts :: keyword()) :: any()
 
-  @optional_callbacks [prefetch: 2]
+  @doc """
+  How this person wants the emails of a digest channel delivered. Optional.
+
+  Asked only for a channel that declared `time: {:digest, window}` — an event
+  that did not opt in to digests is never delayed by a person's setting — and
+  only after `c:user_allows?/4` has let the email through. Called with the
+  same opts as `c:user_allows?/4`, plus `:window`, the channel's own window.
+
+  Return:
+
+    * `:default` (or `nil`) — the channel's window;
+    * `:off` — send each email at once;
+    * a window — `{:quiet, seconds}`, `{:quiet, seconds, max_wait}`,
+      `:daily` or `:weekly` (see `AshDispatch.Digest`). Anything else is
+      logged and read as `:default`.
+
+  A checker without this callback leaves every digest channel on its own
+  window. See the *Digests* guide.
+  """
+  @callback user_digest_mode(user_id :: any(), opts :: keyword()) ::
+              :default | :off | nil | AshDispatch.Digest.window()
+
+  @optional_callbacks [prefetch: 2, user_digest_mode: 2]
 
   @scope_key {__MODULE__, :dispatch_scope}
 
@@ -256,6 +278,61 @@ defmodule AshDispatch.UserPreference do
       require Logger
       Logger.warning("Preference prefetch failed: #{Exception.message(error)}")
       :ok
+  end
+
+  @doc false
+  # The digest window for one receipt: the channel's `default`, unless the
+  # configured checker's `user_digest_mode/2` says otherwise for this person.
+  # `nil` means "send it now". Called by `AshDispatch.Digest.window_for/4`.
+  @spec digest_window(map(), Context.t(), Channel.t(), keyword() | map(), term()) :: term()
+  def digest_window(receipt, context, channel, event_config, default) do
+    checker = get_checker()
+    user_id = receipt_user_id(receipt)
+
+    if gated_audience?(channel.audience) and not is_nil(user_id) and not is_nil(checker) and
+         Code.ensure_loaded?(checker) and function_exported?(checker, :user_digest_mode, 2) do
+      opts =
+        context
+        |> gate_opts(channel, event_config)
+        |> Keyword.put(:recipient, context_recipient(context))
+        |> Keyword.put(:window, default)
+
+      case checker.user_digest_mode(user_id, opts) do
+        answer when answer in [:default, nil] ->
+          default
+
+        :off ->
+          nil
+
+        window ->
+          case AshDispatch.Digest.normalize(window) do
+            nil ->
+              require Logger
+
+              Logger.warning(
+                "#{inspect(checker)}.user_digest_mode/2 answered #{inspect(window)}, " <>
+                  "which is not a digest mode; the channel's window is used"
+              )
+
+              default
+
+            normalized ->
+              normalized
+          end
+      end
+    else
+      default
+    end
+  rescue
+    # A checker that raises must not lose the email: the channel's window.
+    error ->
+      require Logger
+
+      Logger.warning(
+        "user_digest_mode/2 raised, using the channel's window: #{Exception.message(error)}"
+      )
+
+      default
   end
 
   @doc """
