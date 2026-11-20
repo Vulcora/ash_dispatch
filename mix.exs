@@ -86,9 +86,6 @@ defmodule AshDispatch.MixProject do
       source_ref: "v#{@version}",
       source_url: @source_url,
       formatters: ["html"],
-      # Copied as is to the root of the docs: context7.json proves to Context7
-      # that we own https://hexdocs.pm/ash_dispatch/.
-      assets: %{"hexdocs" => "."},
       extras: [
         "README.md",
         "CHANGELOG.md",

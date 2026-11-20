@@ -1,0 +1,8 @@
+{
+  "$schema": "https://context7.com/schema/context7.json",
+  "url": "https://context7.com/vulcora/ash_dispatch",
+  "public_key": "pk_8iXTQDneYP8X6yWU51LbH",
+  "projectTitle": "AshDispatch",
+  "excludeFolders": ["test", "docs/design", "config", ".github"],
+  "excludeFiles": ["BACKLOG.md", "TESTING.md", "CHANGELOG.md"]
+}
