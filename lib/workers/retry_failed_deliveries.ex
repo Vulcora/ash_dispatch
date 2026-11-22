@@ -319,7 +319,7 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
         import Ecto.Query, only: [from: 2]
 
         from(j in Oban.Job, where: j.id in ^ids, select: {j.id, j.state})
-        |> repo.all()
+        |> repo.all(oban_prefix())
         |> Map.new()
     end
   rescue
@@ -330,6 +330,25 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
       )
 
       %{}
+  end
+
+  @doc false
+  # A host that runs Oban in a schema of its own (`prefix: "oban"`) keeps its
+  # job table there, and a query without the prefix reads `public.oban_jobs`
+  # — which either does not exist, or is somebody else's. Asked of Oban
+  # rather than configured again here, and `[]` when Oban is not running,
+  # which is the same "no state known" the rest of this function falls back
+  # to. Public-but-undocumented so the two answers can be tested.
+  @spec oban_prefix() :: keyword()
+  def oban_prefix do
+    case Oban.config() do
+      %{prefix: prefix} when is_binary(prefix) and prefix != "" -> [prefix: prefix]
+      _ -> []
+    end
+  rescue
+    _ -> []
+  catch
+    _, _ -> []
   end
 
   defp handle_stranded(receipt, status, opts) do

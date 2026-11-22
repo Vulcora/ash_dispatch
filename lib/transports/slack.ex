@@ -145,9 +145,14 @@ defmodule AshDispatch.Transports.Slack do
         case job_args
              |> SendWebhook.new(AshDispatch.Transport.Queue.opts(channel))
              |> Oban.insert() do
-          {:ok, _job} ->
-            # Mark receipt as scheduled, in its own tenant
-            updated_receipt = AshDispatch.ReceiptStatus.mark_scheduled(receipt)
+          {:ok, job} ->
+            # Mark receipt as scheduled, in its own tenant, and record which
+            # job it is: without the id the stranded sweep has no job to look
+            # up and decides on age alone.
+            updated_receipt =
+              receipt
+              |> AshDispatch.ReceiptStatus.mark_scheduled()
+              |> AshDispatch.ReceiptStatus.put_oban_job_id(job.id)
 
             Logger.info("Slack webhook job enqueued for receipt #{receipt.id}")
             {:ok, updated_receipt}

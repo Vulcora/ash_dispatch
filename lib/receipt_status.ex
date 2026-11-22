@@ -300,6 +300,38 @@ defmodule AshDispatch.ReceiptStatus do
   end
 
   @doc """
+  Records which Oban job belongs to this receipt, without a transition.
+
+  For a transport that has to mark the receipt `:scheduled` BEFORE inserting
+  the job — the webhook, Slack and Discord transports do, because an inline
+  job runs inside `Oban.insert/1` and would race the transition — so the job
+  id can only be written afterwards. It goes through the primary `:update`
+  action, which accepts `:oban_job_id` and moves no state, so a receipt the
+  job has already carried to `:sent` is not disturbed.
+
+  Without the id the stranded sweep has no job to look up for that receipt and
+  decides on age alone (`AshDispatch.Workers.Stranded`), which is the gap this
+  closes.
+
+  Never raises: a receipt that could not be given its job id is a receipt the
+  sweep is more careful about, not a failed delivery.
+  """
+  @spec put_oban_job_id(struct(), integer() | nil) :: struct()
+  def put_oban_job_id(receipt, nil), do: receipt
+
+  def put_oban_job_id(receipt, job_id) do
+    receipt
+    |> changeset(:update, %{oban_job_id: job_id})
+    |> Ash.update(authorize?: false)
+    |> case do
+      {:ok, updated} -> Tenancy.remember(updated, Tenancy.of(receipt))
+      {:error, _reason} -> receipt
+    end
+  rescue
+    _ -> receipt
+  end
+
+  @doc """
   Marks a receipt as "scheduled" (job enqueued for later delivery).
 
   Optionally stores the Oban job ID for tracking.

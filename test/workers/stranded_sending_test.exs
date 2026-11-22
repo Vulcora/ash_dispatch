@@ -260,6 +260,54 @@ defmodule AshDispatch.Workers.StrandedSendingTest do
       assert sending_fate(3 * 3600, :rescue) == :rescue
     end
 
+    test "a job that is still EXECUTING is left alone under both modes" do
+      # The test neither the original sweep nor its first fix had. Oban's
+      # Lifeline rescues an orphaned executing job after 60 minutes by
+      # default; the grace period here is 30. So under `:close` the sweep
+      # marked the receipt failed_permanent, the rescued job then completed
+      # green without sending, and the sweep CREATED the loss it exists to
+      # report.
+      past_grace = DateTime.add(@now, -45 * 60, :second)
+
+      assert Stranded.sending_action(past_grace, :close, now: @now, job_state: "executing") ==
+               :leave
+
+      assert Stranded.sending_action(past_grace, :rescue, now: @now, job_state: "executing") ==
+               :leave
+    end
+
+    test "and so is one Oban will run again" do
+      past_grace = DateTime.add(@now, -45 * 60, :second)
+
+      for state <- ~w(available scheduled retryable) do
+        assert Stranded.sending_action(past_grace, :close, now: @now, job_state: state) ==
+                 :leave,
+               "a #{state} job was not left alone"
+
+        assert Stranded.sending_action(past_grace, :rescue, now: @now, job_state: state) ==
+                 :leave
+      end
+    end
+
+    test "even past the staleness ceiling: the job decides when it is sent" do
+      ancient = DateTime.add(@now, -48 * 3600, :second)
+
+      assert Stranded.sending_action(ancient, :close, now: @now, job_state: "executing") ==
+               :leave
+    end
+
+    test "a job that is gone or finished is decided on age, as before" do
+      past_grace = DateTime.add(@now, -45 * 60, :second)
+
+      for state <- [nil, "completed", "cancelled", "discarded"] do
+        assert Stranded.sending_action(past_grace, :close, now: @now, job_state: state) ==
+                 :close
+
+        assert Stranded.sending_action(past_grace, :rescue, now: @now, job_state: state) ==
+                 :rescue
+      end
+    end
+
     test "the close reason says the outcome is unknown, not that it failed" do
       reason =
         Stranded.sending_close_reason(DateTime.add(@now, -48 * 3600, :second), now: @now)

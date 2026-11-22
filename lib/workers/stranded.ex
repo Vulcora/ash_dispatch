@@ -50,10 +50,7 @@ defmodule AshDispatch.Workers.Stranded do
   `:sending` was the same dead end, one step further along. A node that goes
   down between `mark_sending` and the provider leaves the receipt there, and
   until 0.9.4 nothing looked: the retry sweep queries `:failed`, this sweep
-  queried `:scheduled`, and no transition led out. Oban's lifeline covers the
-  case where the JOB survives (`AshDispatch.ReceiptStatus.claim/2` reclaims
-  it on the next attempt); it does not cover a job that was pruned, cancelled
-  or discarded mid-send.
+  queried `:scheduled`, and no transition led out.
 
   What makes `:sending` different from `:scheduled` is that we do not know
   whether the provider got the message. `:scheduled` promises a job is coming
@@ -69,15 +66,39 @@ defmodule AshDispatch.Workers.Stranded do
       every release before 0.9.4 did.
     * `:close` — a stranded `:sending` receipt is marked `:failed_permanent`
       with a reason saying the outcome is unknown. **Nothing is sent twice,
-      and the silent loss stops being silent.** This is the one to pick if
-      you do not want to think about it.
+      and a loss nothing reported starts being reported.**
     * `:rescue` — the same three outcomes as `:scheduled`: leave, hand to the
       retry machinery, or close past the staleness ceiling. At-least-once
       delivery, and a possible duplicate, in exchange for not losing a letter
       the provider never saw.
 
-  The grace period applies either way, so a send that is merely in progress
-  is never touched.
+  ## What the sweep promises, and what it does not
+
+  It promises not to act while Oban still has the job. `action/2` reads the
+  job's state first (`:job_state`, `live_job?/1`) and leaves a receipt alone
+  whose job is `available`, `scheduled`, `executing` or `retryable` — which
+  for `:sending` is "it is being sent" or "Oban will run it again". Without
+  that gate the sweep CREATED the loss it exists to report: Oban's `Lifeline`
+  plugin rescues an orphaned `executing` job after 60 minutes by default,
+  the grace period here is 30, so under `:close` the sweep marked the receipt
+  `failed_permanent` and the rescued job then completed green without sending.
+
+  It does NOT promise that for a transport whose receipt carries no
+  `oban_job_id`. Until 0.9.4 the webhook, Slack and Discord transports never
+  wrote one (email and SMS always did), so for a receipt written by an older
+  release there is no job to look up and **age alone decides** — exactly as
+  the whole sweep did before this release. If your receipts predate 0.9.4 and
+  you switch `stranded_sending` on, set the grace period above your Oban
+  `Lifeline` rescue interval:
+
+      config :ash_dispatch, stranded_stuck_after_minutes: 90
+
+  And it promises nothing about a job row that has been pruned. Oban's
+  `Pruner` deletes completed jobs (16 hours by default); a pruned job looks
+  the same as a job that never existed, so a receipt still in `:sending`
+  after the pruner has been through is decided on age. That is the case the
+  sweep is FOR, so it is the right answer — but it is why the staleness
+  ceiling exists rather than an unconditional rescue.
   """
 
   @default_stuck_after_minutes 30
@@ -166,8 +187,14 @@ defmodule AshDispatch.Workers.Stranded do
   def sending_action(age_reference, mode \\ nil, opts \\ []) do
     case mode || sending_mode() do
       mode when mode in [:close, :rescue] ->
+        # `action/2` answers `:leave` for a live job before it looks at the
+        # age, so the gate below is inherited rather than repeated: a receipt
+        # in `:sending` whose job is `executing` is BEING sent, and one whose
+        # job is `retryable` or `available` will be run again by Oban. Closing
+        # either of those is the sweep creating the loss it exists to report.
         case action(age_reference, opts) do
-          # Not stranded yet, whatever the mode: a live send is not a loss.
+          # Not stranded yet, or still in Oban's hands. Whatever the mode: a
+          # live send is not a loss.
           :leave ->
             :leave
 

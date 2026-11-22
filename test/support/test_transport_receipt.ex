@@ -118,6 +118,14 @@ defmodule AshDispatch.Test.TransportReceipt do
       change {AshDispatch.Changes.PutDigest, []}
     end
 
+    # The real base's primary `:update`, which is what
+    # `ReceiptStatus.put_oban_job_id/2` writes through: a receipt's job id
+    # without a transition.
+    update :update do
+      primary? true
+      accept [:oban_job_id, :notification_id, :provider_response, :error_message]
+    end
+
     update :release do
       accept [:oban_job_id]
       change set_attribute(:status, :scheduled)

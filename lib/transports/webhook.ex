@@ -144,7 +144,13 @@ defmodule AshDispatch.Transports.Webhook do
     case job_args
          |> SendWebhook.new(AshDispatch.Transport.Queue.opts(channel))
          |> Oban.insert() do
-      {:ok, _job} ->
+      {:ok, job} ->
+        # The job id, written after the insert because the transition had to
+        # happen before it. Without it the stranded sweep has no job to look
+        # up for this receipt and decides on age alone — which is how it could
+        # close a receipt whose job Oban was about to rescue.
+        AshDispatch.ReceiptStatus.put_oban_job_id(scheduled, job.id)
+
         Logger.info("Webhook job enqueued for receipt #{receipt.id}")
         # Re-read: if the job has already run (inline, or a fast worker),
         # `scheduled` is a stale picture, and reporting `:scheduled` for
