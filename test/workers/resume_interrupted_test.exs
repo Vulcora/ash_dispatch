@@ -115,6 +115,55 @@ defmodule AshDispatch.Workers.ResumeInterruptedTest do
     end
   end
 
+  describe "a webhook job that cannot claim its receipt" do
+    # rc.5's hard match raised, so the job failed, Oban retried it and
+    # eventually discarded it — and a failing job is a signal a host's
+    # alerting sees. Completing as a success is a quieter library and an
+    # undisclosed change to a host's dashboard, so it is not the default.
+    alias AshDispatch.Workers.SendWebhook
+
+    defp webhook_receipt!(status) do
+      StrictReceipt
+      |> Ash.Changeset.for_create(:create, %{
+        status: status,
+        event_id: "ticket.created",
+        transport: :webhook,
+        recipient: "https://hooks.example.test/abc",
+        content: %{"message" => "hi"}
+      })
+      |> Ash.create!(authorize?: false)
+    end
+
+    defp perform_webhook(receipt, attempt) do
+      SendWebhook.perform(%Oban.Job{
+        args: %{"receipt_id" => receipt.id, "webhook_url" => "https://hooks.example.test/abc"},
+        attempt: attempt
+      })
+    end
+
+    test "fails the job, as it did before 0.9.4" do
+      receipt = webhook_receipt!(:sending)
+
+      assert {:error, :receipt_not_claimable} = perform_webhook(receipt, 1)
+    end
+
+    test "and completes for a host that asked for resumption" do
+      put_env(:webhook_resume_interrupted, true)
+      receipt = webhook_receipt!(:sent)
+
+      # `:sent` cannot be claimed and cannot be resumed either, so this is the
+      # duplicate path with the option on.
+      assert :ok = perform_webhook(receipt, 1)
+    end
+
+    test "and for a host that asked for the sweep" do
+      put_env(:stranded_sending, :close)
+      receipt = webhook_receipt!(:sending)
+
+      assert :ok = perform_webhook(receipt, 1)
+    end
+  end
+
   describe "what did not change for SMS" do
     test "a scheduled receipt is sent on the first attempt" do
       receipt = receipt!(:scheduled)

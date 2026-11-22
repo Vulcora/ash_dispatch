@@ -187,15 +187,49 @@ defmodule AshDispatch.Workers.SendWebhook do
         send_claimed(claimed, args)
 
       :duplicate ->
-        Logger.info(
-          "Receipt #{receipt.id} state transition conflict (likely duplicate job), completing as success"
-        )
-
-        :ok
+        duplicate(receipt)
 
       {:error, reason} ->
         Logger.error("Receipt #{receipt.id} mark_sending failed: #{inspect(reason)}")
         {:error, reason}
+    end
+  end
+
+  # A receipt this job cannot claim.
+  #
+  # On rc.5 the hard match raised, so the job FAILED, Oban retried it and
+  # eventually discarded it — and that failing job is a signal a host's
+  # alerting sees. Completing as a success instead is a quieter library and an
+  # undisclosed change to what a host's dashboard shows, so it is not the
+  # default: the job fails, as it did.
+  #
+  # It completes only for a host that has asked for one of the two mechanisms
+  # that make an unclaimable receipt an expected state rather than a surprise:
+  # `webhook_resume_interrupted: true`, which says "my own earlier attempt may
+  # be holding this", or a `stranded_sending` other than `:ignore`, which says
+  # "the sweep will deal with what is left". Either way the host knows what it
+  # is looking at, and the noise is the thing it opted out of.
+  #
+  # `{:error, _}` rather than re-raising: Oban records both in the job's
+  # `errors` and retries both, so the signal is identical, and a stacktrace
+  # from a state machine refusing a transition tells nobody anything.
+  defp duplicate(receipt) do
+    if Config.resume_interrupted?(:webhook) or
+         AshDispatch.Workers.Stranded.sending_mode() != :ignore do
+      Logger.info(
+        "Receipt #{receipt.id} state transition conflict (likely duplicate job), " <>
+          "completing as success"
+      )
+
+      :ok
+    else
+      Logger.error(
+        "Receipt #{receipt.id} could not be claimed (status #{receipt.status}); failing the " <>
+          "job, as before 0.9.4. `webhook_resume_interrupted: true` or a `stranded_sending` " <>
+          "other than :ignore makes this a success instead."
+      )
+
+      {:error, :receipt_not_claimable}
     end
   end
 
