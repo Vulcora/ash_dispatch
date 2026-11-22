@@ -572,11 +572,22 @@ Event modules are discovered by scanning resources with `AshDispatch.Resource` e
 
 ```elixir
 # The ManualTrigger resource provides these actions:
-# - :list_available_events - Returns all registered events
-# - :preview - Preview event with sample data
-# - :preview_for_resource - Preview event with real resource data
-# - :trigger - Actually send the event
+# - :list_events       - Manually triggerable events (trigger_on: :manual)
+# - :list_all_events   - Every registered event, whatever its trigger_on
+# - :preview           - Render the letters this event would send
+# - :get_user_preference - One person's opt-in state for one event
+# - :trigger           - Actually send the event
 ```
+
+`:preview` takes `event_id`, `context_data`, and optionally
+`recipient_email`, `audience`, `transport`, `locale` and `variant` (the last
+two since 0.9.4). It answers one row per matching channel, each with
+`subject`, `html_body`, `text_body`, `from_address`, `recipient`,
+`notification_title`, `notification_message`, `locale` and `variant`.
+
+Pass `context_data: %{}` to render from the event's sample data, or
+`%{"<data_key>_id" => id}` to render from a real record — there is no separate
+action for the two.
 
 **Frontend (React/Next.js example):**
 
@@ -586,25 +597,26 @@ import { executeRpc } from '@/lib/ash_rpc'
 // 1. List available events
 const { data: events } = useQuery({
   queryKey: ['manual-trigger-events'],
-  queryFn: () => executeRpc('MyApp.Notifications.ManualTrigger', 'list_available_events', {}),
+  queryFn: () => executeRpc('MyApp.Notifications.ManualTrigger', 'list_events', {}),
 })
 
 // 2. Preview an event
-const previewEvent = async (eventId: string, userId: string) => {
-  const result = await executeRpc(
+const previewEvent = async (eventId: string, bookingId: string) => {
+  const rows = await executeRpc(
     'MyApp.Notifications.ManualTrigger',
-    'preview_for_resource',
+    'preview',
     {
       event_id: eventId,
-      context_data: { user_id: userId },
+      context_data: { booking_id: bookingId },
+      locale: 'sv',
     }
   )
 
-  return {
-    subject: result.subject,
-    html_preview: result.html_preview,
-    text_preview: result.text_preview,
-  }
+  return rows.map((row) => ({
+    subject: row.subject,
+    htmlBody: row.htmlBody,
+    textBody: row.textBody,
+  }))
 }
 
 // 3. Send the event
@@ -615,9 +627,10 @@ const sendEvent = async (eventId: string, userId: string) => {
     {
       event_id: eventId,
       context_data: { user_id: userId },
-      opts: {
-        channels: [{ transport: 'email', audience: 'user' }],
-      },
+      // The channel to send on, as the action's own attributes. `:trigger`
+      // has never had an `opts` argument.
+      transport: 'email',
+      audience: 'user',
     }
   )
 
@@ -633,24 +646,25 @@ const sendEvent = async (eventId: string, userId: string) => {
 ```tsx
 export default function SendEmailPage({ userId }: { userId: string }) {
   const [selectedEvent, setSelectedEvent] = useState<string>('')
-  const [preview, setPreview] = useState<{ subject: string; html: string } | null>(null)
+  const [preview, setPreview] = useState<{ subject: string; id: string } | null>(null)
 
   // Fetch available events
   const { data: events } = useQuery({
     queryKey: ['manual-trigger-events'],
-    queryFn: () => executeRpc('MyApp.Deliveries.ManualTrigger', 'list_available_events', {}),
+    queryFn: () => executeRpc('MyApp.Deliveries.ManualTrigger', 'list_events', {}),
   })
 
   // Preview event
   const { mutate: previewEvent } = useMutation({
     mutationFn: async (eventId: string) => {
-      return executeRpc('MyApp.Deliveries.ManualTrigger', 'preview_for_resource', {
+      return executeRpc('MyApp.Deliveries.ManualTrigger', 'preview', {
         event_id: eventId,
         context_data: { user_id: userId },
       })
     },
-    onSuccess: (data) => {
-      setPreview({ subject: data.subject, html: data.html_preview })
+    onSuccess: (rows) => {
+      // The preview's HTML is never put into this page — see below.
+      setPreview({ subject: rows[0].subject, id: selectedEvent })
     },
   })
 
@@ -660,7 +674,8 @@ export default function SendEmailPage({ userId }: { userId: string }) {
       return executeRpc('MyApp.Deliveries.ManualTrigger', 'trigger', {
         event_id: eventId,
         context_data: { user_id: userId },
-        opts: { channels: [{ transport: 'email', audience: 'user' }] },
+        transport: 'email',
+        audience: 'user',
       })
     },
     onSuccess: (data) => {
@@ -689,7 +704,13 @@ export default function SendEmailPage({ userId }: { userId: string }) {
       {preview && (
         <div>
           <h3>Preview: {preview.subject}</h3>
-          <iframe srcDoc={preview.html} />
+          {/* The letter is its OWN document, in a sandboxed frame. See below. */}
+          <iframe
+            sandbox=""
+            referrerPolicy="no-referrer"
+            src={`/admin/dispatch/previews/${preview.id}/body`}
+            title="Email preview"
+          />
         </div>
       )}
 
@@ -701,6 +722,54 @@ export default function SendEmailPage({ userId }: { userId: string }) {
   )
 }
 ```
+
+### Showing a preview safely
+
+A rendered letter is **untrusted HTML**. Its body carries whatever a
+template, a record and a person's own fields produced, and an admin page is
+the one place in the application where a session can do the most damage.
+There are two rules, and the first one is the one that is easy to get wrong.
+
+**Never put the letter's HTML into the admin page.** Not through
+`dangerouslySetInnerHTML`, and not through `<iframe srcDoc={html} />` without
+a `sandbox` attribute: an unsandboxed frame inherits the page's origin, so a
+`<script>` or an `onerror=` in the letter runs **as the signed-in admin** —
+reading their cookies and local storage, and calling your admin API with
+their session. A letter whose body came from a customer's own name is enough.
+
+**Serve the body as its own document and frame it sandboxed.** An endpoint of
+your own reads the preview and answers the HTML:
+
+```elixir
+def body(conn, %{"event_id" => event_id}) do
+  {:ok, [letter | _]} =
+    AshDispatch.Preview.render(event_id, :sample, transport: :email)
+
+  conn
+  |> put_resp_content_type("text/html")
+  |> put_resp_header("content-security-policy", "sandbox; default-src 'none'")
+  |> put_resp_header("x-content-type-options", "nosniff")
+  |> send_resp(200, letter.html_body || "")
+end
+```
+
+Three things are doing work there, and each covers the others:
+
+- `sandbox=""` on the frame — the most restrictive value, not a list. No
+  scripts, no forms, no top-level navigation, and a unique opaque origin, so
+  the frame cannot reach the admin's session even if it runs.
+- The `Content-Security-Policy` header repeats the sandbox at the *document*
+  level, so the restriction survives anyone opening the URL directly, and
+  `default-src 'none'` stops the letter fetching a tracking pixel from the
+  admin's browser.
+- Serving it as its own document means the letter's markup never passes
+  through your page's HTML at all, so there is no template-escaping bug left
+  to have.
+
+Never write `sandbox="allow-scripts allow-same-origin"`: together those two
+let the framed document remove its own sandbox, which is the same as having
+written no sandbox at all. If the preview must run scripts (it should not),
+serve it from a separate origin.
 
 ---
 
@@ -1031,28 +1100,31 @@ end
 
 **Admin Manual Trigger:**
 ```elixir
-# Admin previews email for user
-{:ok, preview} = ManualTrigger
-  |> Ash.Changeset.for_action(:preview_for_resource, %{
+# Admin previews email for user. `:preview` is a READ: one row per matching
+# channel.
+{:ok, rows} = ManualTrigger
+  |> Ash.Query.for_read(:preview, %{
     event_id: "accounts.password_reset",
     context_data: %{user_id: user.id}
   })
-  |> Ash.create()
+  |> Ash.read(actor: current_admin)
 
 # What happens:
-# 1. Event module NOT used - context_data provides user
+# 1. The event is opened exactly as its own send opens it
 # 2. generate_send_variables/2 NOT called (preview mode)
-# 3. prepare_template_assigns/2 uses sample token
-# 4. Returns HTML/text preview
+# 3. prepare_template_assigns/2 uses the sample token
+# 4. Each row carries subject, html_body, text_body, locale and variant
 
 # Admin sends actual email
 {:ok, trigger} = ManualTrigger
   |> Ash.Changeset.for_action(:trigger, %{
     event_id: "accounts.password_reset",
     context_data: %{user_id: user.id},
-    opts: %{channels: [%{transport: :email, audience: :user}]}
+    recipient_email: user.email,
+    transport: :email,
+    audience: :user
   })
-  |> Ash.create()
+  |> Ash.create(actor: current_admin)
 
 # What happens:
 # 1. User loaded from context_data

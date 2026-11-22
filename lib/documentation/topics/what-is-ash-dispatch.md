@@ -416,30 +416,46 @@ AshDispatch uses Swoosh as a transport layer.
 
 ## Implementation Status
 
-AshDispatch is actively being developed. Here's the current status:
+### The transports
 
-### ✅ Complete
+Every transport below is built, and each one is one entry in
+`AshDispatch.Transport.Registry`:
 
-- **Resource Extension** - Define events and counters in resources via DSL
-- **Event Validation** - Compile-time validation of event configuration
-- **Change Injection** - Automatic change injection via transformers
-- **DeliveryReceipt Resource** - Full Ash resource with state machine
-- **Receipt Persistence** - ETS data layer (override with Postgres)
-- **State Tracking** - Receipt status: pending → scheduled → sending → sent/failed
-- **Info Module** - Query events: `Info.events(Resource)`, `Info.events_for_action(Resource, :create)`
-- **InApp Transport** - Real notification records with PubSub support
-- **Email Transport** - Oban job enqueueing with Swoosh delivery
-- **Error Handling** - Graceful failures don't break actions
-- **Recipient Resolution** - Config-based admin/user lookup with Ash introspection
-- **Template System** - HEEx template rendering with layouts
-- **Counter Broadcasting** - Real-time counter updates via Phoenix Channels
-- **Counter DSL** - `authorize?`, `scope`, `user_id_path` for flexible scoping
-- **Retry System** - Automatic retry cron job for failed deliveries
+| Transport | Delivery | Receipt |
+|---|---|---|
+| `:email` | an Oban job, through your email backend (Swoosh supplied) | yes |
+| `:in_app` | a notification record, written synchronously | yes |
+| `:sms` | an Oban job, through your SMS backend (46elks supplied) | yes |
+| `:slack`, `:discord` | an Oban job, to a webhook URL | yes |
+| `:webhook` | an Oban job, to a URL of your own | yes |
+| `:push` | your push backend | yes |
+| `:broadcast` | a Phoenix PubSub topic | no — it reaches a topic, not a person |
+| `:oban` | a job in a queue of your own | no |
 
-### 📋 Planned
+### The rest of the surface
 
-- **Remaining Transports** - Slack, SMS implementations
-- **Migration Guide** - Converting existing event modules to AshDispatch
+- **Resource extension** — events and counters in the `dispatch` DSL, with
+  compile-time validation and change injection.
+- **Delivery receipts** — an Ash resource with a state machine, built from
+  `DeliveryReceipt.Base`, with retries, a stranded sweep, and a reason code
+  beside every held-back letter (`AshDispatch.Reason`).
+- **Recipients** — audiences from config, a resolver of your own, or an
+  extractor per event; an eligibility check that fails closed.
+- **Templates** — HEEx and EEx, per transport, variant, locale and layout,
+  compiled into `priv/` for releases.
+- **Previews** — `AshDispatch.Preview` renders any event exactly as it would
+  be sent, and `AshDispatch.Test.assert_all_render/1` renders every letter
+  your app can send.
+- **Notification centre** — in-app notifications, per-person preferences, and
+  counter broadcasting over Phoenix Channels.
+- **Digests** — several emails to one person, sent as one.
+- **Per-tenant** — receipts, notifications and preferences in a schema per
+  tenant, with the cron workers fanning out over them.
+
+### Still open
+
+`BACKLOG.md` is the list, with what each item needs and why it is not done.
+The items that would change a column or move a default are marked for 0.10.0.
 
 ### Data Layer Flexibility
 
