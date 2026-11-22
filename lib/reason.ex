@@ -9,31 +9,46 @@ defmodule AshDispatch.Reason do
   letters did we hold back last month, and why" matched substrings against
   sentences this library is free to reword. Three of them did, independently.
 
-  Since 0.9.4 the library also writes a code: `content["reason_code"]`, one of
-  `codes/0`, with `:other` for a reason that came from somewhere else — a
-  backend of the host's own, a provider's message, a transport the host wrote.
-  The sentence is unchanged and still says more than the code does.
-
-  ## Reading it
+  `of/1` is the answer, and it needs nothing stored:
 
       AshDispatch.Reason.of(receipt)
       #=> :user_opted_out
 
-  `of/1` answers for a receipt written before 0.9.4 too, by classifying the
-  sentence — which is the substring matching, done once, here, by the library
-  that wrote the sentences. A host never needs to do it.
+  It reads a stored code when there is one and classifies the sentence when
+  there is not — which is the substring matching, done once, here, by the
+  library that wrote the sentences. So every receipt answers, including every
+  receipt written before 0.9.4, with no column, no backfill and no row
+  touched.
 
-  ## Counting it
+  ## Storing it, which is opt-in
 
-  The code is in `content`, so no migration and nothing to backfill. In SQL it
-  is a JSONB lookup:
+  To count in SQL rather than in Elixir, the code has to be ON the row. That
+  is a write on three actions that did not write before, so it is opt-in:
+
+      use AshDispatch.Resources.DeliveryReceipt.Base,
+        repo: MyApp.Repo,
+        domain: MyApp.Deliveries,
+        notification_resource: MyApp.Notifications.Notification,
+        reason_codes: true
+
+  Then `:skip`, `:mark_failed` and `:mark_failed_permanent` merge
+  `content["reason_code"]` into the row — as one statement, server side, never
+  by writing back a content map read a moment earlier. (A whole-map write
+  undoes whatever landed in between, and what lands in between is
+  `AshDispatch.Workers.ScrubSensitiveContent`: the row would get its
+  reset-link body back.)
+
+  It is an option on the base rather than application config because an Ash
+  action is compiled; there is nothing a runtime setting could change.
 
       SELECT content->>'reason_code' AS reason, count(*)
       FROM delivery_receipts
       WHERE status IN ('skipped', 'failed_permanent')
       GROUP BY 1 ORDER BY 2 DESC;
 
-  Rows written before 0.9.4 answer `NULL` there; `of/1` still classifies them.
+  Rows written before the option was switched on answer `NULL` there; `of/1`
+  still classifies them. Storing by default is 0.10.0 work, with the
+  migration-free reading above until then.
 
   ## The codes
 
@@ -201,19 +216,18 @@ defmodule AshDispatch.Reason do
   # first so the map never carries the key twice — the same care
   # `AshDispatch.Changes.PutDigest` takes, and for the same reason.
   @spec put(map(), term()) :: map()
-  def put(content, message) do
-    content = content || %{}
+  def put(content, message), do: put_code(content, classify(message))
 
-    case classify(message) do
-      nil ->
-        content
+  @doc false
+  # The same, for a code already classified.
+  @spec put_code(map(), code() | nil) :: map()
+  def put_code(content, nil), do: content || %{}
 
-      code ->
-        content
-        |> Map.delete(:reason_code)
-        |> Map.delete(@content_key)
-        |> Map.put(@content_key, Atom.to_string(code))
-    end
+  def put_code(content, code) do
+    (content || %{})
+    |> Map.delete(:reason_code)
+    |> Map.delete(@content_key)
+    |> Map.put(@content_key, Atom.to_string(code))
   end
 
   defp stored(receipt) do

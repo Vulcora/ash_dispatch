@@ -346,20 +346,31 @@ substrings against sentences that are free to change — which is what every
 host that wanted "how much did we hold back last month, and why" ended up
 doing.
 
-Since 0.9.4 the library writes a code beside the sentence, in
-`content["reason_code"]`: one of `AshDispatch.Reason.codes/0`, with `:other`
-for a reason that came from a backend of your own, a provider's message, or a
-transport you wrote. The sentence is unchanged and still says more.
+`AshDispatch.Reason.of/1` answers it as a code, and needs nothing stored:
 
 ```elixir
 AshDispatch.Reason.of(receipt)
 #=> :user_opted_out
 ```
 
-`of/1` answers for a receipt written before 0.9.4 too, by classifying the
-sentence — the substring matching, done once, by the library that wrote the
-sentences. In SQL the code is a JSONB lookup, so there is nothing to migrate
-and nothing to backfill:
+It reads a stored code when there is one and classifies the sentence when
+there is not — the substring matching, done once, by the library that wrote
+the sentences. So every receipt answers, including every receipt written
+before 0.9.4, with no column, no backfill and no row touched. The list is
+closed on purpose: a code meaning "some other thing" is worth nothing to
+count, so a new reason gets a new code in a new release rather than being
+folded into `:other`. See `AshDispatch.Reason` for the table.
+
+To group in SQL rather than in Elixir, the code has to be on the row, which is
+a write on three actions that did not write before. So it is opt-in:
+
+```elixir
+use AshDispatch.Resources.DeliveryReceipt.Base,
+  repo: MyApp.Repo,
+  domain: MyApp.Deliveries,
+  notification_resource: MyApp.Notifications.Notification,
+  reason_codes: true
+```
 
 ```sql
 SELECT content->>'reason_code' AS reason, count(*)
@@ -368,10 +379,14 @@ WHERE status IN ('skipped', 'failed_permanent')
 GROUP BY 1 ORDER BY 2 DESC;
 ```
 
-Rows written before 0.9.4 answer `NULL` there; `of/1` still classifies them.
-The list is closed on purpose: a code meaning "some other thing" is worth
-nothing to count, so a new reason gets a new code in a new release rather
-than being folded into `:other`. See `AshDispatch.Reason` for the table.
+With the option off, `skip`, `mark_failed` and `mark_failed_permanent` are
+exactly what they were in 0.9.4-rc.5 — atomic included, so a
+`Ash.bulk_update(query, :skip, …)` of your own still runs under the default
+atomic strategy. With it on, the key is merged into the stored JSONB server
+side rather than written back from a struct, so a `ScrubSensitiveContent` pass
+landing in between is not undone; those two actions become non-atomic, which
+is the cost of the option. Storing it by default is 0.10.0 work, with a column
+of its own.
 
 ## Stranded receipts
 

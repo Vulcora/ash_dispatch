@@ -142,7 +142,12 @@ defmodule AshDispatch.ReasonTest do
     end
   end
 
-  describe "the code is written onto the receipt" do
+  describe "the code is written onto the receipt, with reason_codes: true" do
+    # `AshDispatch.Test.StrictReceipt` carries the change, standing in for a
+    # receipt resource built with `reason_codes: true`. The option is OFF by
+    # default — `test/tenancy/reason_codes_postgres_test.exs` pins both halves
+    # against a real Postgres, including that the three actions are atomic
+    # again without it.
     defp receipt!(status) do
       StrictReceipt
       |> Ash.Changeset.for_create(:create, %{

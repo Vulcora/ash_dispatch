@@ -67,6 +67,29 @@ defmodule AshDispatch.Test.PerTenant.PublicReceipt do
   end
 end
 
+defmodule AshDispatch.Test.PerTenant.ReasonCodeReceipt do
+  @moduledoc """
+  A receipt resource that opted into `reason_codes: true`, in the public
+  schema.
+
+  The option's whole point is that the code is merged into the stored jsonb
+  server side rather than written back from a struct read a moment earlier, so
+  this fixture is Postgres-backed: an ETS stand-in cannot tell the two apart.
+  """
+  use AshDispatch.Resources.DeliveryReceipt.Base,
+    repo: AshDispatch.Test.PerTenant.Repo,
+    domain: AshDispatch.Test.PerTenant.Domain,
+    notification_resource: AshDispatch.Test.PerTenant.Notification,
+    table: "pt_reason_receipts",
+    reason_codes: true
+
+  policies do
+    bypass always() do
+      authorize_if always()
+    end
+  end
+end
+
 defmodule AshDispatch.Test.PerTenant.Booking do
   @moduledoc """
   A host record that is itself per tenant, so the reads that are about the
@@ -147,6 +170,7 @@ defmodule AshDispatch.Test.PerTenant.Domain do
   resources do
     resource AshDispatch.Test.PerTenant.Receipt
     resource AshDispatch.Test.PerTenant.PublicReceipt
+    resource AshDispatch.Test.PerTenant.ReasonCodeReceipt
     resource AshDispatch.Test.PerTenant.Notification
     resource AshDispatch.Test.PerTenant.Preference
     resource AshDispatch.Test.PerTenant.Booking
@@ -364,8 +388,10 @@ defmodule AshDispatch.Test.PerTenantCase do
       AshDispatch.Test.Schema.create!(PerTenant.Repo, @per_tenant_resources, tenant)
     end
 
-    AshDispatch.Test.Schema.drop_table!(PerTenant.Repo, PerTenant.PublicReceipt)
-    AshDispatch.Test.Schema.create!(PerTenant.Repo, [PerTenant.PublicReceipt], nil)
+    for resource <- [PerTenant.PublicReceipt, PerTenant.ReasonCodeReceipt] do
+      AshDispatch.Test.Schema.drop_table!(PerTenant.Repo, resource)
+      AshDispatch.Test.Schema.create!(PerTenant.Repo, [resource], nil)
+    end
 
     Enum.each(@env, fn {key, value} -> Application.put_env(:ash_dispatch, key, value) end)
     Application.put_env(:ash_dispatch, :capture_pid, self())

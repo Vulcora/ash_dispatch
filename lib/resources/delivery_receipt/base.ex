@@ -47,6 +47,13 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
   - `:tenant_column` - `true` adds a nullable `tenant` column (since 0.9.4),
     for a host that keeps receipts in the public schema and still wants to know
     which tenant a receipt was for.
+  - `:reason_codes` - `true` makes `:skip`, `:mark_failed` and
+    `:mark_failed_permanent` merge `content["reason_code"]` into the row, so
+    the reasons a letter was held back can be counted in SQL (since 0.9.4).
+    **Off by default**: it is a write on three actions that did not write
+    before, and `AshDispatch.Reason.of/1` gives you the counting without it by
+    classifying the sentence. With it off these three actions are exactly what
+    they were in 0.9.4-rc.5, atomic included.
   - `:primary_key` - `:uuid` (the default, unchanged) or `:uuid_v7`. The v7
     key's migration default is `uuid_generate_v7()`, which your database must
     have; `:uuid` uses `gen_random_uuid()`, which is built in. See
@@ -94,6 +101,47 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
     # action in this base, which the consumer cannot edit.
     extra_notifiers = Keyword.get(opts, :notifiers, [])
     table = Keyword.get(opts, :table, "delivery_receipts")
+
+    # `reason_codes: true` makes `:skip`, `:mark_failed` and
+    # `:mark_failed_permanent` merge `content["reason_code"]` into the row, so
+    # the reasons can be counted in SQL. OFF by default: it is a write on
+    # three actions that did not write before, and `AshDispatch.Reason.of/1`
+    # gives a host the counting without it by classifying the sentence. An
+    # option here rather than application config because an action is
+    # compiled.
+    reason_codes? = Keyword.get(opts, :reason_codes, false) == true
+
+    # Spliced AST, not a list walked by a comprehension: a Spark DSL entity is
+    # added at COMPILE time, so a `for` inside the block adds nothing.
+    # The change alone, for `:mark_failed`, which has declared
+    # `require_atomic? false` since before 0.9.
+    reason_code_change =
+      if reason_codes? do
+        quote do
+          change {AshDispatch.Changes.PutReasonCode, []}
+        end
+      else
+        quote do
+        end
+      end
+
+    # And with the flag, for the two that were atomic. Only with the option
+    # ON: the change registers an after_action hook (see
+    # `AshDispatch.Changes.PutReasonCode` for why the merge cannot ride inside
+    # the action's own statement). With the option off these two stay exactly
+    # as atomic as they were in 0.9.4-rc.5, which is what a host's
+    # `Ash.bulk_update(query, :skip, …)` depends on.
+    reason_code_change_non_atomic =
+      if reason_codes? do
+        quote do
+          require_atomic? false
+          change {AshDispatch.Changes.PutReasonCode, []}
+        end
+      else
+        quote do
+        end
+      end
+
     all_extensions = [AshStateMachine] ++ extra_extensions
 
     # 0.9.4. Absent — which is every host before it — the resource declares no
@@ -587,10 +635,11 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
           accept [:error_message, :provider_response]
           change transition_state(:failed)
 
-          # `content["reason_code"]`: the closed code beside the sentence, so
-          # the reasons can be counted without matching substrings against
-          # prose this library is free to reword. See `AshDispatch.Reason`.
-          change {AshDispatch.Changes.PutReasonCode, []}
+          # `content["reason_code"]`, only with `reason_codes: true`. The
+          # change merges the one key server side rather than writing back a
+          # content map, so a scrub that lands in between is not undone. See
+          # `AshDispatch.Reason`.
+          unquote(reason_code_change)
 
           # Deliberately does NOT touch retry_count/last_retry_at: a failure
           # is not a retry. Only the :retry action increments the counter —
@@ -599,22 +648,15 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
         end
 
         update :mark_failed_permanent do
-          # Not atomic since 0.9.4: the reason code is derived from the
-          # `error_message` this action is given and merged into the existing
-          # `content`, which no single statement can express for a JSONB map
-          # on every data layer. The update itself is unchanged.
-          require_atomic? false
           accept [:error_message, :provider_response]
           change transition_state(:failed_permanent)
-          change {AshDispatch.Changes.PutReasonCode, []}
+          unquote(reason_code_change_non_atomic)
         end
 
         update :skip do
-          # Not atomic since 0.9.4 — see `:mark_failed_permanent`.
-          require_atomic? false
           accept [:error_message]
           change transition_state(:skipped)
-          change {AshDispatch.Changes.PutReasonCode, []}
+          unquote(reason_code_change_non_atomic)
         end
 
         update :batch do
