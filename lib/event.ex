@@ -407,9 +407,10 @@ defmodule AshDispatch.Event do
       end
 
   A caller's own `variables:` still wins over these. The form is recognised by
-  its keys being `:data`, or `:data` and `:variables`, and nothing else — an
-  event whose data genuinely carries a `:data` key beside others is the old
-  form and passes through untouched.
+  its keys being **exactly** `:data` and `:variables` — both of them, so write
+  `variables: %{}` when there are none. An event whose own data key happens to
+  be `:data` is then still the old form, and its record is not mistaken for a
+  wrapper.
   """
   @callback sample_data(keyword()) :: map()
 

@@ -65,23 +65,38 @@ defmodule AshDispatch.SampleVariablesTest do
       assert data == %{data: %{id: 1}, booking: %{id: 2}}
     end
 
-    test "a lone :data key whose value is a map is the NEW form" do
+    test "a lone :data key is the OLD form — both keys are required" do
+      # An event whose own data key is `:data`: a resource called `Data`, a
+      # context key somebody named that. Reading this as the wrapper unwrapped
+      # the record into the whole data map and rendered the event with
+      # nothing at all.
       defmodule LoneDataKey do
         @moduledoc false
         def sample_data(_opts), do: %{data: %{booking: %{id: 2}}}
       end
 
+      assert %{data: data, variables: %{}} = EventResolver.sample(LoneDataKey, seed: 0)
+      assert data == %{data: %{booking: %{id: 2}}}
+    end
+
+    test "both keys together is the new form" do
+      defmodule BothKeys do
+        @moduledoc false
+        def sample_data(_opts), do: %{data: %{booking: %{id: 2}}, variables: %{}}
+      end
+
       assert %{data: %{booking: %{id: 2}}, variables: %{}} =
-               EventResolver.sample(LoneDataKey, seed: 0)
+               EventResolver.sample(BothKeys, seed: 0)
     end
 
     test "a :data key whose value is not a map is the old form" do
       defmodule DataIsNotAMap do
         @moduledoc false
-        def sample_data(_opts), do: %{data: "a string"}
+        def sample_data(_opts), do: %{data: "a string", variables: %{}}
       end
 
-      assert %{data: %{data: "a string"}} = EventResolver.sample(DataIsNotAMap, seed: 0)
+      assert %{data: %{data: "a string", variables: %{}}} =
+               EventResolver.sample(DataIsNotAMap, seed: 0)
     end
 
     test "variables that are not a map or keyword list are no variables" do

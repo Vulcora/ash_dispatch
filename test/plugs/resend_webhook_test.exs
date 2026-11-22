@@ -208,6 +208,32 @@ defmodule AshDispatch.Plugs.ResendWebhookTest do
     end
   end
 
+  describe "it acts on the VERIFIED body, not on conn.params" do
+    test "a conn.params that disagrees with the signed body is ignored" do
+      # The signature covers the bytes. Acting on `conn.params` means acting
+      # on whatever the parsers merged together — and a parser earlier in the
+      # pipeline merging query-string or path params into it is ordinary
+      # Phoenix, not an attack.
+      receipt = receipt!("prov-signed")
+      body = payload("prov-signed")
+
+      conn =
+        request(body)
+        |> then(fn conn ->
+          %{conn | params: %{"type" => "email.bounced", "data" => %{"email_id" => "prov-other"}}}
+        end)
+        |> ResendWebhook.call(secret: @secret)
+
+      assert conn.status == 200
+
+      stored = Ash.get!(DeliveryReceipt, receipt.id, authorize?: false)
+
+      # The SIGNED body said opened, about this receipt.
+      assert stored.opened_at
+      refute stored.bounced_at
+    end
+  end
+
   describe "what the answers say" do
     test "never a reason — the endpoint is reachable by strangers" do
       bodies = [
@@ -234,7 +260,7 @@ defmodule AshDispatch.Plugs.ResendWebhookTest do
 
       conn =
         request(body)
-        |> then(fn conn -> %{conn | params: Map.put(conn.params, "tenant", "acme")} end)
+        |> then(fn conn -> %{conn | path_params: %{"tenant" => "acme"}} end)
         |> ResendWebhook.call(secret: @secret, tenant: {:path_param, "tenant"})
 
       # This receipt resource declares no multitenancy, so the library never
@@ -244,6 +270,79 @@ defmodule AshDispatch.Plugs.ResendWebhookTest do
       # is where a named tenant is held against `tenants:`.
       assert conn.status == 200
       assert Ash.get!(DeliveryReceipt, receipt.id, authorize?: false).opened_at
+    end
+
+    test "it is read from path_params, NOT from the body" do
+      # `conn.params` is whatever the parsers merged together, so a body key
+      # called "tenant" could otherwise name the schema to look in.
+      receipt = receipt!("prov-8b")
+
+      body =
+        Jason.encode!(%{
+          "type" => "email.opened",
+          "created_at" => "2026-11-22T09:00:00.000Z",
+          "data" => %{"email_id" => "prov-8b"},
+          "tenant" => "chosen_by_the_sender"
+        })
+
+      conn =
+        request(body)
+        |> then(fn conn -> %{conn | path_params: %{"tenant" => "acme"}} end)
+        |> ResendWebhook.call(secret: @secret, tenant: {:path_param, "tenant"})
+
+      assert conn.status == 200
+      assert Ash.get!(DeliveryReceipt, receipt.id, authorize?: false).opened_at
+    end
+
+    test "a configured path param that is missing is a 400, not a cheerful 200" do
+      # A typo'd route, a router change. Degrading to "no tenant" meant the
+      # lookup ran in the wrong schema, found nothing, and told the provider
+      # everything was fine — for ever.
+      receipt = receipt!("prov-8c")
+
+      conn =
+        ResendWebhook.call(
+          request(payload("prov-8c")),
+          secret: @secret,
+          tenant: {:path_param, "tenant"}
+        )
+
+      assert conn.status == 400
+      refute Ash.get!(DeliveryReceipt, receipt.id, authorize?: false).opened_at
+    end
+
+    test "an {m, f, a} that yields nothing is a 400 too" do
+      conn =
+        ResendWebhook.call(
+          request(payload("prov-8d")),
+          secret: @secret,
+          tenant: {__MODULE__, :no_tenant, []}
+        )
+
+      assert conn.status == 400
+    end
+
+    test "a tenant resolver that raises answers the plain 400, not a 500" do
+      conn =
+        ResendWebhook.call(
+          request(payload("prov-8e")),
+          secret: @secret,
+          tenant: {__MODULE__, :raising_tenant, []}
+        )
+
+      assert conn.status == 400
+      assert conn.resp_body == "error"
+    end
+
+    test "a secret {m, f, a} that raises answers the plain 400 as well" do
+      conn =
+        ResendWebhook.call(
+          request(payload("prov-8f")),
+          secret: {__MODULE__, :raising_secret, []}
+        )
+
+      assert conn.status == 400
+      assert conn.resp_body == "error"
     end
 
     test "no tenant option means no tenant, which is right for public receipts" do
@@ -262,10 +361,11 @@ defmodule AshDispatch.Plugs.ResendWebhookTest do
         ResendWebhook.call(
           request(payload("prov-10")),
           secret: @secret,
-          tenant: {__MODULE__, :no_tenant, []}
+          tenant: {__MODULE__, :conn_tenant, []}
         )
 
       assert conn.status == 200
+      assert_received {:tenant_asked, %Plug.Conn{}}
       assert Ash.get!(DeliveryReceipt, receipt.id, authorize?: false).opened_at
     end
 
@@ -288,4 +388,16 @@ defmodule AshDispatch.Plugs.ResendWebhookTest do
 
   @doc false
   def no_tenant(_conn), do: nil
+
+  @doc false
+  def conn_tenant(conn) do
+    send(self(), {:tenant_asked, conn})
+    "acme"
+  end
+
+  @doc false
+  def raising_tenant(_conn), do: raise("the tenant resolver is down")
+
+  @doc false
+  def raising_secret, do: raise("the vault is down")
 end

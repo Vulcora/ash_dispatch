@@ -46,10 +46,18 @@ defmodule AshDispatch.Plugs.ResendWebhook do
     - `{:path_param, "tenant"}` — a path segment, which is the recommended
       setup: `post "/webhooks/resend/:tenant"`. Needs
       `config :ash_dispatch, tenants:`, because a path segment is a value from
-      outside and with per-tenant receipts it is a Postgres schema name.
+      outside and with per-tenant receipts it is a Postgres schema name. Read
+      from `conn.path_params`, not `conn.params`, so a body key called
+      "tenant" cannot name the schema.
     - `:tag` — let the handler read the `X-AshDispatch-Tenant` tag back out of
-      the payload. Only behind this plug, never without verification.
+      the payload. Needs `config :ash_dispatch, webhook_tenant_tag: true`, or
+      no outgoing message carries the tag; `init/1` says so at boot if it is
+      missing. Only behind this plug, never without verification.
     - `{module, function, args}` — called with the conn prepended.
+
+    A **configured** source that yields nothing is a 400, not "no tenant". A
+    typo'd route would otherwise look a message id up in the wrong schema,
+    find nothing, and tell the provider everything was fine — for ever.
   - `:tolerance_s` — the replay window, in seconds. Resend's default, 300,
     unless you say otherwise.
 
@@ -77,6 +85,13 @@ defmodule AshDispatch.Plugs.ResendWebhook do
     nothing is the failure mode, not a degraded mode.
   - Verification runs **before** the payload is looked at, so an unverified
     request causes no read, no query and no tenant lookup.
+  - What is acted on is the **verified raw body**, decoded here — never
+    `conn.params`. Those came out of a parser and may have had query-string or
+    path params merged into them, and acting on a map nothing signed is the
+    class of bug this plug exists to close.
+  - An `{m, f, a}` of yours that raises — a vault that is down, a resolver
+    that fails — is the same plain **400**, not a 500 with a stacktrace out of
+    an unauthenticated route.
   """
 
   alias AshDispatch.WebhookHandlers.Resend
@@ -90,7 +105,22 @@ defmodule AshDispatch.Plugs.ResendWebhook do
 
   @doc false
   @spec init(keyword()) :: keyword()
-  def init(opts), do: opts
+  def init(opts) do
+    if Keyword.get(opts, :tenant) == :tag and not AshDispatch.Config.webhook_tenant_tag?() do
+      # Said once, at boot, where a configuration mistake belongs. Without the
+      # tag switched on the outgoing message carries no
+      # `X-AshDispatch-Tenant`, so the handler finds no tenant in the payload
+      # and every webhook looks up a message id in the wrong schema — which
+      # answers 200 and does nothing, for ever.
+      IO.warn(
+        "AshDispatch.Plugs.ResendWebhook: tenant: :tag, but " <>
+          "`config :ash_dispatch, webhook_tenant_tag: true` is not set, so no outgoing " <>
+          "message carries the tag this reads back."
+      )
+    end
+
+    opts
+  end
 
   @doc false
   @spec call(term(), keyword()) :: term()
@@ -98,7 +128,7 @@ defmodule AshDispatch.Plugs.ResendWebhook do
     with {:ok, secret} <- secret(opts),
          {:ok, raw_body, conn} <- raw_body(conn),
          :ok <- verify(raw_body, conn, secret, opts),
-         {:ok, params} <- params(conn, raw_body) do
+         {:ok, params} <- params(raw_body) do
       process(conn, params, opts)
     else
       {:error, reason} -> refuse(conn, reason)
@@ -112,6 +142,12 @@ defmodule AshDispatch.Plugs.ResendWebhook do
       secret when is_binary(secret) and secret != "" -> {:ok, secret}
       _ -> {:error, :no_secret}
     end
+  rescue
+    # An `{m, f, a}` of the host's own that raised — a vault that is down, a
+    # key that is missing. The endpoint answers its plain 400 rather than
+    # letting a 500 and a stacktrace out of an unauthenticated route, and
+    # nothing is verified against a secret nobody has.
+    error -> {:error, {:secret_raised, Exception.message(error)}}
   end
 
   defp resolve({:system, var}) when is_binary(var), do: System.get_env(var)
@@ -166,17 +202,16 @@ defmodule AshDispatch.Plugs.ResendWebhook do
 
   # ── The payload ─────────────────────────────────────────────────────
 
-  # `conn.params` when a parser has already decoded it, the raw body when it
-  # has not. Decoded AFTER verification either way: an unverified request must
-  # not reach a decoder, let alone a query.
-  defp params(conn, raw_body) do
-    case conn.params do
-      %{"type" => _, "data" => _} = params -> {:ok, params}
-      _ -> decode(raw_body)
-    end
-  end
-
-  defp decode(raw_body) do
+  # The VERIFIED raw body, always. Never `conn.params`: those came out of a
+  # parser, and what the signature covers is the bytes. The two are normally
+  # the same map — and when they are not, acting on `conn.params` means acting
+  # on something nothing signed, which is the whole class of bug this plug
+  # exists to close. (A parser earlier in the pipeline merging query-string or
+  # path params into `conn.params` is enough, and that is ordinary Phoenix.)
+  #
+  # Decoded after verification either way: an unverified request must not
+  # reach a decoder, let alone a query.
+  defp params(raw_body) do
     case Jason.decode(raw_body) do
       {:ok, %{} = params} -> {:ok, params}
       _ -> {:error, :invalid_payload}
@@ -185,25 +220,37 @@ defmodule AshDispatch.Plugs.ResendWebhook do
 
   # ── The tenant ──────────────────────────────────────────────────────
 
+  # `{:ok, opts}` or `{:error, :no_tenant}`.
+  #
+  # A CONFIGURED source that yields nothing is a refusal, not "no tenant". The
+  # first version degraded to `[]`, so a route whose `:tenant` segment was
+  # missing — a typo'd path, a router change — looked up the message id with
+  # no tenant at all and answered a cheerful 200. For a host with per-tenant
+  # receipts that is the webhook silently doing nothing, for ever, with the
+  # provider told everything is fine.
   defp tenant_opts(conn, opts) do
     case Keyword.get(opts, :tenant) do
       nil ->
-        []
+        {:ok, []}
 
       {:path_param, name} ->
-        case Map.get(conn.params || %{}, to_string(name)) do
-          value when is_binary(value) and value != "" -> [tenant: value]
-          _ -> []
+        # `path_params`, not `params`: `params` is whatever the parsers merged
+        # together, and a body key called "tenant" must not be able to name
+        # the schema. The path segment is the router's, and the router is ours.
+        case Map.get(conn.path_params || %{}, to_string(name)) do
+          value when is_binary(value) and value != "" -> {:ok, [tenant: value]}
+          _ -> {:error, {:no_tenant, {:path_param, name}}}
         end
 
       :tag ->
         # The handler reads `X-AshDispatch-Tenant` out of the payload itself.
-        []
+        {:ok, []}
 
       {module, function, args} ->
         case apply(module, function, [conn | args]) do
-          nil -> []
-          tenant -> [tenant: tenant]
+          nil -> {:error, {:no_tenant, {module, function}}}
+          "" -> {:error, {:no_tenant, {module, function}}}
+          tenant -> {:ok, [tenant: tenant]}
         end
 
       other ->
@@ -211,26 +258,49 @@ defmodule AshDispatch.Plugs.ResendWebhook do
           "[AshDispatch] ResendWebhook: tenant: #{inspect(other)} is not a source; ignored"
         )
 
-        []
+        {:ok, []}
     end
+  rescue
+    error ->
+      # A resolver of the host's own that raised. The endpoint answers its
+      # plain 400 rather than letting a 500 and a stacktrace out of an
+      # unauthenticated route.
+      {:error, {:tenant_resolver_raised, Exception.message(error)}}
   end
 
   # ── Answering ───────────────────────────────────────────────────────
 
   defp process(conn, params, opts) do
-    case Resend.process_webhook(params, tenant_opts(conn, opts)) do
-      {:ok, _receipt} ->
-        send(conn, 200, "ok")
+    with {:ok, tenant_opts} <- tenant_opts(conn, opts) do
+      case Resend.process_webhook(params, tenant_opts) do
+        {:ok, _receipt} ->
+          send(conn, 200, "ok")
 
-      # No receipt with that message id, in the tenant this request is about.
-      # Not this host's error, and a 4xx would have the provider retrying it
-      # until it gave up.
-      {:error, :not_found} ->
-        send(conn, 200, "ok")
+        # No receipt with that message id, in the tenant this request is
+        # about. Not this host's error, and a 4xx would have the provider
+        # retrying it until it gave up.
+        {:error, :not_found} ->
+          send(conn, 200, "ok")
 
-      {:error, reason} ->
-        Logger.warning("[AshDispatch] ResendWebhook: #{inspect(reason)}")
-        send(conn, 400, "error")
+        {:error, reason} ->
+          # Throttled, and the event type escaped: this is the one endpoint a
+          # stranger can reach, and `inspect/1` of a value from the payload is
+          # a way to write arbitrary text into the host's log at the level its
+          # alerting watches.
+          refuse(conn, {:rejected, reason, AshDispatch.Log.redact_text(type_of(params))})
+      end
+    else
+      {:error, reason} -> refuse(conn, reason)
+    end
+  end
+
+  # The event type, as a short, bounded string. From the payload, so it is a
+  # stranger's value even behind a verified signature: a host sharing a
+  # provider account gets its neighbour's events here.
+  defp type_of(params) do
+    case Map.get(params, "type") do
+      type when is_binary(type) -> String.slice(type, 0, 64)
+      _ -> "(none)"
     end
   end
 
@@ -246,7 +316,15 @@ defmodule AshDispatch.Plugs.ResendWebhook do
     send(conn, 400, "error")
   end
 
+  # The key must carry no value from the REQUEST, or rotating one defeats the
+  # throttle — which is the point of throttling an endpoint a stranger can
+  # reach.
   defp refusal_key({:unverified, _reason}), do: :unverified
+  defp refusal_key({:no_tenant, _source}), do: :no_tenant
+  defp refusal_key({:tenant_resolver_raised, _message}), do: :tenant_resolver_raised
+  defp refusal_key({:secret_raised, _message}), do: :secret_raised
+  defp refusal_key({:rejected, reason, _type}) when is_atom(reason), do: {:rejected, reason}
+  defp refusal_key({:rejected, _reason, _type}), do: :rejected
   defp refusal_key(reason) when is_atom(reason), do: reason
   defp refusal_key(_reason), do: :other
 

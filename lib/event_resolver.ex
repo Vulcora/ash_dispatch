@@ -197,10 +197,13 @@ defmodule AshDispatch.EventResolver do
 
   ## Telling the two forms apart
 
-  The second form is a map whose keys are `:data`, or `:data` and
-  `:variables`, and nothing else. An event whose data genuinely has a
-  `:data` key beside others is the first form and is passed through
-  untouched.
+  The second form is a map whose keys are **exactly** `:data` and
+  `:variables`. Both are required: an event whose own data key happens to be
+  `:data` — a resource called `Data`, a context key somebody named that —
+  answers a lone `%{data: record}`, and reading that as the wrapper unwrapped
+  its record into the whole data map and rendered the event with nothing. An
+  event on the new form writes `variables: %{}` when it has none, which is a
+  cheaper mistake than emptying somebody's sample data.
   """
   @spec sample(module(), keyword()) :: %{data: map(), variables: map()}
   def sample(module, opts \\ []) do
@@ -213,12 +216,18 @@ defmodule AshDispatch.EventResolver do
     end
   end
 
-  # `%{data: …}` or `%{data: …, variables: …}` and nothing else is the second
-  # form. Anything else — including a data map that happens to carry a `:data`
-  # key beside others — is the data itself.
-  defp split(%{data: data} = answer) when is_map(data) do
+  # `%{data: …, variables: …}` and NOTHING else is the second form. Both keys
+  # are required: an event whose own data key happens to be `:data` — a
+  # resource called `Data`, a context key somebody named that — answered a
+  # lone `%{data: record}` and had its record unwrapped into the whole data
+  # map, so the event rendered with no data at all.
+  #
+  # Requiring both costs an event on the new form one key it would rather
+  # leave out (`variables: %{}`), and that is a cheaper mistake than silently
+  # emptying somebody's sample data.
+  defp split(%{data: data, variables: variables} = answer) when is_map(data) do
     if Map.keys(answer) -- [:data, :variables] == [] do
-      %{data: data, variables: as_map(Map.get(answer, :variables))}
+      %{data: data, variables: as_map(variables)}
     else
       %{data: answer, variables: %{}}
     end

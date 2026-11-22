@@ -553,9 +553,14 @@ distinction.
 
 For receipts per tenant, `tenant: {:path_param, "tenant"}` with
 `post "/webhooks/resend/:tenant"`, which is the setup to prefer; `tenant: :tag`
-reads the `X-AshDispatch-Tenant` tag back out of the payload instead, and is
-only safe behind this plug. See
+reads the `X-AshDispatch-Tenant` tag back out of the payload instead (and
+needs `webhook_tenant_tag: true`, or nothing carries the tag), and is only
+safe behind this plug. See
 `AshDispatch.WebhookHandlers.Resend.process_webhook/2` for why.
+
+A configured tenant source that yields nothing is a **400**: a typo'd route
+would otherwise look the message id up in the wrong schema, find nothing, and
+tell the provider everything was fine.
 
 If you would rather wire it yourself, `verify/4` and `process_webhook/2` are
 unchanged and public:
