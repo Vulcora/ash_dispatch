@@ -386,9 +386,27 @@ is on by default and has been since 0.9.0.
 **`sending`** says the provider is being called right now. A node that goes
 down between `mark_sending` and the provider leaves the receipt there, and
 until 0.9.4 nothing looked at it: the message was lost without a trace.
-Oban's lifeline covers the case where the *job* survives — the next attempt
-reclaims the receipt (`AshDispatch.ReceiptStatus.claim/2`) and sends it — but
-not a job that was pruned, cancelled or discarded mid-send.
+
+Two different things can have gone wrong, and they have separate settings.
+
+*The job survived* — Oban's lifeline put it back. The next attempt can reclaim
+the receipt (`AshDispatch.ReceiptStatus.claim/2`) and send it. Whether it does
+is per transport, defaulting to what each worker already did:
+
+```elixir
+config :ash_dispatch,
+  email_resume_interrupted: true,    # since 0.9.2; this is that behaviour
+  sms_resume_interrupted: false,     # it used to send nothing
+  webhook_resume_interrupted: false  # it used to raise and never POST
+```
+
+Turning one on means a message the provider may already have taken can go out
+again. For the webhook worker, note also that it declares no `unique:`, so two
+jobs for one receipt are possible there in a way they are not for email and
+SMS, which both key on the receipt id.
+
+*The job is gone* — pruned, cancelled or discarded mid-send. Nothing will come
+back for it, and that is the sweep's business:
 
 What makes `sending` different is that **we do not know whether the provider
 got the message**, so resending is an at-least-once delivery and the

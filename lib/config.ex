@@ -800,6 +800,48 @@ defmodule AshDispatch.Config do
   end
 
   @doc """
+  Whether a send worker may RECLAIM a receipt its own earlier attempt left in
+  `:sending`, and send it.
+
+  Per transport, because what each worker did before 0.9.4 differs and a patch
+  may not change any of them:
+
+    * `:email` — **true**. `AshDispatch.Workers.SendEmail` has resumed an
+      interrupted attempt since 0.9.2; this is that behaviour, named.
+    * `:sms` — **false**. `SendSMS` logged "likely duplicate job" and answered
+      `:ok` without sending. Turning this on means a letter the provider may
+      already have taken goes out again.
+    * `:webhook`, `:slack`, `:discord` — **false**. `SendWebhook` raised a
+      MatchError and never POSTed. Note that this worker declares no
+      `unique:`, so a duplicate job for one receipt is possible for it in a
+      way it is not for email and SMS, which both key on `receipt_id`.
+
+      config :ash_dispatch,
+        email_resume_interrupted: true,
+        sms_resume_interrupted: false,
+        webhook_resume_interrupted: false
+
+  This is about THIS job's own earlier attempt, which Oban's lifeline puts
+  back. A job that is gone entirely is the stranded sweep's business
+  (`config :ash_dispatch, stranded_sending:`), and the two are separate
+  settings because they answer different questions.
+  """
+  @spec resume_interrupted?(atom()) :: boolean()
+  def resume_interrupted?(:email) do
+    Application.get_env(:ash_dispatch, :email_resume_interrupted, true) == true
+  end
+
+  def resume_interrupted?(:sms) do
+    Application.get_env(:ash_dispatch, :sms_resume_interrupted, false) == true
+  end
+
+  def resume_interrupted?(transport) when transport in [:webhook, :slack, :discord] do
+    Application.get_env(:ash_dispatch, :webhook_resume_interrupted, false) == true
+  end
+
+  def resume_interrupted?(_transport), do: false
+
+  @doc """
   The Oban queue a transport's send jobs run in.
 
   `:emails`, `:sms` and `:webhooks` are the defaults, and they are what the

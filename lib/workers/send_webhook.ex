@@ -80,6 +80,7 @@ defmodule AshDispatch.Workers.SendWebhook do
     Keyword.put(super(), :queue, AshDispatch.Config.transport_queue(:webhook))
   end
 
+  alias AshDispatch.Config
   alias AshDispatch.Delivery
   alias AshDispatch.ReceiptStatus
   alias AshDispatch.Transports.WebhookUrl
@@ -165,7 +166,17 @@ defmodule AshDispatch.Workers.SendWebhook do
     # attempt had left in `:sending` crashed on every attempt until the job
     # gave up, never sending. `claim/2` answers all three cases; see
     # `AshDispatch.ReceiptStatus.claim/2`.
-    case ReceiptStatus.claim(receipt, attempt: attempt) do
+    # FALSE by default: before 0.9.4 this worker raised a MatchError on a
+    # receipt it could not claim and never POSTed, so resuming by default
+    # would mean a host that upgrades and changes nothing can get a second
+    # Slack or Discord post. This worker also declares no `unique:`, unlike
+    # SendEmail and SendSMS, so two jobs for one receipt are possible here in
+    # a way they are not there. `config :ash_dispatch,
+    # webhook_resume_interrupted: true` asks for it.
+    resume? =
+      Config.resume_interrupted?(:webhook) and is_integer(attempt) and attempt > 1
+
+    case ReceiptStatus.claim(receipt, attempt: attempt, resume: resume?) do
       {:ok, claimed} ->
         if receipt.status == :sending do
           Logger.warning(

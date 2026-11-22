@@ -552,7 +552,22 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
 
         update :resume_sending do
           description "Reclaim a receipt an interrupted attempt of this job left in :sending"
+          # Not atomic, and the timestamp is FORCED, for one reason: Ash writes
+          # `updated_at` only when an attribute actually changes, and moving
+          # `:sending` to `:sending` changes nothing. Without this the age the
+          # stranded sweep reads never moves, so a receipt resumed every few
+          # minutes still looks hours stranded and gets rescued or closed
+          # underneath the attempt that is sending it.
+          require_atomic? false
           change transition_state(:sending)
+
+          change fn changeset, _context ->
+            Ash.Changeset.force_change_attribute(
+              changeset,
+              :updated_at,
+              AshDispatch.Clock.utc_now()
+            )
+          end
         end
 
         update :mark_sent do

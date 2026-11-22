@@ -85,6 +85,23 @@ defmodule AshDispatch.ReceiptStatus do
   end
 
   @doc """
+  Whether `receipt`'s resource has the `:resume_sending` action at all.
+
+  `false` for every receipt resource built before 0.9.4. Public so a host can
+  tell "this release cannot reclaim an interrupted send" from "it chose not
+  to".
+  """
+  @spec resume_supported?(struct()) :: boolean()
+  def resume_supported?(receipt) do
+    resource = receipt.__struct__
+
+    Ash.Resource.Info.resource?(resource) and
+      not is_nil(Ash.Resource.Info.action(resource, :resume_sending))
+  rescue
+    _ -> false
+  end
+
+  @doc """
   Claims a receipt for THIS delivery attempt, which is what a send worker
   wants rather than `mark_sending/1` on its own.
 
@@ -124,17 +141,41 @@ defmodule AshDispatch.ReceiptStatus do
         {:ok, updated} ->
           {:ok, updated}
 
-        # A receipt resource from before 0.9.4, or a transition the host
-        # narrowed. The receipt is already `:sending` and this attempt owns
-        # it, so deliver from the receipt as it stands — which is what 0.9.2
-        # did for email, before this decision had a name.
-        {:error, _reason} ->
+        # TWO causes, and only these two, mean "deliver from the receipt as it
+        # stands": a receipt resource from before 0.9.4, which has no
+        # `:resume_sending` action at all, and a host that narrowed the
+        # transition so `:sending` is not a source for it. In both the receipt
+        # is already `:sending` and this attempt owns it, which is what 0.9.2
+        # did for email before the decision had a name.
+        #
+        # Anything else — a validation the host added, a database that would
+        # not take the write, a tenant that could not be resolved — is a
+        # FAILURE, and answering `{:ok, receipt}` to it would send the letter
+        # with the receipt left behind saying something else. It propagates,
+        # and Oban retries without sending.
+        {:error, :unsupported} ->
           {:ok, receipt}
+
+        {:error, reason} = error ->
+          if no_transition?(reason) do
+            {:ok, receipt}
+          else
+            error
+          end
       end
     else
       claim_fresh(receipt)
     end
   end
+
+  # `AshStateMachine` reports a refused transition as this error inside an
+  # `Ash.Error.Invalid`; a host that narrowed `:resume_sending` is the case it
+  # stands for here.
+  defp no_transition?(%Ash.Error.Invalid{errors: errors}) do
+    Enum.any?(errors, &match?(%AshStateMachine.Errors.NoMatchingTransition{}, &1))
+  end
+
+  defp no_transition?(_reason), do: false
 
   defp claim_fresh(receipt) do
     case mark_sending(receipt) do
@@ -158,15 +199,6 @@ defmodule AshDispatch.ReceiptStatus do
       {:ok, resume} when is_boolean(resume) -> resume
       _ -> is_integer(Keyword.get(opts, :attempt)) and Keyword.get(opts, :attempt) > 1
     end
-  end
-
-  defp resume_supported?(receipt) do
-    resource = receipt.__struct__
-
-    Ash.Resource.Info.resource?(resource) and
-      not is_nil(Ash.Resource.Info.action(resource, :resume_sending))
-  rescue
-    _ -> false
   end
 
   @doc """

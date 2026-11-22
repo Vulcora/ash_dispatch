@@ -303,16 +303,22 @@ defmodule AshDispatch.Workers.SendEmail do
         # receipt this job's own earlier attempt left in `:sending`, gracefully.
         # `AshDispatch.ReceiptStatus.claim/2` is where that decision lives, for
         # every transport.
-        resumed? = interrupted_attempt?(receipt, attempt)
+        # TRUE by default for email: this worker has resumed an interrupted
+        # attempt since 0.9.2, and that is the behaviour being kept.
+        # `config :ash_dispatch, email_resume_interrupted: false` turns it off
+        # for a host that would rather lose the letter than risk a duplicate.
+        resumed? =
+          interrupted_attempt?(receipt, attempt) and Config.resume_interrupted?(:email)
 
-        case ReceiptStatus.claim(receipt, attempt: attempt) do
+        case ReceiptStatus.claim(receipt, attempt: attempt, resume: resumed?) do
           {:ok, receipt} ->
             if resumed? do
               # This job has run before and got as far as `:sending`, then
               # stopped without a result: the node went down, or the job was
               # killed and Oban's lifeline put it back. Nothing else is
-              # sending this receipt - the job is unique per receipt - so
-              # completing here would lose the email for good.
+              # sending this receipt - THIS worker declares
+              # `unique: [keys: [:receipt_id, :tenant]]`, which SendWebhook
+              # does not - so completing here would lose the email for good.
               Logger.warning(
                 "Receipt #{receipt.id} was left in :sending by an earlier attempt of this job, sending now"
               )

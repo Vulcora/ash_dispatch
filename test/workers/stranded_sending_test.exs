@@ -126,6 +126,27 @@ defmodule AshDispatch.Workers.StrandedSendingTest do
       assert status(StrictReceipt, receipt) == :sent
     end
 
+    test "an UNEXPECTED resume failure propagates — the letter is not sent" do
+      # Only two causes may answer `{:ok, receipt}`: no `:resume_sending`
+      # action at all, and a host that narrowed the transition. Anything else
+      # — a validation the host added, a write the database refused — is a
+      # failure, and answering `{:ok, receipt}` to it would send the letter
+      # with the receipt left saying something else.
+      receipt = receipt!(StrictReceipt, :sending)
+      broken = %{receipt | __struct__: AshDispatch.Test.RefusingReceipt}
+
+      assert {:error, _} = ReceiptStatus.claim(broken, attempt: 2)
+    end
+
+    test "a host that narrowed the transition still gets its send" do
+      # `NoMatchingTransition` is the documented second cause: the receipt is
+      # already `:sending` and this attempt owns it.
+      receipt = receipt!(AshDispatch.Test.NarrowedReceipt, :sending)
+
+      assert {:ok, claimed} = ReceiptStatus.claim(receipt, attempt: 2)
+      assert claimed.id == receipt.id
+    end
+
     test "a receipt resource without :resume_sending still resumes" do
       # Every host's receipt resource built before 0.9.4. The receipt is
       # already `:sending`, so the attempt owns it and delivers from it — which
@@ -145,6 +166,19 @@ defmodule AshDispatch.Workers.StrandedSendingTest do
 
       assert {:ok, resumed} = ReceiptStatus.resume_sending(receipt)
       assert resumed.status == :sending
+    end
+
+    test "moves updated_at, which is the age the stranded sweep reads" do
+      # The whole reason the transition re-enters the same state rather than
+      # doing nothing: without a fresh `updated_at` a resumed send looks
+      # equally stranded on the next sweep and is rescued or closed under it.
+      receipt = receipt!(StrictReceipt, :sending)
+      Process.sleep(10)
+
+      assert {:ok, resumed} = ReceiptStatus.resume_sending(receipt)
+
+      assert DateTime.compare(resumed.updated_at, receipt.updated_at) == :gt,
+             "resume_sending did not move updated_at; the sweep's age reference is stale"
     end
 
     test "refuses a receipt that is not :sending" do

@@ -141,7 +141,17 @@ defmodule AshDispatch.Workers.SendSMS do
   end
 
   defp send_with(backend, receipt, attempt) do
-    case ReceiptStatus.claim(receipt, attempt: attempt) do
+    # `resume:` explicitly, and FALSE by default for SMS: before 0.9.4 this
+    # worker logged "likely duplicate job" and answered `:ok` without sending,
+    # so resuming by default would mean a host that upgrades and changes
+    # nothing can get a second text message. `config :ash_dispatch,
+    # sms_resume_interrupted: true` asks for it.
+    resume? = Config.resume_interrupted?(:sms)
+
+    case ReceiptStatus.claim(receipt,
+           attempt: attempt,
+           resume: resume? and attempt_after?(attempt)
+         ) do
       {:ok, claimed} ->
         if receipt.status == :sending do
           Logger.warning(
@@ -169,6 +179,8 @@ defmodule AshDispatch.Workers.SendSMS do
         {:error, reason}
     end
   end
+
+  defp attempt_after?(attempt), do: is_integer(attempt) and attempt > 1
 
   # The backend owns its own receipt: it knows which failures are permanent
   # (malformed number, bad credentials) and which are worth retrying, so it
