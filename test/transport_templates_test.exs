@@ -30,7 +30,7 @@ defmodule AshDispatch.TransportTemplatesTest do
 
   @moduletag :capture_log
 
-  defp letters(event_id, opts \\ []) do
+  defp letters(event_id, opts) do
     {:ok, letters} =
       Preview.render(
         event_id,

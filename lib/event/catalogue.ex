@@ -78,7 +78,7 @@ defmodule AshDispatch.Event.Catalogue do
       end)
 
     meta =
-      Enum.reduce(@fields, normalize_keys(answer), fn field, acc ->
+      Enum.reduce(@fields, answer, fn field, acc ->
         acc |> Map.delete(field) |> Map.delete(Atom.to_string(field))
       end)
 
@@ -96,8 +96,6 @@ defmodule AshDispatch.Event.Catalogue do
   """
   @spec fields() :: [atom()]
   def fields, do: @fields
-
-  defp normalize_keys(map), do: Map.new(map, fn {key, value} -> {key, value} end)
 
   # Prose, so a value that is not a string is said as one rather than
   # dropped — an atom group or a number is somebody's intent, not a mistake.

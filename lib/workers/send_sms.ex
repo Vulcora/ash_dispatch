@@ -47,7 +47,7 @@ defmodule AshDispatch.Workers.SendSMS do
   # the channel, which `new/2` merges over this.
   @impl Oban.Worker
   def __opts__ do
-    Keyword.put(super(), :queue, AshDispatch.Config.transport_queue(:sms))
+    Keyword.put(super(), :queue, AshDispatch.Transport.Queue.for_transport(:sms))
   end
 
   alias AshDispatch.Config

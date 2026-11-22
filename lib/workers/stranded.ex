@@ -34,6 +34,17 @@ defmodule AshDispatch.Workers.Stranded do
   app that genuinely wants old mail delivered can raise it; the default
   refuses to make that choice on someone's behalf.
 
+      config :ash_dispatch,
+        # Younger than this is working, not stranded. Default 30.
+        stranded_stuck_after_minutes: 30,
+
+        # Older than this is closed rather than delivered late. Default 24.
+        stranded_stale_after_hours: 24
+
+  The grace period wins over a ceiling set below it, so a contradictory
+  configuration leaves a receipt alone rather than closing one that is still
+  in flight.
+
   ## `:sending`, and why it is a setting (0.9.4)
 
   `:sending` was the same dead end, one step further along. A node that goes
@@ -134,28 +145,73 @@ defmodule AshDispatch.Workers.Stranded do
   @spec sending_action(DateTime.t() | NaiveDateTime.t(), sending_mode(), keyword()) :: action()
   def sending_action(age_reference, mode \\ nil, opts \\ []) do
     case mode || sending_mode() do
-      :ignore ->
-        :leave
-
       mode when mode in [:close, :rescue] ->
         case action(age_reference, opts) do
           # Not stranded yet, whatever the mode: a live send is not a loss.
-          :leave -> :leave
+          :leave ->
+            :leave
+
           # Past the staleness ceiling closes under both modes; `:close` also
           # closes everything past the grace period, because a resend is the
           # one thing it is there to avoid.
-          :close -> :close
-          :rescue -> if mode == :close, do: :close, else: :rescue
+          :close ->
+            :close
+
+          :rescue ->
+            cond do
+              mode == :close -> :close
+              # `:rescue` hands a receipt to the retry machinery — which only
+              # looks at receipts with retries LEFT. A receipt whose budget is
+              # spent would sit in `:failed` and be swept back here next pass,
+              # for ever, with the books saying "will be retried". Closed
+              # instead, which is what it is.
+              retries_spent?(opts) -> :close
+              true -> :rescue
+            end
         end
 
-      other ->
-        Logger.warning(
-          "AshDispatch: config :ash_dispatch, stranded_sending: #{inspect(other)} is not " <>
-            ":ignore, :close or :rescue — treated as :ignore"
-        )
+      :ignore ->
+        :leave
 
+      other ->
+        # Not treated as anything. `:ignore` would be the quiet reading, and a
+        # typo in a setting about losing letters should not be read quietly —
+        # but it is once per SWEEP rather than per receipt, so a hundred
+        # stranded receipts are one line.
+        warn_once(other)
         :leave
     end
+  end
+
+  defp retries_spent?(opts) do
+    case {Keyword.get(opts, :retry_count), Keyword.get(opts, :max_retries)} do
+      {count, max} when is_integer(count) and is_integer(max) -> count >= max
+      _ -> false
+    end
+  end
+
+  @doc false
+  # The invalid-mode warning, once per sweep. The sweep calls `forget_warning/0`
+  # before it starts, so a host that fixes the setting sees the line stop and a
+  # host that does not sees one line a pass.
+  @spec forget_warning() :: :ok
+  def forget_warning do
+    Process.delete({__MODULE__, :warned})
+    :ok
+  end
+
+  defp warn_once(value) do
+    unless Process.get({__MODULE__, :warned}) do
+      Process.put({__MODULE__, :warned}, true)
+
+      Logger.warning(
+        "AshDispatch: config :ash_dispatch, stranded_sending: #{inspect(value)} is not " <>
+          ":ignore, :close or :rescue. Nothing in :sending is swept. See " <>
+          "AshDispatch.Workers.Stranded."
+      )
+    end
+
+    :ok
   end
 
   @doc """

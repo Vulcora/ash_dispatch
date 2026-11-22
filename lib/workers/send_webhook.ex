@@ -77,7 +77,7 @@ defmodule AshDispatch.Workers.SendWebhook do
   # the channel, which `new/2` merges over this.
   @impl Oban.Worker
   def __opts__ do
-    Keyword.put(super(), :queue, AshDispatch.Config.transport_queue(:webhook))
+    Keyword.put(super(), :queue, AshDispatch.Transport.Queue.for_transport(:webhook))
   end
 
   alias AshDispatch.Config

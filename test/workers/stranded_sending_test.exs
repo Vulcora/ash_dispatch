@@ -223,8 +223,41 @@ defmodule AshDispatch.Workers.StrandedSendingTest do
       assert sending_fate(48 * 3600, :rescue) == :close
     end
 
-    test "an unknown mode is treated as :ignore rather than guessed at" do
+    test "an unknown mode sweeps nothing, and says so once per sweep" do
+      Stranded.forget_warning()
+
       assert sending_fate(48 * 3600, :resend_everything) == :leave
+
+      # Once per sweep, not once per receipt: a hundred stranded receipts are
+      # one line, and a host that does not fix it sees one line a pass.
+      log = ExUnit.CaptureLog.capture_log(fn -> sending_fate(48 * 3600, :nonsense) end)
+      refute log =~ "stranded_sending"
+
+      Stranded.forget_warning()
+      log = ExUnit.CaptureLog.capture_log(fn -> sending_fate(48 * 3600, :nonsense) end)
+      assert log =~ "stranded_sending"
+    end
+
+    test ":rescue closes a receipt whose retry budget is spent" do
+      # `:rescue` hands a receipt to machinery that only looks at receipts
+      # with retries LEFT. One whose budget is spent would sit in `:failed`
+      # and be swept back here every pass, for ever, with the books saying it
+      # will be retried.
+      opts = [now: @now, retry_count: 5, max_retries: 5]
+
+      assert Stranded.sending_action(DateTime.add(@now, -3 * 3600, :second), :rescue, opts) ==
+               :close
+    end
+
+    test "and hands over one that still has retries" do
+      opts = [now: @now, retry_count: 2, max_retries: 5]
+
+      assert Stranded.sending_action(DateTime.add(@now, -3 * 3600, :second), :rescue, opts) ==
+               :rescue
+    end
+
+    test "a budget nobody mentioned is not treated as spent" do
+      assert sending_fate(3 * 3600, :rescue) == :rescue
     end
 
     test "the close reason says the outcome is unknown, not that it failed" do

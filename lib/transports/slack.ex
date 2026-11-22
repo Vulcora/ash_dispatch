@@ -4,6 +4,21 @@ defmodule AshDispatch.Transports.Slack do
   @moduledoc """
   Slack webhook transport.
 
+  ## The body is sent as written
+
+  A Slack message body is **not escaped** by this library, and neither is a
+  Discord one. That is deliberate: both are markdown-ish formats where
+  escaping would turn a deliberate `*bold*` into literal asterisks, and the
+  body is normally an event's own sentence. It does mean the body is whatever
+  went into it — a record's field, a customer's own name — so an event
+  rendering untrusted text into a Slack body should expect that text to be
+  read as formatting.
+
+  Slack does not expand `@channel` from an incoming webhook's plain `text`
+  without `link_names`, which this library never sets, so there is no mention
+  default to state here. The Discord transport has one; see
+  `AshDispatch.Transports.Discord`.
+
   Sends messages to Slack channels via webhooks (async via Oban).
 
   ## Configuration

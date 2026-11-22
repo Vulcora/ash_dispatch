@@ -55,6 +55,15 @@ defmodule AshDispatch.TemplateResolver do
   A channel that names no layout gets the default one, which is what every
   channel got before 0.9.4.
 
+  > #### Compiled templates have no layout {: .info}
+  >
+  > The legacy `__compiled_templates__/0` path (a module that compiled its
+  > templates into itself) has never wrapped anything in a layout: it is
+  > called without the OTP app, and `priv/ash_dispatch/layouts/` is found
+  > through that. `layout:` is therefore ignored there — before 0.9.4 as much
+  > as after, since the default layout was not applied either. Everything else
+  > — files, and the `priv/` manifest a release uses — wraps as described.
+
   ## Compilation Strategy
 
   **Development:** Templates are loaded from files for fast iteration.
@@ -389,7 +398,13 @@ defmodule AshDispatch.TemplateResolver do
     end
   end
 
-  # Render from compiled templates (production)
+  # Render from compiled templates (legacy, deprecated).
+  #
+  # No `otp_app` and no `transport` reach `render_template_content/4` here, so
+  # `wrap_in_layout/6` is never called: this path has never applied a layout,
+  # default or named. `layout:` is accordingly not threaded in — passing it
+  # would read as support for something that does not happen. The moduledoc
+  # says so.
   defp render_from_compiled(event_module, transport, variant, locale, format, assigns, fallback?) do
     templates = event_module.__compiled_templates__()
 

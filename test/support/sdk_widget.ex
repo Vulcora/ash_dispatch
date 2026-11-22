@@ -128,8 +128,10 @@ defmodule AshDispatch.Test.SdkOneEvent.Event do
   @moduledoc false
   use AshDispatch.Event
 
+  # `id/0` is the callback; `event_id/0` is not one, and the `@impl true` on it
+  # was the only warning this suite printed.
   @impl true
-  def event_id, do: "sdk_tickets.opened"
+  def id, do: "sdk_tickets.opened"
 end
 
 defmodule AshDispatch.Test.SdkOneEvent.Ticket do

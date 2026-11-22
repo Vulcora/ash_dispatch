@@ -6,6 +6,25 @@ defmodule AshDispatch.Transports.Discord do
 
   Sends messages to Discord channels via webhooks (async via Oban).
 
+  ## The body is sent as written
+
+  A Discord message body is **not escaped** by this library, and neither is a
+  Slack one. That is deliberate: both are markdown-ish formats where escaping
+  would turn a deliberate `*bold*` into literal asterisks, and the body is
+  normally an event's own sentence. It does mean the body is whatever went
+  into it — a record's field, a customer's own name — so an event rendering
+  untrusted text into a Discord or Slack body should expect that text to be
+  read as formatting.
+
+  Mentions are the one case where that is not merely cosmetic, so they are
+  **off by default**: every payload carries
+  `allowed_mentions: %{"parse" => []}` unless the event sets
+  `discord_allowed_mentions` itself. Discord's own default is to parse every
+  mention in the text, which means an `@everyone` in a company name pings a
+  whole server. An event that genuinely wants to ping says so:
+
+      content: [discord_allowed_mentions: %{"parse" => ["users"]}]
+
   ## Configuration
 
   Requires `webhook_url` in channel metadata or via callback:
@@ -180,10 +199,24 @@ defmodule AshDispatch.Transports.Discord do
   defp put_tenant(args, tenant),
     do: Map.put(args, "tenant", AshDispatch.Tenancy.receipt_prefix(tenant))
 
+  @doc false
+  # Public-but-undocumented so the mention default can be tested directly:
+  # it is the one thing in this payload that is a safety decision rather than
+  # a shape.
+  def build_payload(content, context), do: build_discord_payload(content, context)
+
   defp build_discord_payload(content, _context) when is_map(content) do
-    # Base payload with content
+    # Base payload with content.
+    #
+    # `allowed_mentions: %{parse: []}` unless the event says otherwise: a
+    # message body carries whatever a record held, and `@everyone` in a
+    # customer's company name pings a whole server. Discord's default is to
+    # parse every mention in the text, so the safe answer has to be stated.
+    # An event that wants to ping says so with
+    # `content: [discord_allowed_mentions: %{"parse" => ["users"]}]`.
     payload = %{
-      "content" => get_content(content, :notification_message)
+      "content" => get_content(content, :notification_message),
+      "allowed_mentions" => get_content(content, :discord_allowed_mentions) || %{"parse" => []}
     }
 
     # Add embed if provided
@@ -212,6 +245,6 @@ defmodule AshDispatch.Transports.Discord do
 
   defp build_discord_payload(_content, _context) do
     # Fallback for non-map content
-    %{"content" => "Notification"}
+    %{"content" => "Notification", "allowed_mentions" => %{"parse" => []}}
   end
 end

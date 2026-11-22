@@ -224,6 +224,10 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
     stale_after = get_config(:stranded_stale_after_hours, Stranded.default_stale_after_hours())
     opts = [stuck_after_minutes: stuck_after, stale_after_hours: stale_after]
 
+    # Once per sweep, not once per receipt: a misspelled `stranded_sending:`
+    # should say so on every pass and not a hundred times on one.
+    Stranded.forget_warning()
+
     sweep_status(:scheduled, tenant, opts)
 
     # `:sending` is a separate pass and a separate query, because what it means
@@ -286,8 +290,23 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
 
     decision =
       case status do
-        :scheduled -> Stranded.action(reference, opts)
-        :sending -> Stranded.sending_action(reference, nil, opts)
+        :scheduled ->
+          Stranded.action(reference, opts)
+
+        :sending ->
+          # The receipt's own budget goes with it: `:rescue` hands a receipt to
+          # machinery that only looks at receipts with retries LEFT, so one
+          # whose budget is spent is closed rather than parked in `:failed`
+          # for ever.
+          Stranded.sending_action(
+            reference,
+            nil,
+            opts ++
+              [
+                retry_count: Map.get(receipt, :retry_count) || 0,
+                max_retries: get_config(:max_retries, @default_max_retries)
+              ]
+          )
       end
 
     case decision do

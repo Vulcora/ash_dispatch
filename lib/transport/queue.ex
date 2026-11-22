@@ -68,10 +68,22 @@ defmodule AshDispatch.Transport.Queue do
   The queue `transport`'s jobs run in, channel overrides aside.
 
   `AshDispatch.Config.transport_queue/1` is where the names live; this is the
-  same answer, for a host that wants to print it.
+  same answer, plus the same check the channel path gets — a queue Oban is not
+  running is warned about once per boot here too. A misspelled
+  `email_queue:` is otherwise every email silently never picked up, which is
+  the worse of the two mistakes this module can catch.
   """
   @spec for_transport(atom()) :: atom() | nil
-  def for_transport(transport), do: Config.transport_queue(transport)
+  def for_transport(transport) do
+    case Config.transport_queue(transport) do
+      nil ->
+        nil
+
+      queue ->
+        warn_unless_running(queue)
+        queue
+    end
+  end
 
   @doc false
   # Test hook: makes the missing-queue warning fire again.
