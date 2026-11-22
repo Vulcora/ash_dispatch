@@ -116,7 +116,9 @@ defmodule AshDispatch.Transports.Discord do
   defp do_deliver(receipt, context, channel) do
     case job_args(receipt, context, channel) do
       {:ok, job_args} ->
-        case SendWebhook.new(job_args) |> Oban.insert() do
+        case job_args
+             |> SendWebhook.new(AshDispatch.Transport.Queue.opts(channel))
+             |> Oban.insert() do
           {:ok, _job} ->
             # Mark receipt as scheduled, in its own tenant
             updated_receipt = AshDispatch.ReceiptStatus.mark_scheduled(receipt)

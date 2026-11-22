@@ -234,6 +234,19 @@ defmodule AshDispatch.Dsl.Sections do
           the name becomes a directory.
           """
         ],
+        queue: [
+          type: :atom,
+          required: false,
+          doc: """
+          Which Oban queue this channel's send job runs in, instead of the
+          transport's (`config :ash_dispatch, email_queue:` and friends). For
+          a campaign that must not starve the booking confirmations behind it.
+
+          The queue has to exist in your Oban configuration — a name nothing
+          runs means jobs that are never picked up. The library logs once per
+          boot when it enqueues into a queue Oban is not running.
+          """
+        ],
         webhook_url: [
           type: :string,
           required: false,

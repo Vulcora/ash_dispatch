@@ -71,6 +71,15 @@ defmodule AshDispatch.Workers.SendWebhook do
     queue: :webhooks,
     max_attempts: 5
 
+  # The queue is read at runtime rather than baked in by `use Oban.Worker`, so
+  # a host can put this transport's sends on a queue of its own without a fork
+  # — and so a campaign's channel can name a third queue through `queue:` on
+  # the channel, which `new/2` merges over this.
+  @impl Oban.Worker
+  def __opts__ do
+    Keyword.put(super(), :queue, AshDispatch.Config.transport_queue(:webhook))
+  end
+
   alias AshDispatch.Delivery
   alias AshDispatch.ReceiptStatus
   alias AshDispatch.Transports.WebhookUrl

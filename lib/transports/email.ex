@@ -119,9 +119,14 @@ defmodule AshDispatch.Transports.Email do
     # Calculate schedule time
     schedule_in = schedule_seconds(channel)
 
-    # Enqueue Oban job
+    # Enqueue Oban job. The channel's own `queue:` wins over the transport's
+    # configured one (`AshDispatch.Transport.Queue`); without one the list is
+    # empty and the worker's `__opts__` decides, as it always has.
     job_changeset =
-      AshDispatch.Workers.SendEmail.new(args, schedule_in: schedule_in)
+      AshDispatch.Workers.SendEmail.new(
+        args,
+        [schedule_in: schedule_in] ++ AshDispatch.Transport.Queue.opts(channel)
+      )
 
     case Oban.insert(job_changeset) do
       {:ok, job} ->

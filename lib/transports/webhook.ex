@@ -141,7 +141,9 @@ defmodule AshDispatch.Transports.Webhook do
     # `NoMatchingTransition` in the middle of a successful delivery.
     scheduled = AshDispatch.ReceiptStatus.mark_scheduled(receipt)
 
-    case job_args |> SendWebhook.new() |> Oban.insert() do
+    case job_args
+         |> SendWebhook.new(AshDispatch.Transport.Queue.opts(channel))
+         |> Oban.insert() do
       {:ok, _job} ->
         Logger.info("Webhook job enqueued for receipt #{receipt.id}")
         # Re-read: if the job has already run (inline, or a fast worker),

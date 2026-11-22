@@ -800,6 +800,37 @@ defmodule AshDispatch.Config do
   end
 
   @doc """
+  The Oban queue a transport's send jobs run in.
+
+  `:emails`, `:sms` and `:webhooks` are the defaults, and they are what the
+  three workers were hard-bound to before 0.9.4. An installation that sends
+  two thousand letters in a campaign starved every booking confirmation behind
+  them for minutes, with no way to separate the two short of a second send
+  path of its own — one host wrote three hundred lines for exactly that.
+
+      config :ash_dispatch,
+        email_queue: :emails,
+        sms_queue: :sms,
+        webhook_queue: :webhooks
+
+  A `queue:` on the channel wins over this, per channel, so the campaign's
+  own channel can name `:bulk_emails` while every other email channel stays
+  where it was.
+
+  `:slack`, `:discord` and `:webhook` all run in the webhook queue, because
+  they all run in `AshDispatch.Workers.SendWebhook`.
+  """
+  @spec transport_queue(atom()) :: atom()
+  def transport_queue(:email), do: Application.get_env(:ash_dispatch, :email_queue, :emails)
+  def transport_queue(:sms), do: Application.get_env(:ash_dispatch, :sms_queue, :sms)
+
+  def transport_queue(transport) when transport in [:webhook, :slack, :discord] do
+    Application.get_env(:ash_dispatch, :webhook_queue, :webhooks)
+  end
+
+  def transport_queue(_transport), do: nil
+
+  @doc """
   The module that renders a digest (`AshDispatch.DigestRenderer`). Defaults to
   `AshDispatch.DigestRenderer.Default`, a plain English list.
 

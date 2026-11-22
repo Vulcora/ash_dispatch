@@ -10,6 +10,8 @@ defmodule AshDispatch.Channel do
   - **Variant** - Template variant (e.g., :admin for admin-specific templates)
   - **Layout** - Which layout wraps the rendered body (`layout`, or
     `layout_from` to read it off the record)
+  - **Queue** - Which Oban queue this channel's send job runs in, instead of
+    the transport's
 
   ## Layout
 
@@ -92,6 +94,7 @@ defmodule AshDispatch.Channel do
           locales: [String.t()],
           layout: layout(),
           layout_from: atom() | nil,
+          queue: atom() | nil,
           webhook_url: String.t() | nil,
           content: map(),
           metadata: map(),
@@ -112,6 +115,7 @@ defmodule AshDispatch.Channel do
     :locale_from,
     :layout,
     :layout_from,
+    :queue,
     :webhook_url,
     :deduplicate_group,
     :idempotency_source,

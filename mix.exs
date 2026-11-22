@@ -166,6 +166,7 @@ defmodule AshDispatch.MixProject do
           AshDispatch.EmailBackend.Swoosh
         ],
         Workers: [
+          AshDispatch.Transport.Queue,
           AshDispatch.Workers.SendEmail,
           AshDispatch.Workers.SendWebhook,
           AshDispatch.Workers.RetryFailedDeliveries,
