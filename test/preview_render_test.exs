@@ -33,7 +33,8 @@ defmodule AshDispatch.PreviewRenderTest do
                "booking.broken",
                "booking.confirmed",
                "booking.minted",
-               "booking.reminder"
+               "booking.reminder",
+               "booking.texted"
              ]
     end
   end

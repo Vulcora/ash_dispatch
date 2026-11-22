@@ -115,11 +115,14 @@ defmodule AshDispatch.ReasonTest do
     end
 
     test "a stored code outside the list is :other, never a new atom" do
-      before = :erlang.system_info(:atom_count)
+      assert Reason.of(%{content: %{"reason_code" => "invented_by_a_host_and_never_an_atom"}}) ==
+               :other
 
-      assert Reason.of(%{content: %{"reason_code" => "invented_by_a_host"}}) == :other
-
-      assert :erlang.system_info(:atom_count) == before
+      # The value came back through JSONB and must never reach
+      # `String.to_atom/1`: the closed list is the whole point.
+      assert_raise ArgumentError, fn ->
+        :erlang.binary_to_existing_atom("invented_by_a_host_and_never_an_atom", :utf8)
+      end
     end
 
     test "falls back on the sentence — which is how a pre-0.9.4 receipt answers" do

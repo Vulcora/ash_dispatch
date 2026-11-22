@@ -136,8 +136,15 @@ lib/my_app/accounts/events/password_reset/
 ├── event.ex                     # Event module
 └── templates/
     ├── email.html.heex         # HTML email template
-    └── email.text.eex          # Plain text email template
+    ├── email.text.eex          # Plain text email template
+    └── sms.text.eex            # The SMS body (since 0.9.4)
 ```
+
+The filename names the transport, so `sms.text.eex`, `slack.text.eex`,
+`in_app.text.eex` and `webhook.text.eex` are templates too. Write one and
+that channel's body comes from it; write none and it comes from
+`notification_message/2`, exactly as before. A body declared in the DSL
+(`content: [message: "…"]`) still wins over both.
 
 **Example HTML template:**
 

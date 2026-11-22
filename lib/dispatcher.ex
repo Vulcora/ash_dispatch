@@ -1435,6 +1435,11 @@ defmodule AshDispatch.Dispatcher do
     content_config = Map.merge(event_content, channel_content)
     metadata_config = Map.merge(event_metadata, channel_metadata)
 
+    # The body from a template file, for a transport that is not email. `nil`
+    # for email (which renders its own, below), for the bodyless transports,
+    # and for every installation that has not written one.
+    transport_body = render_transport_body(context, channel, event_config, nil, recipient)
+
     base_content = %{
       transport: channel.transport,
       audience: channel.audience
@@ -1465,6 +1470,7 @@ defmodule AshDispatch.Dispatcher do
 
           # Add optional fields only if they have values (to not overwrite module callbacks in hybrid mode)
           base
+          |> maybe_put(:message, transport_body)
           |> maybe_put(
             :title,
             interpolate(content_config[:title] || content_config[:notification_title], context)
@@ -1483,7 +1489,12 @@ defmodule AshDispatch.Dispatcher do
           # `maybe_put` rather than a literal key: `interpolate(nil, _)`
           # returns `nil`, and a `%{message: nil}` would overwrite the module
           # callback's text with nothing in hybrid mode. See `:webhook` below.
+          #
+          # The template file first, then the declared body over it: a
+          # `content: [message: ...]` written right here is more specific than
+          # a file, and a host with both keeps exactly what it has today.
           %{}
+          |> maybe_put(:message, transport_body)
           |> maybe_put(
             :message,
             interpolate(
@@ -1498,6 +1509,7 @@ defmodule AshDispatch.Dispatcher do
           # returns `nil`, and a `%{message: nil}` would overwrite the module
           # callback's text with nothing in hybrid mode. See `:webhook` below.
           %{}
+          |> maybe_put(:message, transport_body)
           |> maybe_put(
             :message,
             interpolate(
@@ -1510,6 +1522,7 @@ defmodule AshDispatch.Dispatcher do
         :sms ->
           # See `:discord` above for why `maybe_put`.
           %{}
+          |> maybe_put(:message, transport_body)
           |> maybe_put(
             :message,
             interpolate(
@@ -1553,6 +1566,7 @@ defmodule AshDispatch.Dispatcher do
           # surface that renders it is a key that only looks like it does
           # something.
           %{}
+          |> maybe_put(:message, transport_body)
           |> maybe_put(
             :title,
             interpolate(content_config[:title] || content_config[:notification_title], context)
@@ -1574,6 +1588,7 @@ defmodule AshDispatch.Dispatcher do
           # encrypted payloads off around 4 KB, and everything else can be
           # fetched once the user has tapped.
           %{}
+          |> maybe_put(:message, transport_body)
           |> maybe_put(
             :title,
             interpolate(content_config[:title] || content_config[:notification_title], context)
@@ -1595,11 +1610,113 @@ defmodule AshDispatch.Dispatcher do
         # still delivers; its backend typically reads receipt.content or the
         # context itself.
         _ ->
-          %{}
+          # A transport registered without a branch here still gets its
+          # template, if the host wrote one.
+          %{} |> maybe_put(:message, transport_body)
       end
 
     Map.merge(base_content, transport_content)
   end
+
+  # Transports with no body of their own: `:broadcast` reaches a PubSub topic
+  # and `:oban` a queue, neither of which renders anything for a person.
+  @bodyless_transports [:broadcast, :oban]
+
+  # The body for a transport that is not email, from a template file where the
+  # host wrote one (`sms.text.eex`, `slack.text.eex`, …).
+  #
+  # The resolver has always built its candidates as `#{transport}.#{extension}`
+  # and could therefore always have found these; the dispatcher only ever
+  # called it with `transport: :email`, so a host with an `sms.text.eex` had a
+  # file that rendered nothing and no way to tell. Several did.
+  #
+  # `nil` when no template exists, which is every installation that has not
+  # written one — and `nil` through `maybe_put/3` leaves whatever the content
+  # callbacks said, so nothing moves for them.
+  defp render_transport_body(
+         _context,
+         %{transport: transport},
+         _event_config,
+         _module,
+         _recipient
+       )
+       when transport in [:email | @bodyless_transports] do
+    nil
+  end
+
+  defp render_transport_body(context, channel, event_config, module, recipient) do
+    locale = resolve_channel_locale(channel, context, recipient)
+    layout = resolve_channel_layout(channel, context)
+    variant = channel.variant || variant_for(module, context, channel)
+
+    assigns =
+      case module do
+        nil ->
+          Context.template_assigns(context)
+
+        module ->
+          module
+          |> safe_prepare_template_assigns(context, channel)
+          |> Map.merge(Context.template_assigns(context))
+      end
+
+    located =
+      case module do
+        nil ->
+          otp_app = get_otp_app(context)
+
+          [
+            template_path: event_config[:template_path],
+            event_id: context.event_id,
+            otp_app: otp_app,
+            domain: event_config[:domain],
+            resource_name: event_config[:resource_name]
+          ]
+
+        module ->
+          otp_app = derive_otp_app_from_event_id(context.event_id)
+
+          [
+            event_module: module,
+            event_dir: derive_event_dir_from_module(module, otp_app),
+            otp_app: otp_app
+          ]
+      end
+
+    case AshDispatch.TemplateResolver.render(
+           located ++
+             [
+               format: :text,
+               transport: channel.transport,
+               variant: variant,
+               locale: locale,
+               layout: layout,
+               assigns: assigns
+             ]
+         ) do
+      {:ok, rendered} ->
+        rendered
+
+      {:error, :template_not_found} ->
+        nil
+
+      # strict_templates: a refused template is not "no body".
+      {:error, %AshDispatch.TemplateError{} = error} ->
+        raise error
+
+      {:error, error} ->
+        Logger.warning(
+          "Failed to render #{channel.transport} template for #{context.event_id}: #{inspect(error)}"
+        )
+
+        nil
+    end
+  end
+
+  defp variant_for(nil, _context, _channel), do: nil
+
+  defp variant_for(module, context, channel),
+    do: EventResolver.template_variant(module, context, channel)
 
   # Render email templates for inline DSL events
   defp render_inline_email_templates(context, channel, event_config, recipient) do
@@ -1917,6 +2034,12 @@ defmodule AshDispatch.Dispatcher do
             action_label: module.action_label(context, channel),
             notification_type: get_notification_type(module, context)
           }
+          # A template file beats the callback, exactly as `email.text.eex`
+          # beats `body_text/2`. `nil` without one, so the callback stands.
+          |> maybe_put(
+            :message,
+            render_transport_body(context, channel, nil, module, recipient)
+          )
 
         :webhook ->
           # The same keys as `:in_app`, and for the same reason: the receiver
@@ -1933,12 +2056,21 @@ defmodule AshDispatch.Dispatcher do
             action_url: module.action_url(context, channel),
             action_label: module.action_label(context, channel)
           }
+          |> maybe_put(
+            :message,
+            render_transport_body(context, channel, nil, module, recipient)
+          )
 
         _ ->
-          # For other transports, use basic message
+          # For other transports, use basic message — or the transport's own
+          # template, where the host wrote one.
           %{
             message: module.notification_message(context, channel)
           }
+          |> maybe_put(
+            :message,
+            render_transport_body(context, channel, nil, module, recipient)
+          )
       end
 
     # `extra_content/2` — the module's own keys, for whatever the receiver can

@@ -75,6 +75,32 @@ defmodule AshDispatch.TemplateResolver do
   3. **Generic fallback:** `default.html.heex` (if exists)
   4. **Error:** `:template_not_found`
 
+  ## Transports other than email
+
+  The candidates are built from the transport, so `sms.text.eex`,
+  `slack.text.eex`, `in_app.text.eex` and `webhook.text.eex` have always been
+  findable here. Until 0.9.4 the dispatcher only ever asked for
+  `transport: :email`, so a host that wrote one had a file that rendered
+  nothing — and no way to tell.
+
+  Now a non-email channel's body comes from its template where one exists, and
+  from the content callbacks where none does. The order, highest first:
+
+  1. a body declared on the channel or the event (`content: [message: …]`) —
+     written right there, and more specific than a file;
+  2. the transport's template file;
+  3. `notification_message/2` on the event module.
+
+  Text only: `message` is the body for these transports, and there is nowhere
+  for a second rendered format to go. `:broadcast` and `:oban` are never
+  rendered — they reach a topic and a queue, not a person.
+
+  An installation that has written no such template sees no difference. One
+  that has an `sms.text.eex` *and* a declared `message:` keeps the declared
+  one. One that has an `sms.text.eex` and relies on `notification_message/2`
+  starts getting the template — which is the fix, and the presence of the file
+  is what asks for it.
+
   ## Template Formats
 
   - **HEEx** (`.html.heex`) - HTML templates with HEEx attribute syntax
