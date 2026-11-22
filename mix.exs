@@ -200,6 +200,7 @@ defmodule AshDispatch.MixProject do
         ],
         Testing: [
           AshDispatch.Test,
+          AshDispatch.Sample,
           AshDispatch.Doctor,
           AshDispatch.Doctor.Error
         ]

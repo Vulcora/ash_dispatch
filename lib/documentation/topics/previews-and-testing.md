@@ -157,6 +157,42 @@ end
 `sample_data/1` falls back on `sample_data/0`, so events that only define
 that keep working — and data they draw from `:rand` is reproducible anyway.
 
+### Building the sample
+
+`sample_data/0` has to answer a struct, and there are only two ways to get
+one: read a real record — which a preview must not, and which an empty
+database cannot — or build one. `AshDispatch.Sample` builds it, from the
+resource's own attributes and relationships, with no read and no write:
+
+```elixir
+@impl true
+def sample_data(seed: seed) do
+  AshDispatch.Sample.with_seed(seed, fn ->
+    %{
+      booking: AshDispatch.Sample.build(MyApp.Bookings.Booking,
+        attrs: %{
+          reference: "B-#{:rand.uniform(9999)}",
+          starts_at: AshDispatch.Sample.at(days: 3, time: ~T[14:00:00])
+        },
+        depth: 1
+      )
+    }
+  end)
+end
+```
+
+- `with_seed/2` seeds the process's `:rand` and gives the caller's state back,
+  so the same seed draws the same letter and nothing outside is left
+  predictable.
+- `build/2` fills every attribute with a type-appropriate value, the primary
+  key with a seeded uuid, and every relationship with something renderable —
+  `[]` for a to-many, `nil` for a to-one, never `%Ash.NotLoaded{}`, which is
+  the value a template crashes on. `depth: 1` builds the to-one relationships
+  as structs, for a template reaching `@booking.guest.name`.
+- `anchor/1`, `at/1` and `date/1` are today on the configured clock, rounded
+  down. A hard-coded date in sample data is wrong from the week it is written;
+  these roll with the calendar and freeze when the clock does.
+
 ### Sample variables
 
 A preview never runs `generate_send_variables/2`, so a letter whose template

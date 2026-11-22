@@ -758,20 +758,8 @@ defmodule AshDispatch.Preview do
   end
 
   # Seeds the process's `:rand` for `fun`, and puts the previous state back —
-  # a preview must not leave a caller's random numbers predictable.
-  defp with_seed(nil, fun), do: fun.()
-
-  defp with_seed(seed, fun) do
-    previous = :rand.export_seed()
-    :rand.seed(:exsss, {seed, seed, seed})
-
-    try do
-      fun.()
-    after
-      case previous do
-        :undefined -> Process.delete(:rand_seed)
-        state -> :rand.seed(state)
-      end
-    end
-  end
+  # a preview must not leave a caller's random numbers predictable. The code
+  # lives in `AshDispatch.Sample` since 0.9.4, so an event's own sample data
+  # can use the same seeding instead of writing it again.
+  defp with_seed(seed, fun), do: AshDispatch.Sample.with_seed(seed, fun)
 end
