@@ -1362,14 +1362,36 @@ defmodule AshDispatch.Dispatcher do
   # meant a host that upgraded and changed nothing could get a different SMS,
   # which is not a thing a patch may do.
   defp put_transport_body(content, context, channel, event_config, module, recipient) do
-    if EventResolver.declared?(module, :notification_message, Map.get(content, :message)) do
+    # `:message` OR `:notification_message`: Slack and Discord carry the body
+    # under both (see their branches above), and either one being declared
+    # means the host said what the body is.
+    declared? =
+      EventResolver.declared?(module, :notification_message, Map.get(content, :message)) or
+        EventResolver.declared?(
+          module,
+          :notification_message,
+          Map.get(content, :notification_message)
+        )
+
+    if declared? do
       content
     else
-      maybe_put(
-        content,
-        :message,
-        render_transport_body(context, channel, event_config, module, recipient)
-      )
+      case render_transport_body(context, channel, event_config, module, recipient) do
+        nil ->
+          content
+
+        body ->
+          # BOTH keys, for the same reason the branches above write both: the
+          # transports read `:notification_message` for the one required text
+          # field of their payload, and `AshDispatch.Preview` renders a
+          # non-email channel's body from `:message`. A template that landed
+          # under one of them only would have rendered in the preview and
+          # arrived empty, or the other way round — which is the bug this
+          # release already had to fix once for a declared body.
+          content
+          |> Map.put(:message, body)
+          |> Map.put(:notification_message, body)
+      end
     end
   end
 

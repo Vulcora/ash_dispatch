@@ -90,7 +90,9 @@ defmodule AshDispatch.Test.Preview.Booking do
       module: AshDispatch.Test.Preview.BookingUntexted,
       channels: [
         [transport: :sms, audience: :user],
-        [transport: :in_app, audience: :user]
+        [transport: :in_app, audience: :user],
+        [transport: :slack, audience: :user],
+        [transport: :discord, audience: :user]
       ]
   end
 end
