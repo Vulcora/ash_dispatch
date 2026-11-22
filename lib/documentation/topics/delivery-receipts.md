@@ -531,6 +531,44 @@ case AshDispatch.WebhookHandlers.Resend.verify(raw_body, headers, secret) do
 end
 ```
 
+## Retention
+
+The scrub below covers the events you have marked
+`sensitive_content: true`. Everything else a receipt holds is kept forever —
+and a rendered letter is a letter: a name, an address, an order, a booking.
+`AshDispatch.Workers.Prune` is the retention worker for the rest, and all
+three of its windows are **unset** by default, so a host that schedules it and
+configures nothing has a job that deletes nothing:
+
+```elixir
+config :ash_dispatch,
+  # Empty old bodies. The receipt stays: who, about what, when, and whether
+  # it arrived.
+  body_retention_hours: 24 * 90,
+
+  # Delete old receipts, bodies and all.
+  receipt_retention_hours: 24 * 365,
+
+  # Delete old notifications.
+  notification_retention_hours: 24 * 180
+```
+
+```elixir
+config :my_app, Oban,
+  plugins: [
+    {Oban.Plugins.Cron, crontab: [{"40 3 * * *", AshDispatch.Workers.Prune}]}
+  ]
+```
+
+Only **terminal** receipts (`sent`, `skipped`, `failed_permanent`,
+`digested`) are touched: anything else may still be sent, and for a sensitive
+event the receipt is where the worker reads the body. A receipt is deleted at
+the **later** of the receipt and body windows, so configuring only the shorter
+one cannot delete a row whose body you meant to keep. One pass handles at most
+`:prune_batch_size` rows per table (5000 by default), so it cannot lock a
+large table for minutes; what is left goes on the next run. One pass per
+tenant, like the scrub.
+
 ## Sensitive Content Retention
 
 Receipts store full rendered bodies, which for OTP codes and password-reset

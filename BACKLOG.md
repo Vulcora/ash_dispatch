@@ -62,12 +62,19 @@ Swedishspytours works around it by dispatching directly with an overridden
 recipient in its own controller — that pattern could become a library
 helper (`Dispatcher.dispatch_to/4`?).
 
-## 3. Sensitive content retention — RESOLVED in 0.5.4
+## 3. Sensitive content retention — RESOLVED in 0.5.4, the rest in 0.9.4
 
 Shipped as `AshDispatch.Workers.ScrubSensitiveContent` + per-event
 `metadata: [sensitive_content: true]` + `config :ash_dispatch,
-:scrub_after_hours`. Consumers still need to schedule the cron entry and tag
-their events. Original finding kept below for context.
+:scrub_after_hours` in 0.5.4. The half this entry kept open — "no
+retention/pruning at all for receipts or notifications" — is
+`AshDispatch.Workers.Prune` (0.9.4): `body_retention_hours`,
+`receipt_retention_hours` and `notification_retention_hours`, all three unset
+by default, so the worker is inert until a host asks. Three consumers had
+written their own.
+
+Consumers still need to schedule both cron entries and tag their sensitive
+events. Original finding kept below for context.
 
 ### Original finding
 

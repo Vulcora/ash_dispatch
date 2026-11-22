@@ -179,6 +179,8 @@ defmodule AshDispatch.MixProject do
           AshDispatch.Workers.SendEmail,
           AshDispatch.Workers.SendWebhook,
           AshDispatch.Workers.RetryFailedDeliveries,
+          AshDispatch.Workers.Prune,
+          AshDispatch.Workers.Stranded,
           AshDispatch.Workers.FlushDigests
         ],
         Digests: [
