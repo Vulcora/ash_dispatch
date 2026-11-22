@@ -602,8 +602,17 @@ event the receipt is where the worker reads the body. A receipt is deleted at
 the **later** of the receipt and body windows, so configuring only the shorter
 one cannot delete a row whose body you meant to keep. One pass handles at most
 `:prune_batch_size` rows per table (5000 by default), so it cannot lock a
-large table for minutes; what is left goes on the next run. One pass per
-tenant, like the scrub.
+large table for minutes; what is left goes on the next run.
+
+The body window also strips `content["digest"]["item"]["summary"]`, which is
+the fourth place a letter's text lives: a batched email keeps its first
+paragraph there for the digest to list.
+
+One pass per tenant, like the scrub — and because receipts and notifications
+take multitenancy **independently**, each table is addressed with its own
+resource's schema and the fan-out happens when either is per tenant. Public
+receipts with per-tenant notifications is a supported shape, and so is the
+other way round.
 
 ## Sensitive Content Retention
 

@@ -53,8 +53,14 @@ defmodule AshDispatch.Receipts do
   are the two that make the row findable, and `source_type`/`source_id` are
   what a history page groups by.
 
-  `tenant:` is read out of the attributes and used as the tenant for the
-  write, so a per-tenant receipt lands in the right schema.
+  `tenant:` is the tenant the write happens in, so a per-tenant receipt lands
+  in the right schema — and it is also KEPT as an attribute, so a host with
+  public receipts and `tenant_column: true` gets the column filled. The value
+  is normalised through the library's own tenant key, so it matches what the
+  dispatcher writes for the same tenant.
+
+  The outcome is checked before anything is created, so a bad call leaves no
+  `:pending` row behind.
   """
 
   alias AshDispatch.Config
@@ -82,25 +88,61 @@ defmodule AshDispatch.Receipts do
         {:error, :no_delivery_receipt_resource}
 
       resource ->
-        {tenant, attrs} = Map.pop(attrs, :tenant)
-
-        with {:ok, receipt} <- create(resource, attrs, tenant) do
+        # The outcome is checked BEFORE the row is created. A `record/3` called
+        # with something that is not an outcome used to leave a `:pending`
+        # receipt behind — a row claiming a delivery is in flight that nothing
+        # will ever settle, which is worse than the missing receipt it was
+        # called to prevent.
+        with :ok <- validate_outcome(outcome),
+             {:ok, receipt} <- create(resource, attrs, tenant_of(attrs)) do
           settle(receipt, outcome, opts)
         end
     end
   end
 
+  defp validate_outcome({:sent, _response}), do: :ok
+  defp validate_outcome({skipped, _reason}) when skipped in [:skip, :skipped], do: :ok
+  defp validate_outcome({:error, _reason}), do: :ok
+
+  defp validate_outcome(outcome) do
+    Logger.warning(
+      "AshDispatch.Receipts.record/2: #{inspect(outcome)} is not an outcome; nothing recorded"
+    )
+
+    {:error, {:unknown_outcome, outcome}}
+  end
+
+  # The tenant is read, NOT popped. `tenant_column: true` makes `:tenant` an
+  # accepted attribute of `:create`, and popping it meant a recorded receipt
+  # was written with a NULL tenant on exactly the configuration the column
+  # exists for. It is normalised through the library's own key so the value
+  # matches what the dispatcher writes for the same tenant.
+  defp tenant_of(attrs), do: Map.get(attrs, :tenant)
+
   defp create(resource, attrs, tenant) do
+    attrs = normalise_tenant(attrs, tenant)
+
     resource
     # Everything the resource's `:create` does not accept is dropped. A host
     # recording into a receipt resource of its own should not have to discover
-    # which of our keys it happens to have.
+    # which of our keys it happens to have — and `:tenant` is in that list
+    # only with `tenant_column: true`, so it survives there and is dropped
+    # everywhere else.
     |> Ash.Changeset.for_create(:create, attrs, skip_unknown_inputs: :*)
     |> Tenancy.set(tenant)
     |> Ash.create(authorize?: false)
     |> case do
       {:ok, receipt} -> {:ok, Tenancy.remember(receipt, tenant)}
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp normalise_tenant(attrs, nil), do: attrs
+
+  defp normalise_tenant(attrs, tenant) do
+    case AshDispatch.Context.tenant_key(tenant) do
+      key when is_binary(key) -> Map.put(attrs, :tenant, key)
+      _ -> Map.delete(attrs, :tenant)
     end
   end
 
@@ -124,15 +166,6 @@ defmodule AshDispatch.Receipts do
     end
   rescue
     error -> {:error, Exception.message(error)}
-  end
-
-  defp settle(receipt, outcome, _opts) do
-    Logger.warning(
-      "AshDispatch.Receipts.record/2: #{inspect(outcome)} is not an outcome; " <>
-        "receipt #{inspect(Map.get(receipt, :id))} left pending"
-    )
-
-    {:error, {:unknown_outcome, outcome}}
   end
 
   defp message(reason) when is_binary(reason), do: reason

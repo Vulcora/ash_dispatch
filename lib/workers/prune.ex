@@ -46,9 +46,10 @@ defmodule AshDispatch.Workers.Prune do
 
   **`notification_retention_hours`** deletes notifications whose
   `occurred_at` (or `inserted_at`) is older than the window. A receipt that
-  points at a deleted notification keeps its `notification_id`: the
-  relationship is `on_delete: :nilify` in `DeliveryReceipt.Base`, so the
-  database clears it.
+  pointed at a deleted notification has its `notification_id` set to NULL by
+  the database: `DeliveryReceipt.Base` declares
+  `reference(:notification, on_delete: :nilify)`, so the receipt survives the
+  notification and stops claiming to link to it.
 
   Each pass deletes at most `:prune_batch_size` rows (default 5000) per table,
   so one run cannot lock a large table for minutes. What is left goes on the
@@ -59,6 +60,15 @@ defmodule AshDispatch.Workers.Prune do
   One pass per tenant, like the scrub: the scheduled job reads
   `config :ash_dispatch, tenants:` and fans out, each pass pruning its own
   schema. See `AshDispatch.Tenancy.Cron`.
+
+  Receipts and notifications take multitenancy **independently**, so each
+  table is addressed with its own resource's prefix and the fan-out happens
+  when *either* is per tenant. A host with per-tenant notifications and public
+  receipts is a supported shape, and so is the other way round.
+
+  The windows are checked BEFORE the fan-out: with none configured there is
+  nothing to do in any schema, and a job per tenant per night to discover that
+  is not nothing.
 
   ## Scheduling
 
@@ -92,10 +102,24 @@ defmodule AshDispatch.Workers.Prune do
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: args}) do
-    case AshDispatch.Tenancy.Cron.plan(args) do
-      {:run, tenant} -> prune(tenant)
-      {:fan_out, tenants} -> AshDispatch.Tenancy.Cron.fan_out(__MODULE__, tenants)
-      :no_tenants -> AshDispatch.Tenancy.Cron.no_tenants(__MODULE__)
+    # Inertness FIRST. With no window configured there is nothing to do in any
+    # schema, and fanning out one job per tenant to discover that is a job per
+    # tenant per night for a host that has not decided its retention yet.
+    if windows() == %{body: nil, receipt: nil, notification: nil} do
+      :ok
+    else
+      # Either resource being per tenant means the pass has to run per tenant.
+      # The two take multitenancy independently, and a host can have
+      # per-tenant notifications with public receipts.
+      per_tenant? =
+        AshDispatch.Tenancy.receipts_per_tenant?() or
+          AshDispatch.Tenancy.notifications_per_tenant?()
+
+      case AshDispatch.Tenancy.Cron.plan(args, per_tenant?) do
+        {:run, tenant} -> prune(tenant)
+        {:fan_out, tenants} -> AshDispatch.Tenancy.Cron.fan_out(__MODULE__, tenants)
+        :no_tenants -> AshDispatch.Tenancy.Cron.no_tenants(__MODULE__)
+      end
     end
   end
 
@@ -166,7 +190,13 @@ defmodule AshDispatch.Workers.Prune do
   defp empty_bodies(tenant, cutoff) do
     case receipt_table() do
       {:ok, table} ->
-        {count, _} = Config.repo().update_all(body_query(table, cutoff), [], prefix_opts(tenant))
+        {count, _} =
+          Config.repo().update_all(
+            body_query(table, cutoff),
+            [],
+            prefix_opts(Config.delivery_receipt_resource(), tenant)
+          )
+
         count
 
       :error ->
@@ -179,7 +209,12 @@ defmodule AshDispatch.Workers.Prune do
   defp delete_receipts(tenant, cutoff) do
     case receipt_table() do
       {:ok, table} ->
-        {count, _} = Config.repo().delete_all(receipt_query(table, cutoff), prefix_opts(tenant))
+        {count, _} =
+          Config.repo().delete_all(
+            receipt_query(table, cutoff),
+            prefix_opts(Config.delivery_receipt_resource(), tenant)
+          )
+
         count
 
       :error ->
@@ -193,7 +228,10 @@ defmodule AshDispatch.Workers.Prune do
     case notification_table() do
       {:ok, table} ->
         {count, _} =
-          Config.repo().delete_all(notification_query(table, cutoff), prefix_opts(tenant))
+          Config.repo().delete_all(
+            notification_query(table, cutoff),
+            prefix_opts(Config.notification_resource(), tenant)
+          )
 
         count
 
@@ -215,13 +253,23 @@ defmodule AshDispatch.Workers.Prune do
     # one wraps the query in a fresh `from`, which would DISCARD the `update:`
     # clause below and leave Ecto raising "requires at least one field to be
     # updated". The test against a real Postgres is what found it.
+    #
+    # `content['digest']['item']['summary']` is the fourth place a body lives:
+    # a batched email stores the first 280 characters of its text under there
+    # for the digest to list (`AshDispatch.Digest.item/3`). Leaving it was
+    # worse than missing it once — the row is never SELECTED again after the
+    # first pass, so the paragraph stayed for good.
     ids =
       from(r in table,
         where: r.status in ^@terminal,
         where: r.inserted_at < ^cutoff,
         where:
           (not is_nil(r.body_text) and r.body_text != ^@marker) or not is_nil(r.body_html) or
-            fragment("(? \\?| array['html_body', 'text_body', 'message', 'body'])", r.content),
+            fragment("(? \\?| array['html_body', 'text_body', 'message', 'body'])", r.content) or
+            fragment(
+              "((? #> '{digest,item}') \\?| array['summary', 'title'])",
+              r.content
+            ),
         select: r.id,
         limit: ^batch_size()
       )
@@ -232,7 +280,16 @@ defmodule AshDispatch.Workers.Prune do
         set: [
           body_text: ^@marker,
           body_html: nil,
-          content: fragment("(? - 'html_body' - 'text_body' - 'message' - 'body')", r.content)
+          # One expression, because `update_all` sets a column once.
+          # `jsonb_set` with `create_if_missing = false` (the fourth argument)
+          # leaves a receipt that was never batched untouched, so the nested
+          # path costs nothing for the ordinary case.
+          content:
+            fragment(
+              "jsonb_set(? - 'html_body' - 'text_body' - 'message' - 'body', '{digest,item}', coalesce((? #> '{digest,item}') - 'summary' - 'title', '{}'::jsonb), false)",
+              r.content,
+              r.content
+            )
         ]
       ]
     )
@@ -293,8 +350,27 @@ defmodule AshDispatch.Workers.Prune do
     end
   end
 
-  defp prefix_opts(nil), do: []
-  defp prefix_opts(tenant), do: [prefix: AshDispatch.Tenancy.receipt_prefix(tenant)]
+  # Per RESOURCE, not per receipt. `receipt_prefix/1` answers for the receipt
+  # resource, and using it for the notification table wrote the receipts'
+  # schema name into a notification query — which for a host with per-tenant
+  # notifications and public receipts means `nil`, deleting from `public`
+  # across every tenant's rows, and for the other mix means a prefix that is
+  # not the one the notifications live in.
+  defp prefix_opts(_resource, nil), do: []
+
+  defp prefix_opts(resource, tenant) do
+    # `Tenancy.prefix/2` converts a tenant to a schema name; it does not ask
+    # whether THIS resource lives in one. A resource that declares no
+    # multitenancy must be addressed with no prefix at all, or a per-tenant
+    # pass looks for `tenant_a.pt_public_notifications` and finds no such
+    # relation — which is what a mixed configuration produced.
+    with true <- AshDispatch.Tenancy.multitenant?(resource),
+         prefix when is_binary(prefix) <- AshDispatch.Tenancy.prefix(resource, tenant) do
+      [prefix: prefix]
+    else
+      _ -> []
+    end
+  end
 
   defp receipt_table, do: table_of(Config.delivery_receipt_resource())
   defp notification_table, do: table_of(Config.notification_resource())
