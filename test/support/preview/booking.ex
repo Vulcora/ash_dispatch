@@ -5,6 +5,9 @@ defmodule AshDispatch.Test.Preview.Domain do
   resources do
     resource AshDispatch.Test.Preview.Booking
     resource AshDispatch.Test.Preview.ManualTrigger
+    resource AshDispatch.Test.Preview.Catalogue
+    resource AshDispatch.Test.Preview.OwnPolicyCatalogue
+    resource AshDispatch.Test.Preview.EmailOnlyCatalogue
   end
 end
 

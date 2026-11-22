@@ -53,6 +53,36 @@ with, which is not always the one asked for: a channel or a recipient with a
 locale of its own wins, exactly as on the send path. Leave an argument out to
 get what the action always returned.
 
+## The catalogue as a resource
+
+`Preview.events/0` is the catalogue as plain maps. For one an admin page can
+read over RPC, with your own policies on it, there is a base macro:
+
+```elixir
+defmodule MyApp.Deliveries.EventCatalogue do
+  use AshDispatch.Resources.EventCatalogue.Base,
+    domain: MyApp.Deliveries
+end
+```
+
+By default it is readable by an actor your configured `permission_checker`
+approves and by nobody else. `policies: :own` declares no policies at all,
+leaving the resource fail-closed until your own `policies do ... end` block
+opens it — reach for that one whenever your permission model is not a single
+check.
+
+It lists **every** transport: an event delivered only by SMS or as an in-app
+notification is in it, and an in-app channel's row carries `title`,
+`message`, `action_url` and `action_label` where an email channel's carries
+`preview_html` and `preview_text`. `transports: [:email]` narrows it, and
+`previews?: false` renders nothing at all, for a catalogue that only needs
+names, channels and subjects.
+
+`AshDispatch.Resources.EmailEvent` is the older resource behind this one: its
+policies are fixed to `actor_attribute_equals(:super_admin, true)`, it is not
+a macro, and it drops every event without an email channel. It is unchanged
+and will stay so; new work belongs on the base.
+
 ### The same path as the send
 
 There is no preview renderer. `render/3` opens the event the way its send

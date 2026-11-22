@@ -179,7 +179,9 @@ defmodule AshDispatch.MixProject do
           AshDispatch.Resources.DeliveryReceipt,
           AshDispatch.Resources.Notification,
           AshDispatch.Resources.Notification.Base,
-          AshDispatch.Resources.Preference.Base
+          AshDispatch.Resources.Preference.Base,
+          AshDispatch.Resources.EventCatalogue,
+          AshDispatch.Resources.EventCatalogue.Base
         ],
         "Preferences & LiveView": [
           AshDispatch.UserPreference.Resource,
