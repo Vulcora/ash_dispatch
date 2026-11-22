@@ -151,6 +151,62 @@ defmodule AshDispatch.ReasonCodesPostgresTest do
     end
   end
 
+  describe "a merge that cannot run" do
+    test "costs the code and not the transition" do
+      # The rescue in `PutReasonCode` claimed to keep the transition and could
+      # not: an after_action hook runs inside the action's own transaction, so
+      # a failed statement aborts it and the COMMIT fails whatever the hook
+      # returns. The merge runs in a savepoint now, so this is a real rescue.
+      #
+      receipt = build!(PerTenant.ReasonCodeReceipt)
+
+      # A trigger that raises on any UPDATE that CHANGES `content`, and on
+      # nothing else. The `:skip` action's own statement sets status,
+      # error_message and updated_at, so it goes through; the hook's merge is
+      # the only thing that breaks, which is the shape being tested.
+      PerTenant.Repo.query!("""
+      create or replace function prune_test_refuse_content() returns trigger as $$
+      begin
+        if NEW.content is distinct from OLD.content then
+          raise exception 'content is refused';
+        end if;
+        return NEW;
+      end;
+      $$ language plpgsql
+      """)
+
+      PerTenant.Repo.query!("""
+      create trigger refuse_content before update on "pt_reason_receipts"
+      for each row execute function prune_test_refuse_content()
+      """)
+
+      # The transition itself goes through, which is the whole claim. The
+      # trigger is dropped here rather than in `on_exit`: the repo this test
+      # started is already gone by the time those run.
+      updated =
+        try do
+          receipt
+          |> Ash.Changeset.for_update(:skip, %{error_message: "delivery_dry_run"})
+          |> Ash.update!(authorize?: false)
+        after
+          PerTenant.Repo.query!(~s(drop trigger if exists refuse_content on "pt_reason_receipts"))
+
+          PerTenant.Repo.query!("drop function if exists prune_test_refuse_content()")
+        end
+
+      assert updated.status == :skipped
+
+      stored = reload(PerTenant.ReasonCodeReceipt, receipt)
+
+      assert stored.status == :skipped
+      assert stored.error_message == "delivery_dry_run"
+      # The code is what was lost, and `Reason.of/1` still answers from the
+      # sentence — which is why losing it is survivable.
+      refute Map.has_key?(stored.content, "reason_code")
+      assert Reason.of(stored) == :delivery_dry_run
+    end
+  end
+
   describe "a scrub that lands between the read and the write" do
     test "is not undone — the key is merged, not the map written back" do
       receipt = build!(PerTenant.ReasonCodeReceipt)

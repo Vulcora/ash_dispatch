@@ -385,7 +385,9 @@ exactly what they were in 0.9.4-rc.5 — atomic included, so a
 atomic strategy. With it on, the key is merged into the stored JSONB server
 side rather than written back from a struct, so a `ScrubSensitiveContent` pass
 landing in between is not undone; those two actions become non-atomic, which
-is the cost of the option. Storing it by default is 0.10.0 work, with a column
+is the cost of the option. The merge runs after the transaction has
+committed, so a receipt whose code could not be stored still has its status
+and its sentence — and `Reason.of/1` answers from the sentence. Storing it by default is 0.10.0 work, with a column
 of its own.
 
 ## Stranded receipts

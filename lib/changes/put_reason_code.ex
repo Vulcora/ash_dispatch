@@ -9,7 +9,7 @@ defmodule AshDispatch.Changes.PutReasonCode do
   # carry no change at all, and `AshDispatch.Reason.of/1` classifies the
   # sentence instead, which needs no column and touches no row.
   #
-  # ## Why it is an after_action, and a MERGE
+  # ## Why it is an after_TRANSACTION, and a MERGE
   #
   # The obvious implementation — read `content`, put a key, write it back —
   # writes a whole map that was read a moment earlier, and so undoes anything
@@ -29,6 +29,15 @@ defmodule AshDispatch.Changes.PutReasonCode do
   # lives in `content`. A column of its own would make it one statement, and a
   # column is a migration, which is 0.10.0 work.
   #
+  # And it runs AFTER the transaction, not after the action. An after_action
+  # hook runs INSIDE the action's transaction, so a statement that fails there
+  # aborts it: every later statement answers "current transaction is aborted"
+  # and the COMMIT fails whatever the hook returns. The rescue below claimed
+  # to cost only the code and in fact cost the transition — the receipt never
+  # got its status. A savepoint would also do, but after_transaction is
+  # simpler and says the intention: the receipt's own outcome is already
+  # committed and nothing this does can take it back.
+  #
   # A data layer that is not AshPostgres — this library's own ETS stand-ins —
   # has no jsonb to merge into and no concurrent scrub to lose to, so there
   # the change writes the attribute as any change would.
@@ -46,8 +55,11 @@ defmodule AshDispatch.Changes.PutReasonCode do
 
       code ->
         if postgres?(changeset.resource) do
-          Ash.Changeset.after_action(changeset, fn changeset, record ->
-            {:ok, merge(record, code, changeset)}
+          Ash.Changeset.after_transaction(changeset, fn changeset, result ->
+            case result do
+              {:ok, record} -> {:ok, merge(record, code, changeset)}
+              other -> other
+            end
           end)
         else
           content = Ash.Changeset.get_attribute(changeset, :content) || %{}
@@ -67,6 +79,14 @@ defmodule AshDispatch.Changes.PutReasonCode do
         _ -> []
       end
 
+    # In a SAVEPOINT, which is what makes the rescue below mean anything. An
+    # after_action hook runs inside the action's own transaction, so a
+    # statement that fails there aborts the transaction: every later statement
+    # answers "current transaction is aborted" and the COMMIT fails whatever
+    # this function returns. The rescue claimed to keep the transition and
+    # could not. A nested `transaction/2` is a savepoint, so a failed merge
+    # rolls back to it and the transition commits without its code.
+
     # `$1::text::jsonb`, not `$1::jsonb`: with the single cast Postgres infers
     # the parameter's type as jsonb, Postgrex encodes the Elixir string as a
     # jsonb STRING, and `object || "text"` is an array concatenation — the
@@ -79,15 +99,31 @@ defmodule AshDispatch.Changes.PutReasonCode do
         "\" set \"content\" = coalesce(\"content\", '{}'::jsonb) || $1::text::jsonb " <>
         "where \"id\" = $2"
 
-    repo.query!(sql, [json, dump_id(record)], opts)
+    # `query/3`, not `query!/3`: a raise inside `transaction/2` rolls back to
+    # the savepoint and then propagates, which is the thing being avoided.
+    # `rollback/1` returns `{:error, reason}` from the savepoint cleanly and
+    # leaves the outer transaction usable.
+    # `query/3` rather than `query!/3`: there is nothing left to abort, so a
+    # failure is a warning and the record as it stands.
+    case repo.query(sql, [json, dump_id(record)], opts) do
+      {:ok, _result} ->
+        # The record the caller gets back says what the row says.
+        %{record | content: Reason.put_code(Map.get(record, :content), code)}
 
-    # The record the caller gets back says what the row says.
-    %{record | content: Reason.put_code(Map.get(record, :content), code)}
+      {:error, reason} ->
+        Logger.warning(
+          "[AshDispatch] could not store the reason code on receipt " <>
+            "#{inspect(Map.get(record, :id))}: #{inspect(reason)}"
+        )
+
+        record
+    end
   rescue
     error ->
       # A receipt whose reason code could not be stored is still a receipt with
       # the right status and the right sentence, and `Reason.of/1` classifies
-      # that. Not worth failing a transition over.
+      # that. Not worth failing a transition over — and after the transaction
+      # there is no transition left to fail.
       Logger.warning(
         "[AshDispatch] could not store the reason code on receipt " <>
           "#{inspect(Map.get(record, :id))}: #{Exception.message(error)}"
