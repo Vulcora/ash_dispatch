@@ -200,6 +200,7 @@ defmodule AshDispatch.Preview do
         user_configurable?: true,
         sensitive?: false,                   # metadata sensitive_content: true
         metadata: [],                        # the event's DSL metadata
+        catalogue: nil,                      # %AshDispatch.Event.Catalogue{}
         channel: %AshDispatch.Channel{}
       }
 
@@ -252,6 +253,10 @@ defmodule AshDispatch.Preview do
         user_configurable?: EventResolver.user_configurable?(module, context) == true,
         sensitive?: Keyword.get(List.wrap(metadata), :sensitive_content, false) == true,
         metadata: metadata,
+        # What the event says it IS, in words, for a page where somebody picks
+        # a letter to send (`AshDispatch.Event.Catalogue`). `nil` for an event
+        # that does not describe itself, which is every event before 0.9.4.
+        catalogue: EventResolver.catalogue(module),
         channel: channel
       }
     end)

@@ -392,6 +392,32 @@ defmodule AshDispatch.Event do
   @callback sample_data(keyword()) :: map()
 
   @doc """
+  What this event is, in words, for the page where somebody picks a letter to
+  send.
+
+  Optional, and deliberately NOT defaulted by `use AshDispatch.Event`: an
+  event that does not write one is listed exactly as it was before 0.9.4,
+  with `nil` where this would be. Surfaced by `AshDispatch.Preview.events/0`
+  and by `AshDispatch.Resources.EventCatalogue`.
+
+  Every field is optional prose. See `AshDispatch.Event.Catalogue`.
+
+  ## Example
+      @impl true
+      def catalogue do
+        %{
+          name: "Booking reminder",
+          description: "Sent the day before a booking, to the guest.",
+          trigger: "Automatically, 24 hours before the start time.",
+          audience: "The guest who made the booking.",
+          group: "Bookings",
+          instruction: "Send by hand only if the guest says they never got it."
+        }
+      end
+  """
+  @callback catalogue() :: map() | keyword()
+
+  @doc """
   Counters to broadcast when this event creates notifications.
 
   Return list of counter atoms for specific channel.
@@ -704,6 +730,10 @@ defmodule AshDispatch.Event do
     prepare_template_assigns: 2,
     sample_data: 0,
     sample_data: 1,
+    # Not defaulted by the `use` macro on purpose: `function_exported?` has to
+    # tell "this event describes itself" from "this event does not", and a
+    # default would make every event answer an empty description.
+    catalogue: 0,
     headers: 2,
     generate_send_variables: 2,
     source_url: 2,

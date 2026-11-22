@@ -175,6 +175,22 @@ defmodule AshDispatch.EventResolver do
   end
 
   @doc """
+  What the event says it is, in words, or `nil`.
+
+  `c:AshDispatch.Event.catalogue/0` is optional and not defaulted, so an
+  event that does not describe itself answers `nil` here and is listed exactly
+  as it was. See `AshDispatch.Event.Catalogue`.
+  """
+  @spec catalogue(module()) :: AshDispatch.Event.Catalogue.t() | nil
+  def catalogue(module) do
+    if exports?(module, :catalogue, 0) do
+      module
+      |> call_if_exported(:catalogue, [], default: nil)
+      |> AshDispatch.Event.Catalogue.new()
+    end
+  end
+
+  @doc """
   Get the domain from an event module.
   """
   @spec domain(module()) :: atom() | nil

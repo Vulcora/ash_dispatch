@@ -83,6 +83,40 @@ policies are fixed to `actor_attribute_equals(:super_admin, true)`, it is not
 a macro, and it drops every event without an email channel. It is unchanged
 and will stay so; new work belongs on the base.
 
+### What an event is, in words
+
+A catalogue row says `bookings.reminder`, `:email`, `:user`. Nobody choosing
+a letter to send can tell that from `bookings.reminder_followup`. An event
+can say what it is:
+
+```elixir
+@impl true
+def catalogue do
+  %{
+    name: "Booking reminder",
+    description: "Sent the day before a booking, to the guest.",
+    trigger: "Automatically, 24 hours before the start time.",
+    audience: "The guest who made the booking.",
+    group: "Bookings",
+    instruction: "Send by hand only if the guest says they never got it."
+  }
+end
+```
+
+Every field is optional prose. `group` is what a page groups by;
+`instruction` is for the person about to press send. Anything else the
+callback answers is kept under `meta`, so a list of your own can move across
+with its icons and sort orders.
+
+`Preview.events/0` carries it as `:catalogue` (an
+`AshDispatch.Event.Catalogue`, `nil` without the callback), and the catalogue
+resource flattens it onto the row as `name`, `description`, `trigger`,
+`audience_description`, `group`, `instruction` and `catalogue_meta`.
+
+The callback is optional and is **not** defaulted by `use AshDispatch.Event`,
+so an event that does not write one is listed exactly as it was before
+0.9.4 — with `nil` where this would be, and every other field unchanged.
+
 ### The same path as the send
 
 There is no preview renderer. `render/3` opens the event the way its send

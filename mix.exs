@@ -135,6 +135,7 @@ defmodule AshDispatch.MixProject do
         "Previews & Templates": [
           AshDispatch.Preview,
           AshDispatch.Preview.Rendered,
+          AshDispatch.Event.Catalogue,
           AshDispatch.TemplateResolver,
           AshDispatch.StrictTemplates,
           AshDispatch.TemplateError

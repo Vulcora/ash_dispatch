@@ -189,6 +189,44 @@ defmodule AshDispatch.Resources.EventCatalogue.Base do
           description "Preference category"
         end
 
+        # `c:AshDispatch.Event.catalogue/0`, flattened. `nil` for an event
+        # that does not describe itself — see `AshDispatch.Event.Catalogue`.
+        attribute :name, :string do
+          public? true
+          description "What this event is called, for a person"
+        end
+
+        attribute :description, :string do
+          public? true
+          description "What this event is, in a sentence"
+        end
+
+        attribute :trigger, :string do
+          public? true
+          description "What causes it to be sent, in words"
+        end
+
+        attribute :audience_description, :string do
+          public? true
+          description "Who receives it, in words"
+        end
+
+        attribute :group, :string do
+          public? true
+          description "What a page groups this event under"
+        end
+
+        attribute :instruction, :string do
+          public? true
+          description "What the person about to send it by hand should know"
+        end
+
+        attribute :catalogue_meta, :map do
+          public? true
+          default %{}
+          description "Anything else catalogue/0 answered"
+        end
+
         attribute :transports, {:array, :atom} do
           public? true
           default []

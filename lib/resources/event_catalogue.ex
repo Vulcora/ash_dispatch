@@ -39,6 +39,12 @@ defmodule AshDispatch.Resources.EventCatalogue do
         id: "orders.created",
         module: "MyApp.Orders.Events.Created.Event",
         domain: :orders,
+        name: "Order confirmation",          # from catalogue/0, nil without it
+        description: "Sent when an order is placed.",
+        trigger: "Automatically, on every new order.",
+        audience_description: "The person who placed it.",
+        group: "Orders",
+        instruction: nil,
         user_configurable: true,
         category: :orders,
         transports: [:email, :in_app],
@@ -85,10 +91,22 @@ defmodule AshDispatch.Resources.EventCatalogue do
         end
       end)
 
+    catalogue = EventResolver.catalogue(module) || %AshDispatch.Event.Catalogue{}
+
     %{
       id: event_id,
       module: to_string(module),
       domain: EventResolver.domain(module),
+      # `catalogue/0`, flattened onto the row so a page can read one map.
+      # `nil` throughout for an event that does not describe itself, which is
+      # every event before 0.9.4 (`AshDispatch.Event.Catalogue`).
+      name: catalogue.name,
+      description: catalogue.description,
+      trigger: catalogue.trigger,
+      audience_description: catalogue.audience,
+      group: catalogue.group,
+      instruction: catalogue.instruction,
+      catalogue_meta: catalogue.meta,
       user_configurable: EventResolver.user_configurable?(module, sample_context),
       category: EventResolver.category(module, sample_context),
       # Kept as they were: `channel_count` is every channel of the event and
