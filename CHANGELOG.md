@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A receipt says when its job is due: `scheduled_for`.** Set when the receipt
+  moves to `:scheduled` (email, SMS, and a digest's lone email released on its
+  own), from the Oban job's own `scheduled_at`. Until now the send time lived
+  only in `oban_jobs`, so a surface listing what is about to go had to join
+  Oban's table. A new nullable column: run `mix ash.codegen` in the host.
+- **A delivery that has not gone yet can be stopped: `:cancel`.** The receipt
+  becomes `:skipped` with the reason, and its Oban job is cancelled so it never
+  runs (`AshDispatch.ReceiptStatus.cancel/2`). Only from `:pending`,
+  `:scheduled` or `:batched`; a receipt that is `:sending` is already on its
+  way. `:skip` stays as it was, for the paths that record a delivery held back.
+
 ### Fixed
 
 - **A delayed email was sent early by the stranded-receipt sweep.** A channel

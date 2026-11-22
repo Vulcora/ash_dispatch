@@ -125,7 +125,7 @@ defmodule AshDispatch.Transports.SMS do
       {:ok, %{status: :pending} = current} ->
         current
         |> Tenancy.remember(tenant)
-        |> ReceiptStatus.mark_scheduled(oban_job_id: job.id)
+        |> ReceiptStatus.mark_scheduled(oban_job_id: job.id, scheduled_for: job.scheduled_at)
 
       {:ok, current} ->
         Logger.debug(

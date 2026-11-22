@@ -179,14 +179,27 @@ defmodule AshDispatch.ReceiptStatus do
   @spec mark_scheduled(struct(), keyword()) :: struct()
   def mark_scheduled(receipt, opts \\ []) do
     attrs =
-      case Keyword.get(opts, :oban_job_id) do
-        nil -> %{}
-        job_id -> %{oban_job_id: job_id}
-      end
+      opts
+      |> Keyword.take([:oban_job_id, :scheduled_for])
+      |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+      |> Map.new()
 
     receipt
     |> changeset(:schedule, attrs)
     |> Ash.update!(authorize?: false)
+    |> remember(receipt)
+  end
+
+  @doc """
+  Stops a delivery that has not gone yet (`:cancel`): the receipt becomes
+  `:skipped` with `reason`, and its Oban job is cancelled. `{:ok, receipt}`, or
+  `{:error, reason}` when the receipt is already on its way or done.
+  """
+  @spec cancel(struct(), String.t()) :: {:ok, struct()} | {:error, term()}
+  def cancel(receipt, reason) when is_binary(reason) do
+    receipt
+    |> changeset(:cancel, %{error_message: reason})
+    |> Ash.update(authorize?: false)
     |> remember(receipt)
   end
 
