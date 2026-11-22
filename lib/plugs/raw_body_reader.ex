@@ -11,25 +11,21 @@ defmodule AshDispatch.Plugs.RawBodyReader do
 
   ## Setup
 
-  In your endpoint, for the webhook path only:
+  Name the paths that need a raw body. Nothing but the webhook route does, and
+  the raw body of a file upload has no business sitting in `conn.assigns`:
 
       plug Plug.Parsers,
         parsers: [:urlencoded, :multipart, :json],
         pass: ["*/*"],
         json_decoder: Jason,
-        body_reader: {AshDispatch.Plugs.RawBodyReader, :read_body, []}
-
-  Narrower, and better, is to keep every other request out of it — the raw
-  body of a file upload has no business sitting in `conn.assigns`:
-
-      plug Plug.Parsers,
-        parsers: [:json],
-        json_decoder: Jason,
         body_reader:
           {AshDispatch.Plugs.RawBodyReader, :read_body, [paths: ["/webhooks/"]]}
 
   `:paths` is a list of path prefixes. A request whose path starts with none of
-  them is read normally and nothing is kept.
+  them is read by `Plug.Conn.read_body/2` directly and nothing is kept.
+
+  Without `:paths` every request through those parsers keeps its body. That
+  works, and it is more than anyone needs.
 
   ## Where it ends up
 
@@ -37,10 +33,28 @@ defmodule AshDispatch.Plugs.RawBodyReader do
   `AshDispatch.Plugs.ResendWebhook` reads it from there, and
   `Resend.verify/4` takes it directly.
 
-  A body read in several chunks (`{:more, _, _}`) is joined, so the assign is
-  the whole body however the client sent it. `Plug.Parsers`'s own `:length`
-  limit still applies: a body over it is refused by Plug before this returns.
+  ## The size limit still applies
+
+  `{:more, _, _}` from a body reader is how `Plug.Parsers` is told the body is
+  **too large**: its JSON parser turns that into `:too_large`, which is a 413.
+  A reader that loops on it until the body ends has removed the limit, and an
+  unauthenticated POST of any size is then read into memory in full.
+
+  So this reader joins chunks only up to `:length` — `Plug.Parsers`' own
+  option, defaulting to Plug's own 8 MB — and returns `{:more, …}` at the cap,
+  which is to say it refuses exactly where Plug would have.
+
+  ## Use `:paths`
+
+  The first form above keeps the raw body of **every** request that goes
+  through those parsers. Nothing needs that but the webhook route, and the raw
+  body of a file upload has no business sitting in `conn.assigns`. Prefer the
+  second form.
   """
+
+  # Plug's own default, so a host that passes no `:length` gets the limit it
+  # would have had without this reader in the way.
+  @default_length 8_000_000
 
   # Plug is an optional dependency, and this module names `Plug.Conn` only at
   # runtime — a host that cannot receive a request does not need it to compile.
@@ -50,31 +64,54 @@ defmodule AshDispatch.Plugs.RawBodyReader do
   Reads the body, and keeps it in `conn.assigns[:raw_body]`.
 
   The return shape `Plug.Parsers` expects: `{:ok, body, conn}`,
-  `{:more, partial, conn}` or `{:error, reason}`.
+  `{:more, partial, conn}` or `{:error, reason}`. `{:more, …}` is the refusal
+  — see the moduledoc.
   """
-  @spec read_body(term(), keyword()) :: {:ok, binary(), term()} | {:error, term()}
+  @spec read_body(term(), keyword()) ::
+          {:ok, binary(), term()} | {:more, binary(), term()} | {:error, term()}
   def read_body(conn, opts \\ []) do
     {mine, plug_opts} = Keyword.split(opts, [:paths])
 
     if keep?(conn, Keyword.get(mine, :paths)) do
-      read_and_keep(conn, plug_opts, [])
+      read_and_keep(conn, plug_opts, [], 0, cap(plug_opts))
     else
       Plug.Conn.read_body(conn, plug_opts)
     end
   end
 
-  defp read_and_keep(conn, opts, acc) do
+  defp cap(opts) do
+    case Keyword.get(opts, :length, @default_length) do
+      length when is_integer(length) and length > 0 -> length
+      _ -> @default_length
+    end
+  end
+
+  defp read_and_keep(conn, opts, acc, size, cap) do
     case Plug.Conn.read_body(conn, opts) do
       {:ok, chunk, conn} ->
         body = acc |> Enum.reverse([chunk]) |> IO.iodata_to_binary()
-        {:ok, body, Plug.Conn.assign(conn, :raw_body, body)}
 
-      # A body in several chunks. Joined rather than kept as the first chunk:
-      # a signature over part of a body matches nothing, and a webhook that
-      # arrived split would have failed verification for no reason anyone
-      # could see.
+        if byte_size(body) > cap do
+          {:more, chunk, conn}
+        else
+          {:ok, body, Plug.Conn.assign(conn, :raw_body, body)}
+        end
+
+      # A body in several chunks, under the cap: joined, because a signature
+      # over part of a body matches nothing and a webhook that arrived split
+      # would have failed verification for no reason anyone could see.
+      #
+      # AT the cap this same shape is passed ON, which is Plug's own refusal:
+      # the parser turns it into `:too_large` and the request gets a 413.
+      # Looping past it is how a reader silently removes `:length`.
       {:more, chunk, conn} ->
-        read_and_keep(conn, opts, [chunk | acc])
+        size = size + byte_size(chunk)
+
+        if size >= cap do
+          {:more, chunk, conn}
+        else
+          read_and_keep(conn, opts, [chunk | acc], size, cap)
+        end
 
       other ->
         other

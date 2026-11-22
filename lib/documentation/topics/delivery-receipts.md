@@ -494,7 +494,8 @@ plug Plug.Parsers,
   parsers: [:urlencoded, :multipart, :json],
   pass: ["*/*"],
   json_decoder: Jason,
-  body_reader: {AshDispatch.Plugs.RawBodyReader, :read_body, []}
+  body_reader:
+    {AshDispatch.Plugs.RawBodyReader, :read_body, [paths: ["/webhooks/"]]}
 
 # router.ex
 post "/webhooks/resend",
@@ -504,7 +505,9 @@ post "/webhooks/resend",
 
 The body reader exists because a JSON parser consumes the body and hands you
 a map, and re-encoding that map gives different bytes — so the signature never
-matches. `paths: ["/webhooks/"]` keeps every other request out of it.
+matches. Name the paths: nothing but the webhook route needs a raw body.
+`Plug.Parsers`' `:length` limit (8 MB by default) still applies — a body over
+it gets a 413, as it would without the reader in the way.
 
 The plug answers **200** when the receipt was updated and when no receipt has
 that message id (a webhook about a message you never sent is not your error,

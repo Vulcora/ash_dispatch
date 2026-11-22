@@ -39,14 +39,72 @@ defmodule AshDispatch.Plugs.RawBodyReaderTest do
       assert conn.assigns.raw_body == ""
     end
 
-    test "a body read in chunks is joined" do
-      # `:length` forces Plug to answer `{:more, _, _}` first.
+    test "a body in chunks UNDER the cap is joined" do
+      # `:read_length` splits the read; `:length` is the cap and is not
+      # reached, so the chunks are joined and the signature can be checked
+      # against the whole body.
       body = String.duplicate("a", 5_000)
 
-      assert {:ok, read, conn} = RawBodyReader.read_body(request(body), length: 1_000)
+      assert {:ok, read, conn} =
+               RawBodyReader.read_body(request(body), length: 50_000, read_length: 1_000)
 
       assert read == body
       assert conn.assigns.raw_body == body
+    end
+  end
+
+  describe "the size limit" do
+    # `{:more, _, _}` from a body reader is how `Plug.Parsers` is told the
+    # body is too large: its JSON parser turns that into `:too_large`, a 413.
+    # A reader that loops on it has removed `:length`, and an unauthenticated
+    # POST of any size is then read into memory in full. This is the finding
+    # that blocked the release, and the previous version of this file
+    # enshrined the defect.
+    test "a body over :length is refused, not read to the end" do
+      body = String.duplicate("a", 5_000)
+
+      assert {:more, _partial, conn} = RawBodyReader.read_body(request(body), length: 1_000)
+
+      # Nothing was kept: there is no verified body to keep.
+      refute Map.has_key?(conn.assigns, :raw_body)
+    end
+
+    test "the refusal is what Plug.Parsers turns into a 413" do
+      body = String.duplicate("a", 5_000)
+      conn = request(body)
+
+      assert_raise Plug.Parsers.RequestTooLargeError, fn ->
+        Plug.Parsers.call(
+          conn,
+          Plug.Parsers.init(
+            parsers: [:json],
+            json_decoder: Jason,
+            length: 1_000,
+            body_reader: {RawBodyReader, :read_body, []}
+          )
+        )
+      end
+    end
+
+    test "the default cap is Plug's own 8 MB, not unlimited" do
+      # A host following the documented setup passes no `:length`, and must
+      # get the limit it would have had without this reader in the way.
+      body = String.duplicate("a", 9_000_000)
+
+      assert {:more, _partial, _conn} = RawBodyReader.read_body(request(body), [])
+    end
+
+    test "a body just under the default cap still comes through whole" do
+      body = String.duplicate("a", 100_000)
+
+      assert {:ok, ^body, conn} = RawBodyReader.read_body(request(body), [])
+      assert conn.assigns.raw_body == body
+    end
+
+    test "a nonsense :length falls back on the default rather than meaning none" do
+      body = String.duplicate("a", 1_000)
+
+      assert {:ok, ^body, _conn} = RawBodyReader.read_body(request(body), length: :unlimited)
     end
   end
 
