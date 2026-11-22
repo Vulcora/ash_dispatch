@@ -228,10 +228,18 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
 
       {:ok, receipts} ->
         opts = [stuck_after_minutes: stuck_after, stale_after_hours: stale_after]
+        job_states = job_states(receipts)
 
         tally =
           receipts
-          |> Enum.map(&handle_stranded(Tenancy.remember(&1, tenant), opts))
+          |> Enum.map(fn receipt ->
+            job_state = Map.get(job_states, Map.get(receipt, :oban_job_id))
+
+            handle_stranded(
+              Tenancy.remember(receipt, tenant),
+              Keyword.put(opts, :job_state, job_state)
+            )
+          end)
           |> Enum.frequencies()
 
         if Map.get(tally, :leave, 0) != length(receipts) do
@@ -252,6 +260,42 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
     error ->
       Logger.error("RetryFailedDeliveries: stranded sweep crashed: #{Exception.message(error)}")
       :ok
+  end
+
+  # The state of each receipt's Oban job, by job id. A receipt in `:scheduled`
+  # whose job is still waiting is a delayed send, not a stranded one, and the
+  # sweep must leave it alone (`Stranded.action/2`). Without a configured repo,
+  # or if the lookup fails, no state is known and age alone decides, as it did
+  # before the sweep looked at jobs at all.
+  defp job_states(receipts) do
+    ids =
+      receipts
+      |> Enum.map(&Map.get(&1, :oban_job_id))
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+
+    case {ids, Config.repo()} do
+      {[], _} ->
+        %{}
+
+      {_, nil} ->
+        %{}
+
+      {ids, repo} ->
+        import Ecto.Query, only: [from: 2]
+
+        from(j in Oban.Job, where: j.id in ^ids, select: {j.id, j.state})
+        |> repo.all()
+        |> Map.new()
+    end
+  rescue
+    error ->
+      Logger.warning(
+        "RetryFailedDeliveries: could not read job states, deciding on age alone: " <>
+          Exception.message(error)
+      )
+
+      %{}
   end
 
   defp handle_stranded(receipt, opts) do

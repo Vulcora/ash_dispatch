@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A delayed email was sent early by the stranded-receipt sweep.** A channel
+  timed `{:in, seconds}` beyond the grace period (30 minutes by default), or
+  `{:at, datetime}`, leaves its receipt in `:scheduled` with an Oban job that
+  will run on time. The sweep decided on the receipt's age alone and never
+  looked at the job, so it moved the receipt to `:failed`, and the retry pass
+  sent it at once. Past 24 hours it closed the receipt as `failed_permanent`
+  and the mail was never sent. The sweep now reads the state of each
+  receipt's job and leaves a receipt alone while its job is waiting or
+  running (`Stranded.action/2` takes `:job_state`; `Stranded.live_job?/1`). A
+  receipt whose job is gone or finished is rescued or closed as before.
+
 ## [0.9.4-rc.5] - 2026-11-18
 
 ### Per-recipient digests
