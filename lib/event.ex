@@ -1089,6 +1089,18 @@ defmodule AshDispatch.Event do
       defp __static_notification_title, do: "Notification"
       defp __static_notification_message, do: "You have a new notification"
 
+      @doc false
+      # The placeholder this macro answers when NOTHING was declared — no DSL
+      # `notification_message`, no override. `AshDispatch.EventResolver` asks
+      # so that a transport template can fill a body the host never wrote,
+      # and never one it did. Stated rather than compared against a literal
+      # string somewhere else in the library.
+      def __ash_dispatch_placeholder__(:notification_message),
+        do: __static_notification_message()
+
+      def __ash_dispatch_placeholder__(:notification_title), do: __static_notification_title()
+      def __ash_dispatch_placeholder__(_other), do: nil
+
       # Make everything overridable
       defoverridable id: 0,
                      version: 0,

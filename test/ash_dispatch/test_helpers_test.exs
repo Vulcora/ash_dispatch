@@ -46,7 +46,8 @@ defmodule AshDispatch.TestHelpersTest do
                "booking.confirmed",
                "booking.minted",
                "booking.reminder",
-               "booking.texted"
+               "booking.texted",
+               "booking.untexted"
              ]
 
     assert [broken] = Enum.filter(results, &(&1.problems != []))

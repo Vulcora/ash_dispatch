@@ -98,13 +98,18 @@ defmodule AshDispatch.Transport.QueueTest do
                [queue: :bulk_emails]
     end
 
-    test "a string queue is passed through without becoming an atom" do
-      before = :erlang.system_info(:atom_count)
+    test "a queue that is not an atom is refused, not passed through" do
+      # Oban's queue names are atoms. A string names no running queue, so the
+      # job would be inserted and never picked up; and `String.to_atom/1` on a
+      # value that can come from a manual dispatch's override is worse still.
+      assert Queue.opts(%{transport: :email, queue: "bulk_emails_as_a_string"}) == []
+      assert Queue.opts(%{transport: :email, queue: 7}) == []
 
-      assert Queue.opts(%{transport: :email, queue: "bulk_emails_as_a_string"}) ==
-               [queue: "bulk_emails_as_a_string"]
+      refute_atom_created("bulk_emails_as_a_string")
+    end
 
-      assert :erlang.system_info(:atom_count) <= before + 1
+    defp refute_atom_created(name) do
+      assert_raise ArgumentError, fn -> :erlang.binary_to_existing_atom(name, :utf8) end
     end
 
     test "it reaches the job, over the transport's own queue" do

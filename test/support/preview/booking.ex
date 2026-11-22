@@ -83,6 +83,15 @@ defmodule AshDispatch.Test.Preview.Booking do
         [transport: :in_app, audience: :user],
         [transport: :slack, audience: :user]
       ]
+
+    # The same templates, and an event that declared no body at all.
+    event :untexted,
+      trigger_on: :manual,
+      module: AshDispatch.Test.Preview.BookingUntexted,
+      channels: [
+        [transport: :sms, audience: :user],
+        [transport: :in_app, audience: :user]
+      ]
   end
 end
 

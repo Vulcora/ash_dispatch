@@ -141,10 +141,18 @@ lib/my_app/accounts/events/password_reset/
 ```
 
 The filename names the transport, so `sms.text.eex`, `slack.text.eex`,
-`in_app.text.eex` and `webhook.text.eex` are templates too. Write one and
-that channel's body comes from it; write none and it comes from
-`notification_message/2`, exactly as before. A body declared in the DSL
-(`content: [message: "…"]`) still wins over both.
+`in_app.text.eex` and `webhook.text.eex` are templates too.
+
+A transport template fills a body **nobody declared**, and never overrides one
+somebody did. Highest first: a `content: [message: "…"]` on the channel or the
+event, then the module's own `notification_message/2`, then the template, then
+the placeholder the `use` macro answers when nothing was declared. So writing
+`sms.text.eex` gives an SMS a body it did not have; it does not change one it
+had.
+
+A `default.text.eex` is **not** used for a non-email body, however much it is
+the fallback for email: it is your generic letter, and as an SMS it is several
+paid segments.
 
 **Example HTML template:**
 

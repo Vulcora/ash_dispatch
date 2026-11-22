@@ -1336,11 +1336,40 @@ defmodule AshDispatch.Dispatcher do
           end
       end
 
+    base_content =
+      put_transport_body(base_content, context, channel, event_config, module, recipient)
+
     # Add policy to content if present on channel
     if channel.policy do
       Map.put(base_content, :policy, to_string(channel.policy))
     else
       base_content
+    end
+  end
+
+  # The body from a transport's own template file (`sms.text.eex`,
+  # `slack.text.eex`, …), for a transport that is not email.
+  #
+  # ONE place, after the module and inline content have been merged, because
+  # the rule is about the merged answer: **a template fills a body the host
+  # never wrote, and never overrides one it did.** So an inline
+  # `content: [message: ...]`, a DSL `notification_message:`, or a module that
+  # overrides `notification_message/2` all win over a file — and the
+  # placeholder `use AshDispatch.Event` answers when nothing was declared
+  # ("You have a new notification") loses to one.
+  #
+  # The alternative, a file beating a callback, was what 0.9.4 first did. It
+  # meant a host that upgraded and changed nothing could get a different SMS,
+  # which is not a thing a patch may do.
+  defp put_transport_body(content, context, channel, event_config, module, recipient) do
+    if EventResolver.declared?(module, :notification_message, Map.get(content, :message)) do
+      content
+    else
+      maybe_put(
+        content,
+        :message,
+        render_transport_body(context, channel, event_config, module, recipient)
+      )
     end
   end
 
@@ -1435,11 +1464,6 @@ defmodule AshDispatch.Dispatcher do
     content_config = Map.merge(event_content, channel_content)
     metadata_config = Map.merge(event_metadata, channel_metadata)
 
-    # The body from a template file, for a transport that is not email. `nil`
-    # for email (which renders its own, below), for the bodyless transports,
-    # and for every installation that has not written one.
-    transport_body = render_transport_body(context, channel, event_config, nil, recipient)
-
     base_content = %{
       transport: channel.transport,
       audience: channel.audience
@@ -1470,7 +1494,6 @@ defmodule AshDispatch.Dispatcher do
 
           # Add optional fields only if they have values (to not overwrite module callbacks in hybrid mode)
           base
-          |> maybe_put(:message, transport_body)
           |> maybe_put(
             :title,
             interpolate(content_config[:title] || content_config[:notification_title], context)
@@ -1490,11 +1513,7 @@ defmodule AshDispatch.Dispatcher do
           # returns `nil`, and a `%{message: nil}` would overwrite the module
           # callback's text with nothing in hybrid mode. See `:webhook` below.
           #
-          # The template file first, then the declared body over it: a
-          # `content: [message: ...]` written right here is more specific than
-          # a file, and a host with both keeps exactly what it has today.
           %{}
-          |> maybe_put(:message, transport_body)
           |> maybe_put(
             :message,
             interpolate(
@@ -1509,7 +1528,6 @@ defmodule AshDispatch.Dispatcher do
           # returns `nil`, and a `%{message: nil}` would overwrite the module
           # callback's text with nothing in hybrid mode. See `:webhook` below.
           %{}
-          |> maybe_put(:message, transport_body)
           |> maybe_put(
             :message,
             interpolate(
@@ -1522,7 +1540,6 @@ defmodule AshDispatch.Dispatcher do
         :sms ->
           # See `:discord` above for why `maybe_put`.
           %{}
-          |> maybe_put(:message, transport_body)
           |> maybe_put(
             :message,
             interpolate(
@@ -1566,7 +1583,6 @@ defmodule AshDispatch.Dispatcher do
           # surface that renders it is a key that only looks like it does
           # something.
           %{}
-          |> maybe_put(:message, transport_body)
           |> maybe_put(
             :title,
             interpolate(content_config[:title] || content_config[:notification_title], context)
@@ -1588,7 +1604,6 @@ defmodule AshDispatch.Dispatcher do
           # encrypted payloads off around 4 KB, and everything else can be
           # fetched once the user has tapped.
           %{}
-          |> maybe_put(:message, transport_body)
           |> maybe_put(
             :title,
             interpolate(content_config[:title] || content_config[:notification_title], context)
@@ -1610,9 +1625,7 @@ defmodule AshDispatch.Dispatcher do
         # still delivers; its backend typically reads receipt.content or the
         # context itself.
         _ ->
-          # A transport registered without a branch here still gets its
-          # template, if the host wrote one.
-          %{} |> maybe_put(:message, transport_body)
+          %{}
       end
 
     Map.merge(base_content, transport_content)
@@ -1633,6 +1646,20 @@ defmodule AshDispatch.Dispatcher do
   # `nil` when no template exists, which is every installation that has not
   # written one — and `nil` through `maybe_put/3` leaves whatever the content
   # callbacks said, so nothing moves for them.
+  #
+  # TWO things keep that promise true, and both were wrong in 0.9.4's first
+  # attempt:
+  #
+  #   * `fallback?: false`. The candidate list normally ends with
+  #     `default.<ext>`, the documented "ultimate fallback" that until now only
+  #     EMAIL could reach. A host's `default.text.eex` is its generic LETTER:
+  #     read as an SMS it is several paid segments, and as an in-app
+  #     notification it is an email in a bell menu. Only a name that says the
+  #     transport — `sms.text.eex` — is a body somebody wrote for it.
+  #   * lazy assigns. `prepare_template_assigns/2` is host code, and it must
+  #     not run on every dispatch of every non-email channel just to discover
+  #     there is no template. The function below is called by the resolver only
+  #     after a template has been found.
   defp render_transport_body(
          _context,
          %{transport: transport},
@@ -1649,7 +1676,7 @@ defmodule AshDispatch.Dispatcher do
     layout = resolve_channel_layout(channel, context)
     variant = channel.variant || variant_for(module, context, channel)
 
-    assigns =
+    assigns = fn ->
       case module do
         nil ->
           Context.template_assigns(context)
@@ -1659,6 +1686,7 @@ defmodule AshDispatch.Dispatcher do
           |> safe_prepare_template_assigns(context, channel)
           |> Map.merge(Context.template_assigns(context))
       end
+    end
 
     located =
       case module do
@@ -1691,6 +1719,7 @@ defmodule AshDispatch.Dispatcher do
                variant: variant,
                locale: locale,
                layout: layout,
+               fallback?: false,
                assigns: assigns
              ]
          ) do
@@ -2034,12 +2063,6 @@ defmodule AshDispatch.Dispatcher do
             action_label: module.action_label(context, channel),
             notification_type: get_notification_type(module, context)
           }
-          # A template file beats the callback, exactly as `email.text.eex`
-          # beats `body_text/2`. `nil` without one, so the callback stands.
-          |> maybe_put(
-            :message,
-            render_transport_body(context, channel, nil, module, recipient)
-          )
 
         :webhook ->
           # The same keys as `:in_app`, and for the same reason: the receiver
@@ -2056,21 +2079,12 @@ defmodule AshDispatch.Dispatcher do
             action_url: module.action_url(context, channel),
             action_label: module.action_label(context, channel)
           }
-          |> maybe_put(
-            :message,
-            render_transport_body(context, channel, nil, module, recipient)
-          )
 
         _ ->
-          # For other transports, use basic message — or the transport's own
-          # template, where the host wrote one.
+          # For other transports, use basic message.
           %{
             message: module.notification_message(context, channel)
           }
-          |> maybe_put(
-            :message,
-            render_transport_body(context, channel, nil, module, recipient)
-          )
       end
 
     # `extra_content/2` — the module's own keys, for whatever the receiver can

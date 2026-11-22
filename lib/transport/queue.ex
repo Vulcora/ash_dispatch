@@ -45,13 +45,21 @@ defmodule AshDispatch.Transport.Queue do
         warn_unless_running(queue)
         [queue: queue]
 
-      queue when is_binary(queue) and queue != "" ->
-        # A string from a manual dispatch's channel override. Not
-        # `String.to_atom/1`: Oban takes the string.
-        warn_unless_running(queue)
-        [queue: queue]
+      nil ->
+        []
 
-      _ ->
+      other ->
+        # Refused rather than passed through. Oban's queue names are atoms, a
+        # string names no queue it is running, and the job would be inserted
+        # into a queue nothing picks up — a silently lost letter, which is the
+        # failure this module exists to catch. `String.to_atom/1` is not the
+        # answer either: a channel's queue can come from a manual dispatch's
+        # override, which is to say from outside.
+        Logger.warning(
+          "[AshDispatch] ignoring queue #{inspect(other)}: a queue name is an atom, " <>
+            "and this channel's jobs go to the transport's queue instead"
+        )
+
         []
     end
   end

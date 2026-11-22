@@ -83,23 +83,37 @@ defmodule AshDispatch.TemplateResolver do
   `transport: :email`, so a host that wrote one had a file that rendered
   nothing — and no way to tell.
 
-  Now a non-email channel's body comes from its template where one exists, and
-  from the content callbacks where none does. The order, highest first:
+  Now a non-email channel's body comes from its template, **when the host
+  declared no body at all**. The order, highest first:
 
-  1. a body declared on the channel or the event (`content: [message: …]`) —
-     written right there, and more specific than a file;
-  2. the transport's template file;
-  3. `notification_message/2` on the event module.
+  1. a body declared on the channel or the event (`content: [message: …]` or
+     `notification_message:`);
+  2. an event module's own `notification_message/2`;
+  3. the transport's template file;
+  4. the placeholder `use AshDispatch.Event` answers when nothing was
+     declared ("You have a new notification").
+
+  So a template fills a body nobody wrote, and never overrides one somebody
+  did. That order is deliberate and it is the conservative one: a host that
+  upgrades and changes nothing must get the text it already got, and a file
+  beating a callback would have changed an SMS under it.
+
+  ### The `default.*` fallback does not apply
+
+  The chain above ends at the transport's own name. `default.<ext>` — the
+  "ultimate fallback" in the chain further up this page — is **not** a
+  candidate for a non-email body, because a host's `default.text.eex` is its
+  generic *letter*: read as an SMS it is several paid segments, and as an
+  in-app notification it is an email in a bell menu. Only a filename that
+  names the transport is a body somebody wrote for that transport. Email
+  reaches `default.*` exactly as it always has.
 
   Text only: `message` is the body for these transports, and there is nowhere
   for a second rendered format to go. `:broadcast` and `:oban` are never
   rendered — they reach a topic and a queue, not a person.
 
-  An installation that has written no such template sees no difference. One
-  that has an `sms.text.eex` *and* a declared `message:` keeps the declared
-  one. One that has an `sms.text.eex` and relies on `notification_message/2`
-  starts getting the template — which is the fix, and the presence of the file
-  is what asks for it.
+  An installation that has written no `<transport>.*` template sees no
+  difference, whatever else is in its templates directory.
 
   ## Template Formats
 
@@ -188,6 +202,7 @@ defmodule AshDispatch.TemplateResolver do
     variant = Keyword.get(opts, :variant)
     locale = Keyword.get(opts, :locale)
     layout = Keyword.get(opts, :layout)
+    fallback? = Keyword.get(opts, :fallback?, true)
     assigns = Keyword.fetch!(opts, :assigns)
 
     # Try priv templates first (production), fall back to files (development)
@@ -195,7 +210,7 @@ defmodule AshDispatch.TemplateResolver do
     cond do
       # 1. Event module with compiled templates (legacy, deprecated)
       event_module && function_exported?(event_module, :__compiled_templates__, 0) ->
-        render_from_compiled(event_module, transport, variant, locale, format, assigns)
+        render_from_compiled(event_module, transport, variant, locale, format, assigns, fallback?)
 
       # 2. File-based: Explicit template path (highest priority for user overrides)
       template_path ->
@@ -209,7 +224,8 @@ defmodule AshDispatch.TemplateResolver do
           assigns,
           false,
           otp_app,
-          layout
+          layout,
+          fallback?
         )
 
       # 3. File-based: Explicit event_dir with templates/ subdirectory
@@ -224,7 +240,8 @@ defmodule AshDispatch.TemplateResolver do
           assigns,
           true,
           otp_app,
-          layout
+          layout,
+          fallback?
         )
 
       # 4. File-based: Derive event_dir from module source (development)
@@ -238,7 +255,8 @@ defmodule AshDispatch.TemplateResolver do
           assigns,
           true,
           otp_app,
-          layout
+          layout,
+          fallback?
         )
 
       # 5. Priv directory manifest (module-based events)
@@ -251,7 +269,8 @@ defmodule AshDispatch.TemplateResolver do
           locale,
           format,
           assigns,
-          layout
+          layout,
+          fallback?
         )
 
       # 5. Priv directory manifest (convention-based events)
@@ -264,7 +283,8 @@ defmodule AshDispatch.TemplateResolver do
           locale,
           format,
           assigns,
-          layout
+          layout,
+          fallback?
         )
 
       # 6. File-based: Convention-based path (development fallback)
@@ -281,7 +301,8 @@ defmodule AshDispatch.TemplateResolver do
           assigns,
           false,
           otp_app,
-          layout
+          layout,
+          fallback?
         )
 
       true ->
@@ -369,9 +390,11 @@ defmodule AshDispatch.TemplateResolver do
   end
 
   # Render from compiled templates (production)
-  defp render_from_compiled(event_module, transport, variant, locale, format, assigns) do
+  defp render_from_compiled(event_module, transport, variant, locale, format, assigns, fallback?) do
     templates = event_module.__compiled_templates__()
-    candidates = build_template_candidates(transport, variant, locale, format)
+
+    candidates =
+      build_template_candidates(transport, variant, locale, format, fallback?: fallback?)
 
     case Enum.find_value(candidates, fn
            nil ->
@@ -403,9 +426,11 @@ defmodule AshDispatch.TemplateResolver do
          locale,
          format,
          assigns,
-         layout
+         layout,
+         fallback?
        ) do
-    candidates = build_template_candidates(transport, variant, locale, format)
+    candidates =
+      build_template_candidates(transport, variant, locale, format, fallback?: fallback?)
 
     with {:ok, manifest} <- load_manifest(otp_app),
          manifest_key <- format_manifest_key(lookup_key),
@@ -480,10 +505,19 @@ defmodule AshDispatch.TemplateResolver do
          assigns,
          add_templates_subdir,
          otp_app,
-         layout
+         layout,
+         fallback?
        ) do
     template_path =
-      resolve_template(event_dir, transport, variant, locale, format, add_templates_subdir)
+      resolve_template(
+        event_dir,
+        transport,
+        variant,
+        locale,
+        format,
+        add_templates_subdir,
+        fallback?
+      )
 
     case template_path do
       {:ok, path} ->
@@ -505,7 +539,15 @@ defmodule AshDispatch.TemplateResolver do
       {:error, error}
   end
 
-  defp resolve_template(event_dir, transport, variant, locale, format, add_templates_subdir) do
+  defp resolve_template(
+         event_dir,
+         transport,
+         variant,
+         locale,
+         format,
+         add_templates_subdir,
+         fallback?
+       ) do
     # For module-based events, add /templates subdirectory
     # For convention-based paths, the path already points to the template directory
     templates_dir =
@@ -516,7 +558,7 @@ defmodule AshDispatch.TemplateResolver do
       end
 
     candidates =
-      build_template_candidates(transport, variant, locale, format)
+      build_template_candidates(transport, variant, locale, format, fallback?: fallback?)
       |> Enum.map(&Path.join(templates_dir, &1))
 
     Enum.find_value(candidates, :error, fn path ->
@@ -526,8 +568,25 @@ defmodule AshDispatch.TemplateResolver do
 
   # Build template candidate filenames with locale support
   # Fallback chain: variant+locale → variant → locale → base → default+locale → default
-  defp build_template_candidates(transport, variant, locale, format) do
+  #
+  # `fallback?: false` stops before the two `default.*` names. The non-email
+  # body path (`Dispatcher.render_transport_body/5`) passes it, and the reason
+  # is the whole of why: `default.text.eex` is a host's GENERIC letter, written
+  # for email because email was the only transport that could reach it. Reading
+  # it as an SMS body turns one letter into several paid segments, and as an
+  # in-app notification it fills a bell menu with an email. Email keeps the
+  # fallback exactly as it has always had it.
+  #
+  # `variant` and `locale` become path segments, so they go through the same
+  # check `layout` does (`Dispatcher.resolve_channel_layout/2`): `locale` is
+  # read off a record field by `locale_from` and `variant` off
+  # `template_variant/2`, which is to say both can carry whatever a row holds.
+  # A refused value drops its candidates rather than its request, so a bad
+  # locale falls back to the base template instead of rendering nothing.
+  defp build_template_candidates(transport, variant, locale, format, opts) do
     extension = extension_for(format)
+    variant = safe_segment(variant, :variant)
+    locale = safe_segment(locale, :locale)
 
     [
       # Most specific: variant + locale
@@ -537,14 +596,48 @@ defmodule AshDispatch.TemplateResolver do
       # Locale only
       locale && "#{transport}.#{locale}.#{extension}",
       # Base template
-      "#{transport}.#{extension}",
-      # Default with locale
-      locale && "default.#{locale}.#{extension}",
-      # Ultimate fallback
-      "default.#{extension}"
+      "#{transport}.#{extension}"
     ]
+    |> Kernel.++(
+      if Keyword.get(opts, :fallback?, true) do
+        [
+          # Default with locale
+          locale && "default.#{locale}.#{extension}",
+          # Ultimate fallback
+          "default.#{extension}"
+        ]
+      else
+        []
+      end
+    )
     |> Enum.reject(&is_nil/1)
     |> Enum.uniq()
+  end
+
+  @segment ~r/^[A-Za-z0-9_\-.]+$/
+
+  # One path segment, never a path. Same rule as a layout name.
+  defp safe_segment(nil, _what), do: nil
+
+  defp safe_segment(value, what) when is_atom(value),
+    do: safe_segment(Atom.to_string(value), what)
+
+  defp safe_segment(value, what) when is_binary(value) do
+    if value != "" and value not in [".", ".."] and Regex.match?(@segment, value) do
+      value
+    else
+      Logger.warning(
+        "[AshDispatch] ignoring #{what} #{inspect(value)} for template selection: it becomes " <>
+          "part of a filename, so only letters, digits, _, - and . are accepted"
+      )
+
+      nil
+    end
+  end
+
+  defp safe_segment(value, what) do
+    Logger.warning("[AshDispatch] ignoring #{what} #{inspect(value)}: not a name")
+    nil
   end
 
   # Format to file extension mapping
@@ -598,6 +691,13 @@ defmodule AshDispatch.TemplateResolver do
     # auto-escape semantics. Other formats (text, etc.) are emitted as
     # plain `<%= @var %>` and rely on the format's own quoting rules.
     preprocessed = preprocess_heex_attributes(template_content, format)
+
+    # A 0-arity function is assigns the caller does not want BUILT unless a
+    # template was actually found: `prepare_template_assigns/2` is host code,
+    # and the non-email body path must not call it on every dispatch of every
+    # channel just to discover there is no template. Resolved here, after the
+    # template has been located and read.
+    assigns = if is_function(assigns, 0), do: assigns.(), else: assigns
 
     # Normalize assigns (convert struct to map if needed)
     normalized_assigns = if is_struct(assigns), do: Map.from_struct(assigns), else: assigns

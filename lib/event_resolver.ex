@@ -252,6 +252,38 @@ defmodule AshDispatch.EventResolver do
   end
 
   @doc """
+  Whether `value` is a body the host actually declared, rather than the
+  placeholder `use AshDispatch.Event` answers when nothing was.
+
+  `notification_message/2`'s generated default answers "You have a new
+  notification" for an event that declares nothing, so "did the host say what
+  this says?" cannot be answered by `function_exported?`. The macro states its
+  own placeholder (`__ash_dispatch_placeholder__/1`) and this compares against
+  it.
+
+  Used for one decision: a transport's template file (`sms.text.eex` and
+  friends) fills a body the host never wrote, and never overrides one it did.
+  """
+  @spec declared?(module() | nil, atom(), term()) :: boolean()
+  def declared?(_module, _key, value) when value in [nil, ""], do: false
+
+  def declared?(module, key, value) when is_binary(value) do
+    value != placeholder(module, key)
+  end
+
+  def declared?(_module, _key, _value), do: true
+
+  @doc false
+  @spec placeholder(module() | nil, atom()) :: String.t() | nil
+  def placeholder(nil, _key), do: nil
+
+  def placeholder(module, key) do
+    if exports?(module, :__ash_dispatch_placeholder__, 1) do
+      call_if_exported(module, :__ash_dispatch_placeholder__, [key], default: nil)
+    end
+  end
+
+  @doc """
   Get the domain from an event module.
   """
   @spec domain(module()) :: atom() | nil
