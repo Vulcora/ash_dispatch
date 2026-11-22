@@ -1615,6 +1615,9 @@ defmodule AshDispatch.Dispatcher do
     # Locale priority: channel.locale > channel.locale_from (dynamic) >
     # recipient.locale > context.locale
     locale = resolve_channel_locale(channel, context, recipient)
+    # Which layout wraps the body: channel.layout, or channel.layout_from read
+    # off the record. nil is the transport's default layout.
+    layout = resolve_channel_layout(channel, context)
 
     # Prepare template assigns
     assigns = Context.template_assigns(context)
@@ -1633,6 +1636,7 @@ defmodule AshDispatch.Dispatcher do
              transport: :email,
              variant: variant,
              locale: locale,
+             layout: layout,
              assigns: assigns
            ) do
         {:ok, rendered} ->
@@ -1663,6 +1667,7 @@ defmodule AshDispatch.Dispatcher do
              transport: :email,
              variant: variant,
              locale: locale,
+             layout: layout,
              assigns: assigns
            ) do
         {:ok, rendered} ->
@@ -1807,6 +1812,7 @@ defmodule AshDispatch.Dispatcher do
           # Locale priority: channel.locale > channel.locale_from (dynamic) >
           # recipient.locale > context.locale
           locale = resolve_channel_locale(channel, context, recipient)
+          layout = resolve_channel_layout(channel, context)
 
           # Prepare template assigns using EventResolver
           base_assigns = safe_prepare_template_assigns(module, context, channel)
@@ -1846,6 +1852,7 @@ defmodule AshDispatch.Dispatcher do
                        transport: :email,
                        variant: variant,
                        locale: locale,
+                       layout: layout,
                        assigns: assigns_with_subject
                      ) do
                   {:ok, rendered} -> rendered
@@ -1864,6 +1871,7 @@ defmodule AshDispatch.Dispatcher do
                        transport: :email,
                        variant: variant,
                        locale: locale,
+                       layout: layout,
                        assigns: assigns_with_subject
                      ) do
                   {:ok, rendered} -> rendered
@@ -2173,6 +2181,65 @@ defmodule AshDispatch.Dispatcher do
       true ->
         context.locale
     end
+  end
+
+  # Resolve the layout for a channel:
+  # 1. channel.layout — named on the channel
+  # 2. channel.layout_from — read off the event's record
+  # 3. nil — the transport's default layout, which is what every channel got
+  #    before 0.9.4
+  #
+  # The name becomes a path segment in
+  # `priv/ash_dispatch/layouts/<layout>/<transport>.<ext>`, and `layout_from`
+  # reads an arbitrary record field, so the value is CHECKED rather than
+  # trusted: a record whose column held "../../../../etc" would otherwise
+  # render a file outside the layouts directory.
+  @doc false
+  def resolve_channel_layout(channel, context) do
+    raw =
+      Map.get(channel, :layout) ||
+        case Map.get(channel, :layout_from) do
+          nil -> nil
+          field -> record_layout(context, field)
+        end
+
+    safe_layout(raw)
+  end
+
+  defp record_layout(context, field) do
+    case Map.get(context.data, context.resource_key) do
+      record when is_map(record) -> RecordReader.safe_get(record, field)
+      _ -> nil
+    end
+  end
+
+  @layout_name ~r/^[A-Za-z0-9_\-.]+$/
+
+  defp safe_layout(nil), do: nil
+
+  defp safe_layout(layout) when is_atom(layout), do: safe_layout(Atom.to_string(layout))
+
+  defp safe_layout(layout) when is_binary(layout) do
+    cond do
+      layout == "" ->
+        nil
+
+      Regex.match?(@layout_name, layout) and layout not in [".", ".."] ->
+        layout
+
+      true ->
+        Logger.warning(
+          "[AshDispatch] ignoring layout #{inspect(layout)}: a layout name is a directory " <>
+            "name, so only letters, digits, _, - and . are accepted"
+        )
+
+        nil
+    end
+  end
+
+  defp safe_layout(other) do
+    Logger.warning("[AshDispatch] ignoring layout #{inspect(other)}: not a name")
+    nil
   end
 
   # Extract `:locale` from a recipient struct/map. Returns nil if the

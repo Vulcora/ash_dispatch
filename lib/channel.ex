@@ -8,6 +8,22 @@ defmodule AshDispatch.Channel do
   - **Time** - When to deliver (immediate, delayed, scheduled)
   - **Policy** - Delivery policy (:always, :skip_if_read)
   - **Variant** - Template variant (e.g., :admin for admin-specific templates)
+  - **Layout** - Which layout wraps the rendered body (`layout`, or
+    `layout_from` to read it off the record)
+
+  ## Layout
+
+  `layout: :urgent` renders through
+  `priv/ash_dispatch/layouts/urgent/email.html.heex`, falling back on
+  `priv/ash_dispatch/layouts/email.html.heex` when that subdirectory has no
+  layout for the format. `layout_from: :brand` reads the name off the event's
+  record instead, which is how one installation sends each brand's mail in its
+  own frame. Unset — which is every channel that does not say otherwise — the
+  default layout is used, exactly as before.
+
+  A layout name is a directory name, so only letters, digits, `_`, `-` and
+  `.` are accepted; anything else is ignored with a warning rather than joined
+  into a path.
 
   ## Time
 
@@ -63,6 +79,7 @@ defmodule AshDispatch.Channel do
           | {:window, map()}
   @type policy :: :always | :skip_if_read | {:gate, function()}
   @type variant :: atom() | nil
+  @type layout :: atom() | String.t() | nil
 
   @type t :: %__MODULE__{
           transport: transport(),
@@ -73,6 +90,8 @@ defmodule AshDispatch.Channel do
           locale: String.t() | nil,
           locale_from: atom() | nil,
           locales: [String.t()],
+          layout: layout(),
+          layout_from: atom() | nil,
           webhook_url: String.t() | nil,
           content: map(),
           metadata: map(),
@@ -91,6 +110,8 @@ defmodule AshDispatch.Channel do
     :variant,
     :locale,
     :locale_from,
+    :layout,
+    :layout_from,
     :webhook_url,
     :deduplicate_group,
     :idempotency_source,

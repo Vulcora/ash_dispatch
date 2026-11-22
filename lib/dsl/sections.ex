@@ -214,6 +214,26 @@ defmodule AshDispatch.Dsl.Sections do
           resource's or the event's.
           """
         ],
+        layout: [
+          type: {:or, [:atom, :string]},
+          required: false,
+          doc: """
+          Which layout wraps this channel's rendered body:
+          `priv/ash_dispatch/layouts/<layout>/<transport>.<ext>`, falling back
+          on the default layout for the transport. Unset, the default layout
+          is used — exactly what every channel did before 0.9.4.
+          """
+        ],
+        layout_from: [
+          type: :atom,
+          required: false,
+          doc: """
+          Field on the event's record to read the layout name from, for an
+          installation whose frame depends on the data (one brand per
+          customer, say). Only letters, digits, `_`, `-` and `.` are accepted:
+          the name becomes a directory.
+          """
+        ],
         webhook_url: [
           type: :string,
           required: false,

@@ -29,6 +29,32 @@ defmodule AshDispatch.TemplateResolver do
         </body>
       </html>
 
+  ### A layout per channel
+
+  A subdirectory holds a second frame:
+  `priv/ash_dispatch/layouts/urgent/email.html.heex`. Which one a letter gets
+  is the channel's to say (since 0.9.4):
+
+      channels: [
+        # The default layout, as before
+        [transport: :email, audience: :user],
+
+        # layouts/urgent/email.html.heex, falling back on the default when
+        # that directory has no layout for the format
+        [transport: :email, audience: :admin, layout: :urgent],
+
+        # The name off the record: one frame per brand
+        [transport: :email, audience: :customer, layout_from: :brand]
+      ]
+
+  A layout name becomes a directory name, so only letters, digits, `_`, `-`
+  and `.` are accepted — `layout_from` reads a column this library has never
+  seen, and a row holding `"../../.."` must not pick the file it names. A
+  refused name is logged and the default layout is used.
+
+  A channel that names no layout gets the default one, which is what every
+  channel got before 0.9.4.
+
   ## Compilation Strategy
 
   **Development:** Templates are loaded from files for fast iteration.
@@ -94,6 +120,10 @@ defmodule AshDispatch.TemplateResolver do
   * `:transport` - Required. The transport type (e.g., `:email`)
   * `:variant` - Optional. A variant hint like "admin" or "user"
   * `:locale` - Optional. Locale for i18n template selection (e.g., "en", "sv")
+  * `:layout` - Optional. Layout subdirectory under
+    `priv/ash_dispatch/layouts/`, falling back on the default layout for the
+    transport. Since 0.9.4 the dispatcher passes the channel's `layout` /
+    `layout_from` here
   * `:assigns` - Required. Map of variables available in template as @variable
 
   ## Template Path Resolution
@@ -131,6 +161,7 @@ defmodule AshDispatch.TemplateResolver do
     transport = Keyword.fetch!(opts, :transport)
     variant = Keyword.get(opts, :variant)
     locale = Keyword.get(opts, :locale)
+    layout = Keyword.get(opts, :layout)
     assigns = Keyword.fetch!(opts, :assigns)
 
     # Try priv templates first (production), fall back to files (development)
@@ -151,13 +182,24 @@ defmodule AshDispatch.TemplateResolver do
           format,
           assigns,
           false,
-          otp_app
+          otp_app,
+          layout
         )
 
       # 3. File-based: Explicit event_dir with templates/ subdirectory
       event_dir ->
         # Module-based: event_dir is __DIR__, add /templates subdirectory
-        render_from_files(event_dir, transport, variant, locale, format, assigns, true, otp_app)
+        render_from_files(
+          event_dir,
+          transport,
+          variant,
+          locale,
+          format,
+          assigns,
+          true,
+          otp_app,
+          layout
+        )
 
       # 4. File-based: Derive event_dir from module source (development)
       event_module && derive_module_dir(event_module) ->
@@ -169,7 +211,8 @@ defmodule AshDispatch.TemplateResolver do
           format,
           assigns,
           true,
-          otp_app
+          otp_app,
+          layout
         )
 
       # 5. Priv directory manifest (module-based events)
@@ -181,7 +224,8 @@ defmodule AshDispatch.TemplateResolver do
           variant,
           locale,
           format,
-          assigns
+          assigns,
+          layout
         )
 
       # 5. Priv directory manifest (convention-based events)
@@ -193,7 +237,8 @@ defmodule AshDispatch.TemplateResolver do
           variant,
           locale,
           format,
-          assigns
+          assigns,
+          layout
         )
 
       # 6. File-based: Convention-based path (development fallback)
@@ -209,7 +254,8 @@ defmodule AshDispatch.TemplateResolver do
           format,
           assigns,
           false,
-          otp_app
+          otp_app,
+          layout
         )
 
       true ->
@@ -323,7 +369,16 @@ defmodule AshDispatch.TemplateResolver do
   end
 
   # Render from priv directory manifest
-  defp render_from_priv_manifest(lookup_key, otp_app, transport, variant, locale, format, assigns) do
+  defp render_from_priv_manifest(
+         lookup_key,
+         otp_app,
+         transport,
+         variant,
+         locale,
+         format,
+         assigns,
+         layout
+       ) do
     candidates = build_template_candidates(transport, variant, locale, format)
 
     with {:ok, manifest} <- load_manifest(otp_app),
@@ -335,6 +390,7 @@ defmodule AshDispatch.TemplateResolver do
         otp_app: otp_app,
         transport: transport,
         locale: locale,
+        layout: layout,
         source: Path.join("priv/ash_dispatch/templates", dest_filename)
       )
     else
@@ -397,7 +453,8 @@ defmodule AshDispatch.TemplateResolver do
          format,
          assigns,
          add_templates_subdir,
-         otp_app
+         otp_app,
+         layout
        ) do
     template_path =
       resolve_template(event_dir, transport, variant, locale, format, add_templates_subdir)
@@ -410,6 +467,7 @@ defmodule AshDispatch.TemplateResolver do
           otp_app: otp_app,
           transport: transport,
           locale: locale,
+          layout: layout,
           source: Path.relative_to_cwd(path)
         )
 
@@ -592,6 +650,22 @@ defmodule AshDispatch.TemplateResolver do
     {:ok, rendered}
   end
 
+  # A layout name is one directory name, never a path.
+  defp safe_subdir(nil), do: nil
+  defp safe_subdir(subdir) when is_atom(subdir), do: safe_subdir(Atom.to_string(subdir))
+
+  defp safe_subdir(subdir) when is_binary(subdir) do
+    if subdir != "" and subdir not in [".", ".."] and
+         Regex.match?(~r/^[A-Za-z0-9_\-.]+$/, subdir) do
+      subdir
+    else
+      Logger.warning("[AshDispatch] ignoring layout #{inspect(subdir)}: not a directory name")
+      nil
+    end
+  end
+
+  defp safe_subdir(_), do: nil
+
   # Load layout from priv/ash_dispatch/layouts/
   # layout_subdir allows per-channel overrides (e.g., "urgent" -> layouts/urgent/email.html.heex)
   defp load_layout(otp_app, transport, format, layout_subdir)
@@ -599,6 +673,11 @@ defmodule AshDispatch.TemplateResolver do
   defp load_layout(otp_app, transport, format, layout_subdir) do
     extension = extension_for(format)
     layout_filename = "#{transport}.#{extension}"
+    # The subdirectory becomes a path segment. The dispatcher already refuses
+    # anything that is not a plain name (`Dispatcher.resolve_channel_layout/2`,
+    # which is what `layout_from` goes through), and this is the same refusal
+    # for a direct caller of `render/1`.
+    layout_subdir = safe_subdir(layout_subdir)
 
     case :code.priv_dir(otp_app) do
       {:error, _} ->
