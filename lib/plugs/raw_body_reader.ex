@@ -79,6 +79,36 @@ defmodule AshDispatch.Plugs.RawBodyReader do
     end
   end
 
+  @doc """
+  The same, for the `{module, function, extra_args}` form `Plug.Parsers` is
+  given.
+
+  `Plug.Parsers` calls a body reader as `apply(mod, fun, [conn, opts | args])`,
+  so the `args` of its MFA become EXTRA ARGUMENTS rather than options —
+  `body_reader: {__MODULE__, :read_body, [paths: ["/webhooks/"]]}` arrives here
+  as `read_body(conn, opts, {:paths, ["/webhooks/"]})`. Plug does not check a
+  body reader's arity, so without this clause the documented wiring raised
+  `UndefinedFunctionError` on every JSON request in the whole application, not
+  only on the webhook route.
+
+  The extra argument is merged OVER the parser's options, because it is the
+  one the host wrote for this reader.
+  """
+  @spec read_body(term(), keyword(), term()) ::
+          {:ok, binary(), term()} | {:more, binary(), term()} | {:error, term()}
+  def read_body(conn, opts, extra) do
+    read_body(conn, Keyword.merge(opts, normalise(extra)))
+  end
+
+  # One `{:paths, [...]}` tuple (Plug splices a keyword list's single pair), a
+  # keyword list, or anything else — which is no options at all rather than a
+  # crash.
+  defp normalise(extra) do
+    extra
+    |> List.wrap()
+    |> Enum.filter(&match?({key, _value} when is_atom(key), &1))
+  end
+
   defp cap(opts) do
     case Keyword.get(opts, :length, @default_length) do
       length when is_integer(length) and length > 0 -> length

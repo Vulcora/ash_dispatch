@@ -558,9 +558,12 @@ needs `webhook_tenant_tag: true`, or nothing carries the tag), and is only
 safe behind this plug. See
 `AshDispatch.WebhookHandlers.Resend.process_webhook/2` for why.
 
-A configured tenant source that yields nothing is a **400**: a typo'd route
-would otherwise look the message id up in the wrong schema, find nothing, and
-tell the provider everything was fine.
+A configured tenant source that yields nothing is a **400**: a typo'd route,
+or a payload with no tag, would otherwise look the message id up in the wrong
+schema, find nothing, and tell the provider everything was fine. With
+`tenant: :tag` that is the common case rather than the exotic one — Resend's
+`opened` and `clicked` events carry no headers at all — which is the other
+reason to prefer `{:path_param, …}`.
 
 If you would rather wire it yourself, `verify/4` and `process_webhook/2` are
 unchanged and public:

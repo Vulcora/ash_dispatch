@@ -53,6 +53,14 @@ defmodule AshDispatch.Plugs.ResendWebhook do
       the payload. Needs `config :ash_dispatch, webhook_tenant_tag: true`, or
       no outgoing message carries the tag; `init/1` says so at boot if it is
       missing. Only behind this plug, never without verification.
+
+      With per-tenant receipts, a payload that carries **no** tag is a 400.
+      That is not the exotic case: Resend's `opened` and `clicked` events
+      carry no headers at all, and nor does any event about a message sent
+      before the flag was switched on. Reading those as "no tenant" looked the
+      message id up in the wrong schema, answered "not found", and returned
+      200 — the webhook silently doing nothing, for ever. `{:path_param, …}`
+      has no such gap, which is the other reason to prefer it.
     - `{module, function, args}` — called with the conn prepended.
 
     A **configured** source that yields nothing is a 400, not "no tenant". A
@@ -228,7 +236,7 @@ defmodule AshDispatch.Plugs.ResendWebhook do
   # no tenant at all and answered a cheerful 200. For a host with per-tenant
   # receipts that is the webhook silently doing nothing, for ever, with the
   # provider told everything is fine.
-  defp tenant_opts(conn, opts) do
+  defp tenant_opts(conn, params, opts) do
     case Keyword.get(opts, :tenant) do
       nil ->
         {:ok, []}
@@ -243,8 +251,22 @@ defmodule AshDispatch.Plugs.ResendWebhook do
         end
 
       :tag ->
-        # The handler reads `X-AshDispatch-Tenant` out of the payload itself.
-        {:ok, []}
+        # The handler reads `X-AshDispatch-Tenant` out of the payload itself —
+        # but only if there IS one. A payload with no tag made it look the
+        # message id up with no tenant, in the wrong schema, which answers
+        # "not found" and therefore a 200: the webhook silently doing nothing,
+        # for ever. And a payload with no tag is not exotic — Resend's
+        # `opened` and `clicked` events carry no headers at all, and nor does
+        # any event about a message sent before the flag was switched on.
+        #
+        # Only when the receipts are per tenant: with public receipts the
+        # tenant names a column, not a schema, and a missing tag costs
+        # nothing.
+        cond do
+          not AshDispatch.Tenancy.receipts_per_tenant?() -> {:ok, []}
+          Resend.tenant_tag(params) -> {:ok, []}
+          true -> {:error, {:no_tenant, :tag}}
+        end
 
       {module, function, args} ->
         case apply(module, function, [conn | args]) do
@@ -271,7 +293,7 @@ defmodule AshDispatch.Plugs.ResendWebhook do
   # ── Answering ───────────────────────────────────────────────────────
 
   defp process(conn, params, opts) do
-    with {:ok, tenant_opts} <- tenant_opts(conn, opts) do
+    with {:ok, tenant_opts} <- tenant_opts(conn, params, opts) do
       case Resend.process_webhook(params, tenant_opts) do
         {:ok, _receipt} ->
           send(conn, 200, "ok")

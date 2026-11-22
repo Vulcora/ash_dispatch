@@ -363,6 +363,28 @@ defmodule AshDispatch.WebhookHandlers.Resend do
 
   # Resend echoes custom headers as a list of `%{"name" => _, "value" => _}`;
   # a map is accepted too, because a gateway in between may normalise them.
+  @doc """
+  The tenant tag in a webhook payload, or `nil`.
+
+  `config :ash_dispatch, webhook_tenant_tag: true` makes an outgoing message
+  carry `X-AshDispatch-Tenant`, and a provider that echoes headers sends it
+  back. Public so a caller can tell "this payload names a tenant" from "it
+  does not" BEFORE acting on it — `AshDispatch.Plugs.ResendWebhook` refuses a
+  request with no tag when the receipts are per tenant, because looking a
+  message id up in the wrong schema answers "not found" and a 200, which is
+  the webhook silently doing nothing.
+
+  Not every event carries headers: Resend's `opened` and `clicked` events do
+  not, and nor does any event about a message sent before the flag was
+  switched on.
+  """
+  @spec tenant_tag(map()) :: String.t() | nil
+  def tenant_tag(%{"data" => data}) when is_map(data), do: tenant_tag(data)
+
+  def tenant_tag(%{"headers" => headers}), do: header_value(headers, @tenant_header)
+
+  def tenant_tag(_params), do: nil
+
   defp header_value(headers, name) when is_list(headers) do
     Enum.find_value(headers, fn
       %{"name" => n, "value" => v} -> if downcase(n) == downcase(name), do: v

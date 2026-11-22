@@ -53,6 +53,57 @@ defmodule AshDispatch.Plugs.RawBodyReaderTest do
     end
   end
 
+  describe "the documented wiring, through real Plug.Parsers" do
+    # `Plug.Parsers` calls a body reader as
+    # `apply(mod, fun, [conn, opts | args])`, so the `args` of its MFA are
+    # EXTRA ARGUMENTS, not options — and it does not check the arity. So the
+    # only wiring the guide showed raised `UndefinedFunctionError` on every
+    # JSON request in the whole application. Every other test in this file
+    # folds `paths:` into the options by hand and misses it completely.
+    defp parse!(conn, args) do
+      Plug.Parsers.call(
+        conn,
+        Plug.Parsers.init(
+          parsers: [:json],
+          json_decoder: Jason,
+          body_reader: {RawBodyReader, :read_body, args}
+        )
+      )
+    end
+
+    test "args: [paths: [...]] — the form the guide shows" do
+      conn = parse!(request(@body), paths: ["/webhooks/"])
+
+      assert conn.assigns.raw_body == @body
+      assert conn.body_params == Jason.decode!(@body)
+    end
+
+    test "args: [] — the other documented form" do
+      conn = parse!(request(@body), [])
+
+      assert conn.assigns.raw_body == @body
+    end
+
+    test "and a path that does not match keeps nothing, through the parser" do
+      conn = parse!(request(@body, "/api/orders"), paths: ["/webhooks/"])
+
+      refute Map.has_key?(conn.assigns, :raw_body)
+      assert conn.body_params == Jason.decode!(@body)
+    end
+
+    test "several prefixes as one extra argument" do
+      conn = parse!(request(@body, "/hooks/resend"), paths: ["/webhooks/", "/hooks/"])
+
+      assert conn.assigns.raw_body == @body
+    end
+
+    test "an extra argument that is not options is ignored, not a crash" do
+      conn = parse!(request(@body), [:nonsense])
+
+      assert conn.assigns.raw_body == @body
+    end
+  end
+
   describe "the size limit" do
     # `{:more, _, _}` from a body reader is how `Plug.Parsers` is told the
     # body is too large: its JSON parser turns that into `:too_large`, a 413.

@@ -369,6 +369,60 @@ defmodule AshDispatch.Plugs.ResendWebhookTest do
       assert Ash.get!(DeliveryReceipt, receipt.id, authorize?: false).opened_at
     end
 
+    test ":tag with a tag in the payload goes through" do
+      put_tenant_tag_on()
+      put_per_tenant_receipts()
+
+      body =
+        Jason.encode!(%{
+          "type" => "email.opened",
+          "created_at" => "2026-11-22T09:00:00.000Z",
+          "data" => %{
+            "email_id" => "prov-tag-1",
+            "headers" => [%{"name" => "X-AshDispatch-Tenant", "value" => "tenant_a"}]
+          }
+        })
+
+      conn = ResendWebhook.call(request(body), secret: @secret, tenant: :tag)
+
+      # The tenant was named, so the handler got to look it up. These test
+      # receipts are not in that schema, hence "not found" and a 200 — what is
+      # pinned here is that it was NOT refused.
+      assert conn.status == 200
+    end
+
+    test ":tag with NO tag is a 400 when the receipts are per tenant" do
+      # The hole round one left open. Resend's opened and clicked events carry
+      # no headers at all, and nor does any event about a message sent before
+      # the flag was switched on — so this is the common case, not the exotic
+      # one. It used to look the id up with no tenant, in the wrong schema,
+      # answer "not found", and return 200: every such event lost in silence.
+      put_tenant_tag_on()
+      put_per_tenant_receipts()
+
+      receipt = receipt!("prov-tag-2")
+
+      conn =
+        ResendWebhook.call(request(payload("prov-tag-2")), secret: @secret, tenant: :tag)
+
+      assert conn.status == 400
+      assert conn.resp_body == "error"
+      refute Ash.get!(DeliveryReceipt, receipt.id, authorize?: false).opened_at
+    end
+
+    test ":tag with no tag is fine when the receipts are PUBLIC" do
+      # There the tenant names a column, not a schema, and a missing tag costs
+      # nothing.
+      put_tenant_tag_on()
+      receipt = receipt!("prov-tag-3")
+
+      conn =
+        ResendWebhook.call(request(payload("prov-tag-3")), secret: @secret, tenant: :tag)
+
+      assert conn.status == 200
+      assert Ash.get!(DeliveryReceipt, receipt.id, authorize?: false).opened_at
+    end
+
     test "a tenant source that is neither is ignored rather than guessed at" do
       receipt = receipt!("prov-11")
 
@@ -384,6 +438,35 @@ defmodule AshDispatch.Plugs.ResendWebhookTest do
     test "keeps the options, so a router can pass them" do
       assert ResendWebhook.init(secret: "x") == [secret: "x"]
     end
+  end
+
+  defp put_tenant_tag_on do
+    previous = Application.fetch_env(:ash_dispatch, :webhook_tenant_tag)
+    Application.put_env(:ash_dispatch, :webhook_tenant_tag, true)
+
+    on_exit(fn ->
+      case previous do
+        {:ok, old} -> Application.put_env(:ash_dispatch, :webhook_tenant_tag, old)
+        :error -> Application.delete_env(:ash_dispatch, :webhook_tenant_tag)
+      end
+    end)
+  end
+
+  defp put_per_tenant_receipts do
+    previous = Application.fetch_env(:ash_dispatch, :delivery_receipt_resource)
+
+    Application.put_env(
+      :ash_dispatch,
+      :delivery_receipt_resource,
+      AshDispatch.Test.PerTenant.Receipt
+    )
+
+    on_exit(fn ->
+      case previous do
+        {:ok, old} -> Application.put_env(:ash_dispatch, :delivery_receipt_resource, old)
+        :error -> Application.delete_env(:ash_dispatch, :delivery_receipt_resource)
+      end
+    end)
   end
 
   @doc false
