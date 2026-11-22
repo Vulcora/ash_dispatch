@@ -53,6 +53,8 @@ defmodule AshDispatch.Test.StrictReceipt do
     attribute :error_message, :string, public?: true
     attribute :provider_id, :string, public?: true
     attribute :provider_response, :map, public?: true
+    attribute :source_type, :string, public?: true
+    attribute :source_id, :string, public?: true
     attribute :notification_id, :uuid, public?: true
 
     create_timestamp :inserted_at
@@ -73,7 +75,9 @@ defmodule AshDispatch.Test.StrictReceipt do
         :subject,
         :body_html,
         :body_text,
-        :content
+        :content,
+        :source_type,
+        :source_id
       ]
     end
 

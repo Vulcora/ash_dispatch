@@ -301,6 +301,43 @@ The retry worker:
 - Marks permanently failed after max retries exceeded
 - Sweeps receipts stranded in `scheduled` on the same pass (see below)
 
+## A receipt for a send the library did not make
+
+Every installation has a send that does not go through the dispatcher: a
+provider's own SDK, a one-off script, a confirmation written before this
+library arrived, a transport it has no backend for. Those leave no receipt,
+and a missing receipt is not a neutral gap — it reads as "nothing was sent".
+One installation measured ninety-two of ninety-six cases where a recipient had
+been reached and no letter existed to prove it.
+
+`AshDispatch.Receipts.record/2` writes the receipt without sending anything:
+
+```elixir
+AshDispatch.Receipts.record(
+  %{
+    event_id: "bookings.reminder",
+    transport: :sms,
+    audience: :user,
+    recipient: "+46701234567",
+    user_id: user.id,
+    content: %{message: text},
+    source_type: "Booking",
+    source_id: booking.id
+  },
+  {:sent, %{id: provider_message_id}}
+)
+```
+
+| Outcome | Receipt |
+|---|---|
+| `{:sent, response}` | `sent`, with `provider_id` from the response — so the delivery webhook finds it exactly as it finds ours |
+| `{:skipped, reason}` | `skipped`, with the reason |
+| `{:error, reason}` | `failed_permanent`, **not** `failed`: a `failed` receipt is what the retry sweep picks up, and it would send our rendering of a letter we never composed. `retry?: true` if you want it to |
+
+Nothing is delivered, no job is enqueued, no notification is written. Any key
+the receipt resource does not accept is dropped rather than raised on, and
+`tenant:` is the schema the row is written to.
+
 ## Why a letter was not sent
 
 `error_message` is written for a person to read, and this library rewords it

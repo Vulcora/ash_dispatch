@@ -177,6 +177,7 @@ defmodule AshDispatch.MixProject do
           AshDispatch.DigestRenderer.Default
         ],
         Resources: [
+          AshDispatch.Receipts,
           AshDispatch.Resources.DeliveryReceipt,
           AshDispatch.Resources.Notification,
           AshDispatch.Resources.Notification.Base,
