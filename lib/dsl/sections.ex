@@ -187,6 +187,33 @@ defmodule AshDispatch.Dsl.Sections do
           Template variant to use (e.g., :admin for admin-specific templates).
           """
         ],
+        locale: [
+          type: :string,
+          required: false,
+          doc: """
+          Static locale for this channel, whatever the record or the recipient
+          says (e.g. "sv" for a channel that is always read by the same office).
+          Highest priority in the locale chain.
+          """
+        ],
+        locale_from: [
+          type: :atom,
+          required: false,
+          doc: """
+          Field on the event's record to read the locale from (e.g.
+          :visitor_locale). A preference, not a constraint: when the field is
+          missing or nil the chain carries on to the recipient's locale and
+          then the event's.
+          """
+        ],
+        locales: [
+          type: {:list, :string},
+          default: [],
+          doc: """
+          Locales to generate templates for, when they differ from the
+          resource's or the event's.
+          """
+        ],
         webhook_url: [
           type: :string,
           required: false,
