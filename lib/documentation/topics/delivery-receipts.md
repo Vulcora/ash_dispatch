@@ -481,20 +481,55 @@ A receipt skipped by the transport gate carries
 path carries `"User opted out of this email category"`. A count of opt-outs
 has to know about both.
 
-## Webhook Signature Verification
+## The provider's delivery webhook
 
-Resend webhooks mutate receipt state (opened/bounced/delivered), so verify
-the Svix signature before handing the payload to `process_webhook/1`:
+Resend webhooks mutate receipt state (opened, bounced, delivered), so an
+unverified endpoint is receipt mutation by anyone who can guess a provider
+id. Since 0.9.4 the endpoint ships finished — two plugs, and no option that
+turns verification off:
+
+```elixir
+# endpoint.ex — the raw body a signature can be checked against
+plug Plug.Parsers,
+  parsers: [:urlencoded, :multipart, :json],
+  pass: ["*/*"],
+  json_decoder: Jason,
+  body_reader: {AshDispatch.Plugs.RawBodyReader, :read_body, []}
+
+# router.ex
+post "/webhooks/resend",
+  AshDispatch.Plugs.ResendWebhook,
+  secret: {:system, "RESEND_WEBHOOK_SECRET"}
+```
+
+The body reader exists because a JSON parser consumes the body and hands you
+a map, and re-encoding that map gives different bytes — so the signature never
+matches. `paths: ["/webhooks/"]` keeps every other request out of it.
+
+The plug answers **200** when the receipt was updated and when no receipt has
+that message id (a webhook about a message you never sent is not your error,
+and a 4xx would have the provider retrying until it gave up), and **400** for
+everything else: no secret, no raw body, a signature that does not verify, a
+payload that is not a Resend event. The body is `ok` or `error` and never a
+reason — the endpoint is reachable by strangers, and a reason tells them
+whether a tenant exists or a message id is known. Your log keeps the
+distinction.
+
+For receipts per tenant, `tenant: {:path_param, "tenant"}` with
+`post "/webhooks/resend/:tenant"`, which is the setup to prefer; `tenant: :tag`
+reads the `X-AshDispatch-Tenant` tag back out of the payload instead, and is
+only safe behind this plug. See
+`AshDispatch.WebhookHandlers.Resend.process_webhook/2` for why.
+
+If you would rather wire it yourself, `verify/4` and `process_webhook/2` are
+unchanged and public:
 
 ```elixir
 case AshDispatch.WebhookHandlers.Resend.verify(raw_body, headers, secret) do
   :ok -> AshDispatch.WebhookHandlers.Resend.process_webhook(params)
-  {:error, _} -> # respond 400
+  {:error, _} -> # respond 400, without the reason
 end
 ```
-
-`raw_body` must be the request body exactly as received — cache it before
-your JSON parser runs. See `AshDispatch.WebhookHandlers.Resend.verify/4`.
 
 ## Sensitive Content Retention
 

@@ -54,6 +54,10 @@ defmodule AshDispatch.MixProject do
       # behind Plug (which brings plug_crypto), and a custom topic names a
       # PubSub server. Declared so Hex can hold them to compatible versions.
       {:plug_crypto, "~> 1.2 or ~> 2.0", optional: true},
+      # `AshDispatch.Plugs.ResendWebhook` and `.RawBodyReader` call Plug.Conn
+      # at runtime and never reference it at compile time, so the library
+      # compiles without it exactly as before.
+      {:plug, "~> 1.14", optional: true},
       {:phoenix_pubsub, "~> 2.0", optional: true},
       # AshDispatch.Phoenix.LiveView (the on_mount hook) compiles only with it.
       {:phoenix_live_view, "~> 1.0", optional: true},
@@ -164,6 +168,11 @@ defmodule AshDispatch.MixProject do
         ],
         "Email Backend": [
           AshDispatch.EmailBackend.Swoosh
+        ],
+        "Webhooks & Plugs": [
+          AshDispatch.WebhookHandlers.Resend,
+          AshDispatch.Plugs.ResendWebhook,
+          AshDispatch.Plugs.RawBodyReader
         ],
         Workers: [
           AshDispatch.Transport.Queue,

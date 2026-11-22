@@ -81,12 +81,16 @@ the other consumers store reset-link bodies indefinitely today.
 Fix: per-event `metadata: [sensitive_content: true]` + a library-provided
 scrub/retention worker, so app-level workarounds can be retired.
 
-## 4. Ship a Resend webhook signature verifier — RESOLVED in 0.5.4
+## 4. Ship a Resend webhook signature verifier — RESOLVED in 0.5.4, finished in 0.9.4
 
-Shipped as `AshDispatch.WebhookHandlers.Resend.verify/3` (Svix HMAC,
-constant-time compare, multi-signature, replay window). Consumers still need
-to wire it into their controllers with a raw-body reader; a ready-made plug
-remains open. Original finding kept below for context.
+Shipped as `AshDispatch.WebhookHandlers.Resend.verify/4` in 0.5.4 (Svix HMAC,
+constant-time compare, multi-signature, replay window). The plug this entry
+kept open is `AshDispatch.Plugs.ResendWebhook` (0.9.4), with
+`AshDispatch.Plugs.RawBodyReader` for `Plug.Parsers`: it verifies, takes the
+tenant from a path param or the provider tag, calls `process_webhook/2`, and
+answers 200 or 400 with no reason in the body. There is no option that turns
+verification off — four consumers had written this themselves, one of them
+fail-open. Original finding kept below for context.
 
 ### Original finding
 
