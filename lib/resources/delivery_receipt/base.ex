@@ -572,6 +572,11 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
           accept [:error_message, :provider_response]
           change transition_state(:failed)
 
+          # `content["reason_code"]`: the closed code beside the sentence, so
+          # the reasons can be counted without matching substrings against
+          # prose this library is free to reword. See `AshDispatch.Reason`.
+          change {AshDispatch.Changes.PutReasonCode, []}
+
           # Deliberately does NOT touch retry_count/last_retry_at: a failure
           # is not a retry. Only the :retry action increments the counter —
           # when both incremented, every failed+retried cycle burned the
@@ -579,13 +584,22 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
         end
 
         update :mark_failed_permanent do
+          # Not atomic since 0.9.4: the reason code is derived from the
+          # `error_message` this action is given and merged into the existing
+          # `content`, which no single statement can express for a JSONB map
+          # on every data layer. The update itself is unchanged.
+          require_atomic? false
           accept [:error_message, :provider_response]
           change transition_state(:failed_permanent)
+          change {AshDispatch.Changes.PutReasonCode, []}
         end
 
         update :skip do
+          # Not atomic since 0.9.4 — see `:mark_failed_permanent`.
+          require_atomic? false
           accept [:error_message]
           change transition_state(:skipped)
+          change {AshDispatch.Changes.PutReasonCode, []}
         end
 
         update :batch do

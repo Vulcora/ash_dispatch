@@ -91,18 +91,24 @@ defmodule AshDispatch.Test.StrictReceipt do
     end
 
     update :mark_failed do
+      require_atomic? false
       accept [:error_message]
       change transition_state(:failed)
+      change {AshDispatch.Changes.PutReasonCode, []}
     end
 
     update :mark_failed_permanent do
+      require_atomic? false
       accept [:error_message]
       change transition_state(:failed_permanent)
+      change {AshDispatch.Changes.PutReasonCode, []}
     end
 
     update :skip do
+      require_atomic? false
       accept [:error_message]
       change transition_state(:skipped)
+      change {AshDispatch.Changes.PutReasonCode, []}
     end
   end
 end

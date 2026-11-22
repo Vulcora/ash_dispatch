@@ -144,7 +144,8 @@ defmodule AshDispatch.MixProject do
           AshDispatch.DeliveryMode,
           AshDispatch.EligibleRecipient,
           AshDispatch.Gate,
-          AshDispatch.Gate.Info
+          AshDispatch.Gate.Info,
+          AshDispatch.Reason
         ],
         Tenancy: [
           AshDispatch.Tenancy,

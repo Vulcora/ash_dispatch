@@ -301,6 +301,41 @@ The retry worker:
 - Marks permanently failed after max retries exceeded
 - Sweeps receipts stranded in `scheduled` on the same pass (see below)
 
+## Why a letter was not sent
+
+`error_message` is written for a person to read, and this library rewords it
+whenever the prose can be clearer. Counting it therefore means matching
+substrings against sentences that are free to change — which is what every
+host that wanted "how much did we hold back last month, and why" ended up
+doing.
+
+Since 0.9.4 the library writes a code beside the sentence, in
+`content["reason_code"]`: one of `AshDispatch.Reason.codes/0`, with `:other`
+for a reason that came from a backend of your own, a provider's message, or a
+transport you wrote. The sentence is unchanged and still says more.
+
+```elixir
+AshDispatch.Reason.of(receipt)
+#=> :user_opted_out
+```
+
+`of/1` answers for a receipt written before 0.9.4 too, by classifying the
+sentence — the substring matching, done once, by the library that wrote the
+sentences. In SQL the code is a JSONB lookup, so there is nothing to migrate
+and nothing to backfill:
+
+```sql
+SELECT content->>'reason_code' AS reason, count(*)
+FROM delivery_receipts
+WHERE status IN ('skipped', 'failed_permanent')
+GROUP BY 1 ORDER BY 2 DESC;
+```
+
+Rows written before 0.9.4 answer `NULL` there; `of/1` still classifies them.
+The list is closed on purpose: a code meaning "some other thing" is worth
+nothing to count, so a new reason gets a new code in a new release rather
+than being folded into `:other`. See `AshDispatch.Reason` for the table.
+
 ## Stranded receipts
 
 Two statuses promise that something is in flight, and something can die
