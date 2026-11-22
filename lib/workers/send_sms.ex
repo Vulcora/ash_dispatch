@@ -51,10 +51,10 @@ defmodule AshDispatch.Workers.SendSMS do
   require Logger
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: args}) do
+  def perform(%Oban.Job{args: args} = job) do
     case AshDispatch.Tenancy.Job.receipt(args) do
       {:ok, receipt} ->
-        process_sms(receipt)
+        process_sms(receipt, job.attempt)
 
       {:cancel, reason} ->
         {:cancel, reason}
@@ -72,7 +72,7 @@ defmodule AshDispatch.Workers.SendSMS do
     %{"receipt_id" => receipt.id} |> AshDispatch.Tenancy.Job.put_tenant(receipt) |> new()
   end
 
-  defp process_sms(receipt) do
+  defp process_sms(receipt, attempt) do
     # Terminal state: a duplicate job should finish as success, not as a second
     # message. Same early exit as SendEmail.
     if receipt.status in [:sent, :skipped, :failed_permanent] do
@@ -88,12 +88,12 @@ defmodule AshDispatch.Workers.SendSMS do
           :ok
 
         :send ->
-          send_or_refuse(receipt)
+          send_or_refuse(receipt, attempt)
       end
     end
   end
 
-  defp send_or_refuse(receipt) do
+  defp send_or_refuse(receipt, attempt) do
     case {backend(), refusal(receipt)} do
       {nil, _refusal} ->
         ReceiptStatus.mark_skipped(receipt, "transport_not_implemented")
@@ -105,7 +105,7 @@ defmodule AshDispatch.Workers.SendSMS do
         {:cancel, reason}
 
       {backend, nil} ->
-        send_with(backend, receipt)
+        send_with(backend, receipt, attempt)
     end
   end
 
@@ -131,24 +131,29 @@ defmodule AshDispatch.Workers.SendSMS do
     end
   end
 
-  defp send_with(backend, receipt) do
-    case ReceiptStatus.mark_sending(receipt) do
-      {:ok, receipt} ->
-        deliver(backend, receipt)
+  defp send_with(backend, receipt, attempt) do
+    case ReceiptStatus.claim(receipt, attempt: attempt) do
+      {:ok, claimed} ->
+        if receipt.status == :sending do
+          Logger.warning(
+            "Receipt #{receipt.id} was left in :sending by an earlier attempt of this job, sending now"
+          )
+        end
+
+        deliver(backend, claimed)
+
+      # Another job got there first. Same reasoning as SendEmail: a race over
+      # one receipt is not an error, it is a duplicate.
+      :duplicate ->
+        Logger.info(
+          "Receipt #{receipt.id} state transition conflict (likely duplicate job), completing as success"
+        )
+
+        :ok
 
       {:error, %Ash.Error.Invalid{errors: errors}} ->
-        # Another job got there first. Same reasoning as SendEmail: a race over
-        # one receipt is not an error, it is a duplicate.
-        if Enum.any?(errors, &match?(%AshStateMachine.Errors.NoMatchingTransition{}, &1)) do
-          Logger.info(
-            "Receipt #{receipt.id} state transition conflict (likely duplicate job), completing as success"
-          )
-
-          :ok
-        else
-          Logger.error("Receipt #{receipt.id} update failed: #{inspect(errors)}")
-          {:error, errors}
-        end
+        Logger.error("Receipt #{receipt.id} update failed: #{inspect(errors)}")
+        {:error, errors}
 
       {:error, reason} ->
         Logger.error("Receipt #{receipt.id} mark_sending failed: #{inspect(reason)}")

@@ -116,7 +116,7 @@ defmodule AshDispatch.Workers.SendWebhook do
   every level and on every outcome.
   """
   @impl Oban.Worker
-  def perform(%Oban.Job{args: args}) do
+  def perform(%Oban.Job{args: args} = job) do
     receipt_id = args["receipt_id"]
 
     Logger.info("Processing webhook job for receipt #{receipt_id}")
@@ -125,7 +125,7 @@ defmodule AshDispatch.Workers.SendWebhook do
     # tenant the job names.
     case AshDispatch.Tenancy.Job.receipt(args) do
       {:ok, receipt} ->
-        process_webhook(receipt, args)
+        process_webhook(receipt, args, job.attempt)
 
       {:cancel, reason} ->
         {:cancel, reason}
@@ -138,21 +138,48 @@ defmodule AshDispatch.Workers.SendWebhook do
 
   # Private functions
 
-  defp process_webhook(receipt, args) do
+  defp process_webhook(receipt, args, attempt) do
     case Delivery.verdict(receipt) do
       {:skip, reason} ->
         Delivery.hold(receipt, reason)
         :ok
 
       :send ->
-        post(receipt, args)
+        post(receipt, args, attempt)
     end
   end
 
-  defp post(receipt, args) do
-    # Mark as sending
-    {:ok, receipt} = ReceiptStatus.mark_sending(receipt)
+  defp post(receipt, args, attempt) do
+    # Claiming the receipt used to be `{:ok, receipt} = mark_sending(receipt)`,
+    # which raised a MatchError on a state the transition cannot leave — so a
+    # duplicate job crashed instead of completing, and a receipt an earlier
+    # attempt had left in `:sending` crashed on every attempt until the job
+    # gave up, never sending. `claim/2` answers all three cases; see
+    # `AshDispatch.ReceiptStatus.claim/2`.
+    case ReceiptStatus.claim(receipt, attempt: attempt) do
+      {:ok, claimed} ->
+        if receipt.status == :sending do
+          Logger.warning(
+            "Receipt #{receipt.id} was left in :sending by an earlier attempt of this job, sending now"
+          )
+        end
 
+        send_claimed(claimed, args)
+
+      :duplicate ->
+        Logger.info(
+          "Receipt #{receipt.id} state transition conflict (likely duplicate job), completing as success"
+        )
+
+        :ok
+
+      {:error, reason} ->
+        Logger.error("Receipt #{receipt.id} mark_sending failed: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  defp send_claimed(receipt, args) do
     # Send webhook
     case send_webhook(args) do
       {:ok, response} ->

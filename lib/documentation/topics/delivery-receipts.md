@@ -70,8 +70,14 @@ Delivery receipts follow a state machine pattern:
 These actions are typically called by workers and internal processes:
 
 ```elixir
-# Mark as sending (worker starting delivery)
+# Mark as sending (worker starting delivery). Not legal from `sending`: that
+# refusal is the mutex that stops two jobs sending one receipt.
 Ash.update(receipt, :mark_sending)
+
+# Reclaim a receipt this job's own earlier attempt left in `sending`
+# (`sending` → `sending`, since 0.9.4). Use `ReceiptStatus.claim/2`, which
+# decides between this and `mark_sending` for you.
+Ash.update(receipt, :resume_sending)
 
 # Mark as sent (delivery successful)
 Ash.update(receipt, :mark_sent, %{
@@ -293,12 +299,65 @@ The retry worker:
 - Finds receipts in `failed` status with `retry_count < max_retries`
 - Re-queues them for delivery
 - Marks permanently failed after max retries exceeded
+- Sweeps receipts stranded in `scheduled` on the same pass (see below)
+
+## Stranded receipts
+
+Two statuses promise that something is in flight, and something can die
+holding either of them.
+
+**`scheduled`** says a job is coming. The sweep checks whether one actually
+is: past a grace period a receipt is handed back to the retry machinery, and
+past a staleness ceiling it is closed rather than delivered months late. This
+is on by default and has been since 0.9.0.
+
+**`sending`** says the provider is being called right now. A node that goes
+down between `mark_sending` and the provider leaves the receipt there, and
+until 0.9.4 nothing looked at it: the message was lost without a trace.
+Oban's lifeline covers the case where the *job* survives — the next attempt
+reclaims the receipt (`AshDispatch.ReceiptStatus.claim/2`) and sends it — but
+not a job that was pruned, cancelled or discarded mid-send.
+
+What makes `sending` different is that **we do not know whether the provider
+got the message**, so resending is an at-least-once delivery and the
+recipient may get the same letter twice. That is your call, not the
+library's:
+
+```elixir
+config :ash_dispatch,
+  stranded_sending: :ignore   # the default
+```
+
+| Mode | What the sweep does with a stranded `sending` receipt |
+|---|---|
+| `:ignore` | Nothing. Exactly what every release before 0.9.4 did |
+| `:close` | `failed_permanent`, with a reason saying the outcome is unknown. **Nothing is sent twice, and the silent loss stops being silent** |
+| `:rescue` | `failed`, so the retry machinery takes over. At-least-once: a letter the provider already accepted may go out again |
+
+`:close` is the one to pick if you do not want to think about it: it makes the
+loss visible without risking a duplicate. The grace period
+(`:stranded_stuck_after_minutes`) applies under both, so a send that is
+merely in progress is never touched.
+
+See `AshDispatch.Workers.Stranded`.
 
 ## Best Practices
 
 ### 1. Use ReceiptStatus helper
 
-For status updates in custom workers, use the centralized helper:
+For status updates in custom workers, use the centralized helper. Claim the
+receipt with `claim/2` rather than `mark_sending/1`: it keeps the mutex that
+stops two jobs sending one receipt, *and* lets your worker's own interrupted
+attempt finish the job instead of completing green on a letter nobody sent.
+
+```elixir
+case AshDispatch.ReceiptStatus.claim(receipt, attempt: job.attempt) do
+  {:ok, receipt} -> deliver(receipt)
+  # Another job has it. Nothing was lost; finish as a success.
+  :duplicate -> :ok
+  {:error, reason} -> {:error, reason}
+end
+```
 
 ```elixir
 alias AshDispatch.ReceiptStatus

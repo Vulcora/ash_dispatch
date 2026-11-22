@@ -25,6 +25,7 @@ defmodule AshDispatch.Test.StrictReceipt do
 
     transitions do
       transition(:mark_sending, from: [:scheduled, :pending, :failed, :batched], to: :sending)
+      transition(:resume_sending, from: :sending, to: :sending)
       transition(:mark_sent, from: [:sending, :scheduled, :pending, :failed], to: :sent)
       transition(:mark_failed, from: [:sending, :scheduled, :pending], to: :failed)
 
@@ -77,6 +78,10 @@ defmodule AshDispatch.Test.StrictReceipt do
     end
 
     update :mark_sending do
+      change transition_state(:sending)
+    end
+
+    update :resume_sending do
       change transition_state(:sending)
     end
 

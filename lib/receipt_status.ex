@@ -64,6 +64,112 @@ defmodule AshDispatch.ReceiptStatus do
   end
 
   @doc """
+  Reclaims a receipt this job's own earlier attempt left in `:sending`
+  (`:sending` → `:sending`, through the `:resume_sending` action).
+
+  Not a mutex: `claim/2` decides when resuming is right. Use that.
+
+  `{:error, :unsupported}` for a receipt resource built before 0.9.4, which
+  has no `:resume_sending` action.
+  """
+  @spec resume_sending(struct()) :: {:ok, struct()} | {:error, term()}
+  def resume_sending(receipt) do
+    if resume_supported?(receipt) do
+      receipt
+      |> changeset(:resume_sending)
+      |> Ash.update(authorize?: false)
+      |> remember(receipt)
+    else
+      {:error, :unsupported}
+    end
+  end
+
+  @doc """
+  Claims a receipt for THIS delivery attempt, which is what a send worker
+  wants rather than `mark_sending/1` on its own.
+
+  Three answers:
+
+    * `{:ok, receipt}` — the receipt is `:sending` and yours. Deliver.
+    * `:duplicate` — it is in a state `:mark_sending` cannot leave, which
+      means another job has it. Complete as a success; nothing was lost.
+    * `{:error, reason}` — the update failed for some other reason. Let Oban
+      retry.
+
+  ## Why a receipt already in `:sending` is not simply refused
+
+  `mark_sending`'s source list has never included `:sending`, and that IS the
+  mutex: of two jobs for one receipt the loser is told "no matching
+  transition". But the same refusal meets a job whose OWN earlier attempt
+  marked the receipt `:sending` and then stopped without a result — the node
+  went down, or Oban's lifeline put the job back. Reading that as "somebody
+  else has this" completes the job green on a letter nobody sent, and leaves
+  the receipt in `:sending`, where no sweep looked before 0.9.4.
+
+  So: a receipt in `:sending` is reclaimed (`resume_sending/1`) when this is
+  not the job's first attempt, and treated as another job's work when it is.
+  `:attempt` is `Oban.Job`'s own counter; without one, every attempt is a
+  first attempt, which is the conservative reading.
+
+  ## Options
+
+  - `:attempt` - this job's attempt number (`%Oban.Job{}.attempt`)
+  - `:resume` - `true` forces the reclaim, `false` forbids it, whatever the
+    attempt. For a caller that knows better than the attempt counter does
+  """
+  @spec claim(struct(), keyword()) :: {:ok, struct()} | :duplicate | {:error, term()}
+  def claim(receipt, opts \\ []) do
+    if Map.get(receipt, :status) == :sending and resume?(opts) do
+      case resume_sending(receipt) do
+        {:ok, updated} ->
+          {:ok, updated}
+
+        # A receipt resource from before 0.9.4, or a transition the host
+        # narrowed. The receipt is already `:sending` and this attempt owns
+        # it, so deliver from the receipt as it stands — which is what 0.9.2
+        # did for email, before this decision had a name.
+        {:error, _reason} ->
+          {:ok, receipt}
+      end
+    else
+      claim_fresh(receipt)
+    end
+  end
+
+  defp claim_fresh(receipt) do
+    case mark_sending(receipt) do
+      {:ok, updated} ->
+        {:ok, updated}
+
+      {:error, %Ash.Error.Invalid{errors: errors}} = error ->
+        if Enum.any?(errors, &match?(%AshStateMachine.Errors.NoMatchingTransition{}, &1)) do
+          :duplicate
+        else
+          error
+        end
+
+      error ->
+        error
+    end
+  end
+
+  defp resume?(opts) do
+    case Keyword.fetch(opts, :resume) do
+      {:ok, resume} when is_boolean(resume) -> resume
+      _ -> is_integer(Keyword.get(opts, :attempt)) and Keyword.get(opts, :attempt) > 1
+    end
+  end
+
+  defp resume_supported?(receipt) do
+    resource = receipt.__struct__
+
+    Ash.Resource.Info.resource?(resource) and
+      not is_nil(Ash.Resource.Info.action(resource, :resume_sending))
+  rescue
+    _ -> false
+  end
+
+  @doc """
   Marks a receipt as "sent" (delivery successful).
 
   Stores provider response metadata for tracking and debugging.

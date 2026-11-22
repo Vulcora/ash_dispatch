@@ -33,13 +33,53 @@ defmodule AshDispatch.Workers.Stranded do
   Both bounds are configurable, and the ceiling is deliberately generous. An
   app that genuinely wants old mail delivered can raise it; the default
   refuses to make that choice on someone's behalf.
+
+  ## `:sending`, and why it is a setting (0.9.4)
+
+  `:sending` was the same dead end, one step further along. A node that goes
+  down between `mark_sending` and the provider leaves the receipt there, and
+  until 0.9.4 nothing looked: the retry sweep queries `:failed`, this sweep
+  queried `:scheduled`, and no transition led out. Oban's lifeline covers the
+  case where the JOB survives (`AshDispatch.ReceiptStatus.claim/2` reclaims
+  it on the next attempt); it does not cover a job that was pruned, cancelled
+  or discarded mid-send.
+
+  What makes `:sending` different from `:scheduled` is that we do not know
+  whether the provider got the message. `:scheduled` promises a job is coming
+  and nothing has been handed over; `:sending` means the handover may already
+  have happened. Rescuing it is therefore an at-least-once resend, and the
+  recipient may get the same letter twice.
+
+  That is a real choice, so it is a setting rather than a default:
+
+      config :ash_dispatch, stranded_sending: :ignore   # the default
+
+    * `:ignore` — the sweep does not look at `:sending`. Byte-for-byte what
+      every release before 0.9.4 did.
+    * `:close` — a stranded `:sending` receipt is marked `:failed_permanent`
+      with a reason saying the outcome is unknown. **Nothing is sent twice,
+      and the silent loss stops being silent.** This is the one to pick if
+      you do not want to think about it.
+    * `:rescue` — the same three outcomes as `:scheduled`: leave, hand to the
+      retry machinery, or close past the staleness ceiling. At-least-once
+      delivery, and a possible duplicate, in exchange for not losing a letter
+      the provider never saw.
+
+  The grace period applies either way, so a send that is merely in progress
+  is never touched.
   """
 
   @default_stuck_after_minutes 30
   @default_stale_after_hours 24
+  @default_sending_mode :ignore
 
   @typedoc "What should happen to a receipt sitting in `:scheduled`."
   @type action :: :leave | :rescue | :close
+
+  @typedoc "How the sweep treats a receipt sitting in `:sending`."
+  @type sending_mode :: :ignore | :close | :rescue
+
+  require Logger
 
   @doc """
   Decides the fate of one stranded receipt.
@@ -81,6 +121,82 @@ defmodule AshDispatch.Workers.Stranded do
     "Stranded in :scheduled for #{hours}h with no live job — too old to send, " <>
       "closed by the stranded-receipt sweep rather than delivered late."
   end
+
+  @doc """
+  Decides the fate of one receipt sitting in `:sending`.
+
+  Same grace period as `action/2` — a send in progress is not stranded — and
+  then whatever `mode` says. See the moduledoc for why this is a setting.
+
+      iex> AshDispatch.Workers.Stranded.sending_action(DateTime.utc_now(), :close)
+      :leave
+  """
+  @spec sending_action(DateTime.t() | NaiveDateTime.t(), sending_mode(), keyword()) :: action()
+  def sending_action(age_reference, mode \\ nil, opts \\ []) do
+    case mode || sending_mode() do
+      :ignore ->
+        :leave
+
+      mode when mode in [:close, :rescue] ->
+        case action(age_reference, opts) do
+          # Not stranded yet, whatever the mode: a live send is not a loss.
+          :leave -> :leave
+          # Past the staleness ceiling closes under both modes; `:close` also
+          # closes everything past the grace period, because a resend is the
+          # one thing it is there to avoid.
+          :close -> :close
+          :rescue -> if mode == :close, do: :close, else: :rescue
+        end
+
+      other ->
+        Logger.warning(
+          "AshDispatch: config :ash_dispatch, stranded_sending: #{inspect(other)} is not " <>
+            ":ignore, :close or :rescue — treated as :ignore"
+        )
+
+        :leave
+    end
+  end
+
+  @doc """
+  The reason written onto a receipt closed out of `:sending`.
+
+  Says what the earlier reason could not: that the provider may or may not
+  have had it. A receipt that reads "failed" when the letter was in fact
+  delivered is its own kind of lie, and this is the honest version.
+  """
+  @spec sending_close_reason(DateTime.t() | NaiveDateTime.t(), keyword()) :: String.t()
+  def sending_close_reason(age_reference, opts \\ []) do
+    now = Keyword.get(opts, :now) || AshDispatch.Clock.utc_now()
+    hours = div(age_in_seconds(age_reference, now), 3600)
+
+    "Stranded in :sending for #{hours}h with no live job. Whether the provider " <>
+      "accepted this message is unknown, so it was closed rather than sent again " <>
+      "(config :ash_dispatch, stranded_sending: :rescue to resend instead)."
+  end
+
+  @doc """
+  The reason written onto a receipt handed back to the retry machinery out of
+  `:sending`, under `stranded_sending: :rescue`.
+  """
+  @spec sending_rescue_reason() :: String.t()
+  def sending_rescue_reason do
+    "Stranded in :sending with no live job — returned for retry. This may be a " <>
+      "second send of a message the provider already accepted (config " <>
+      ":ash_dispatch, stranded_sending: :rescue)."
+  end
+
+  @doc """
+  The configured `:sending` mode, `:ignore` unless a host says otherwise.
+  """
+  @spec sending_mode() :: sending_mode() | term()
+  def sending_mode do
+    Application.get_env(:ash_dispatch, :stranded_sending, @default_sending_mode)
+  end
+
+  @doc "The default `:sending` mode: `:ignore`, which is what every release before 0.9.4 did."
+  @spec default_sending_mode() :: sending_mode()
+  def default_sending_mode, do: @default_sending_mode
 
   @doc "Default grace period in minutes, before a `:scheduled` receipt counts as stranded."
   @spec default_stuck_after_minutes() :: pos_integer()

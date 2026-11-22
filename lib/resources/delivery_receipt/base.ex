@@ -191,6 +191,26 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
           # on its own. If the digest gets to it first, the worker finds it
           # `:digested`, which it cannot leave, and completes as a duplicate.
           transition(:mark_sending, from: [:scheduled, :pending, :failed, :batched], to: :sending)
+
+          # `:sending` is deliberately NOT a source for `:mark_sending`. Its
+          # source list IS the mutex: two jobs for one receipt race here, the
+          # loser is told "no matching transition", and the workers read that
+          # as "somebody else is sending this" and complete as a duplicate.
+          # `AshDispatch.ReceiptStatus`'s own moduledoc teaches that pattern,
+          # so a host's transport worker may be relying on it too.
+          #
+          # `:resume_sending` is the move out of `:sending` that was missing.
+          # It is the same state, re-entered on purpose: a worker that finds a
+          # receipt its OWN earlier attempt left in `:sending` (the node went
+          # down between this transition and the provider) claims it again
+          # rather than completing green on a letter nobody sent. Re-entering
+          # also refreshes `updated_at`, which is the age the stranded sweep
+          # reads — without it a resumed send looks equally stranded on the
+          # next pass.
+          #
+          # `AshDispatch.ReceiptStatus.claim/2` is the only caller, and it
+          # decides which of the two a given attempt gets.
+          transition(:resume_sending, from: :sending, to: :sending)
           transition(:mark_sent, from: [:sending, :scheduled, :pending, :failed], to: :sent)
           transition(:mark_failed, from: [:sending, :scheduled, :pending], to: :failed)
 
@@ -527,6 +547,11 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
         end
 
         update :mark_sending do
+          change transition_state(:sending)
+        end
+
+        update :resume_sending do
+          description "Reclaim a receipt an interrupted attempt of this job left in :sending"
           change transition_state(:sending)
         end
 
