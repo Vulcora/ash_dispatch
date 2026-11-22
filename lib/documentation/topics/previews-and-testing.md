@@ -34,6 +34,25 @@ envelope the backend would receive: `to`, `from`, `reply_to`, `subject`,
 `transport:`, `audience:` and `variant:`, or pass a row from `events/0`
 straight to `render/3`. `locale:` renders in a given locale.
 
+The ManualTrigger `:preview` action takes `locale` and `variant` too (since
+0.9.4), so a panel built on it can offer the same choices rather than only
+the renderer behind it being able to:
+
+```elixir
+MyApp.Deliveries.ManualTrigger
+|> Ash.Query.for_read(:preview, %{
+     event_id: "orders.created",
+     locale: "sv",
+     variant: "admin"
+   })
+|> Ash.read!(actor: current_admin)
+```
+
+Each row answers with the `locale` and `variant` it was actually rendered
+with, which is not always the one asked for: a channel or a recipient with a
+locale of its own wins, exactly as on the send path. Leave an argument out to
+get what the action always returned.
+
 ### The same path as the send
 
 There is no preview renderer. `render/3` opens the event the way its send
