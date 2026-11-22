@@ -1559,6 +1559,14 @@ defmodule AshDispatch.Dispatcher do
           %{}
           |> maybe_put(:message, text)
           |> maybe_put(:notification_message, text)
+          # The mention options too: an inline event's `content:` is where a
+          # host declares them, and copying only the body and the URL meant
+          # `discord_suppress_mentions` and `discord_allowed_mentions` were
+          # accepted in the DSL and silently dropped on the way to the
+          # payload. `maybe_put`, so a channel that declares neither carries
+          # neither — which is what rc.5 sent.
+          |> maybe_put(:discord_suppress_mentions, content_config[:discord_suppress_mentions])
+          |> maybe_put(:discord_allowed_mentions, content_config[:discord_allowed_mentions])
           |> Map.put(:webhook_url, channel.webhook_url)
 
         :slack ->

@@ -205,24 +205,43 @@ defmodule AshDispatch.Transports.Discord do
     do: Map.put(args, "tenant", AshDispatch.Tenancy.receipt_prefix(tenant))
 
   @doc false
-  # Public-but-undocumented so the mention default can be tested directly:
+  # Public-but-undocumented so the mention decision can be tested directly:
   # it is the one thing in this payload that is a safety decision rather than
   # a shape.
   def build_payload(content, context), do: build_discord_payload(content, context)
 
+  # Explicit first, then suppression — per channel, then application-wide.
+  # Nothing at all when nobody asked, which is what rc.5 sent.
+  defp put_allowed_mentions(payload, content) do
+    cond do
+      mentions = get_content(content, :discord_allowed_mentions) ->
+        Map.put(payload, "allowed_mentions", mentions)
+
+      get_content(content, :discord_suppress_mentions) == true ->
+        Map.put(payload, "allowed_mentions", %{"parse" => []})
+
+      Application.get_env(:ash_dispatch, :discord_suppress_mentions, false) == true ->
+        Map.put(payload, "allowed_mentions", %{"parse" => []})
+
+      true ->
+        payload
+    end
+  end
+
   defp build_discord_payload(content, _context) when is_map(content) do
     # Base payload with content.
     #
-    # `allowed_mentions: %{parse: []}` unless the event says otherwise: a
-    # message body carries whatever a record held, and `@everyone` in a
-    # customer's company name pings a whole server. Discord's default is to
-    # parse every mention in the text, so the safe answer has to be stated.
-    # An event that wants to ping says so with
-    # `content: [discord_allowed_mentions: %{"parse" => ["users"]}]`.
-    payload = %{
-      "content" => get_content(content, :notification_message),
-      "allowed_mentions" => get_content(content, :discord_allowed_mentions) || %{"parse" => []}
-    }
+    # `allowed_mentions` is sent only when somebody asked for it: an explicit
+    # `discord_allowed_mentions`, or the suppression that
+    # `config :ash_dispatch, discord_suppress_mentions: true` (or the same key
+    # on the channel's content) turns on. rc.5 sent no `allowed_mentions` at
+    # all, and a patch may not change what a host's channel does — a default
+    # that suppressed mentions would silence a host that deliberately pings
+    # from an event body, with no way for it to know why. The moduledoc says
+    # to switch it on; 0.10.0 is where the default moves.
+    payload =
+      %{"content" => get_content(content, :notification_message)}
+      |> put_allowed_mentions(content)
 
     # Add embed if provided
     payload =
@@ -250,6 +269,6 @@ defmodule AshDispatch.Transports.Discord do
 
   defp build_discord_payload(_content, _context) do
     # Fallback for non-map content
-    %{"content" => "Notification", "allowed_mentions" => %{"parse" => []}}
+    %{"content" => "Notification"}
   end
 end
