@@ -150,13 +150,31 @@ defmodule AshDispatch.Channel do
     time = Keyword.get(opts, :time, {:in, 0})
     policy = if Keyword.get(opts, :skip_if_read), do: :skip_if_read, else: :always
 
+    # Every field of the struct a caller can name, not a hand-picked few: this
+    # function built a channel without `locale`, `layout` or `queue` even when
+    # asked for them, so a `channels/1` callback using it silently lost what
+    # the inline DSL carried. `Keyword.get/2` for each, so a caller that names
+    # none gets exactly the struct it got before.
     %__MODULE__{
       transport: transport,
       audience: audience,
       time: normalize_time(time),
       policy: Keyword.get(opts, :policy, policy),
       variant: Keyword.get(opts, :variant),
+      locale: Keyword.get(opts, :locale),
+      locale_from: Keyword.get(opts, :locale_from),
+      locales: Keyword.get(opts, :locales, []),
+      layout: Keyword.get(opts, :layout),
+      layout_from: Keyword.get(opts, :layout_from),
+      queue: Keyword.get(opts, :queue),
       webhook_url: Keyword.get(opts, :webhook_url),
+      deduplicate_group: Keyword.get(opts, :deduplicate_group),
+      idempotency_source: Keyword.get(opts, :idempotency_source),
+      optional: Keyword.get(opts, :optional, false),
+      exclude_actor: Keyword.get(opts, :exclude_actor, false),
+      content: Keyword.get(opts, :content, %{}),
+      metadata: Keyword.get(opts, :metadata, %{}),
+      load: Keyword.get(opts, :load, []),
       opts: Keyword.get(opts, :opts, %{})
     }
   end

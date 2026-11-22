@@ -418,7 +418,10 @@ config :ash_dispatch,
 ```
 
 Turning one on means a message the provider may already have taken can go out
-again. For the webhook worker, note also that it declares no `unique:`, so two
+again. **Email's default is already that**: since 0.9.2 an interrupted email
+attempt is resumed, which is at-least-once delivery — the provider may have
+taken the first attempt and answered nothing. `email_resume_interrupted:
+false` is the at-most-once choice, and loses the letter instead. For the webhook worker, note also that it declares no `unique:`, so two
 jobs for one receipt are possible there in a way they are not for email and
 SMS, which both key on the receipt id.
 

@@ -152,6 +152,31 @@ defmodule AshDispatch.ReceiptsTest do
     end
   end
 
+  describe "the three small holes" do
+    test "an explicit tenant: nil is deleted, not passed on" do
+      # Ash applies an attribute's default only when the input is ABSENT, so a
+      # literal nil defeats the default of a host's own `tenant` attribute.
+      assert {:ok, receipt} =
+               Receipts.record(Map.put(@attrs, :tenant, nil), {:sent, %{id: "x"}})
+
+      assert receipt.status == :sent
+    end
+
+    test "a skipped outcome answers a tuple even when the resource raises" do
+      # `AshDispatch.Test.RefusingReceipt` has no `:skip` action at all, so
+      # `ReceiptStatus.skip/2` raises `NoSuchAction` — the case the other two
+      # outcomes already rescued and this one did not, which made `record/3`
+      # raise where its contract says it answers a tuple.
+      Application.put_env(
+        :ash_dispatch,
+        :delivery_receipt_resource,
+        AshDispatch.Test.RefusingReceipt
+      )
+
+      assert {:error, _reason} = Receipts.record(@attrs, {:skipped, "quiet hours"})
+    end
+  end
+
   describe "with no receipt resource configured" do
     setup do
       Application.delete_env(:ash_dispatch, :delivery_receipt_resource)

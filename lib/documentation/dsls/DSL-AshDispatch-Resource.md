@@ -337,6 +337,7 @@ Channels define how and where the event is delivered.
 | `locales` | `[string]` | ❌ | Locales for template generation (defaults to resource/event locales) |
 | `layout` | `atom \| string` | ❌ | Which layout wraps the body: `priv/ash_dispatch/layouts/<layout>/<transport>.<ext>`, falling back on the default (since 0.9.4) |
 | `layout_from` | `atom` | ❌ | Field on record to read the layout name from, for one frame per brand (since 0.9.4) |
+| `queue` | `atom` | ❌ | Which Oban queue this channel's send job runs in, instead of the transport's (since 0.9.4). The queue must exist in your Oban config |
 | `webhook_url` | `string` | ❌ | Webhook URL (required for `:webhook` transport) |
 | `deduplicate_group` | `atom` | ❌ | Group channels for deduplication (see below) |
 | `idempotency_source` | `atom` | ❌ | For `:in_app`: the key in `data` naming the record that identifies the OCCURRENCE. **Set it whenever `data` carries more than one record with an `:id`** — see below |
@@ -515,7 +516,24 @@ channels: [
 ```
 
 A layout name becomes a directory name, so only letters, digits, `_`, `-` and
-`.` are accepted; anything else is logged and the default layout is used.
+`.` are accepted; anything else is logged and the default layout is used. The
+same rule applies to `locale` and `variant`, which also become parts of a
+template filename.
+
+### Channel Queue Example
+
+```elixir
+channels: [
+  # A campaign that must not starve the booking confirmations behind it
+  [transport: :email, audience: :subscribers, queue: :bulk_emails],
+
+  # Still the transport's queue, which is where it always went
+  [transport: :email, audience: :user]
+]
+```
+
+See the *Oban configuration* guide for the per-transport setting
+(`email_queue:` and friends) that this overrides.
 
 ---
 

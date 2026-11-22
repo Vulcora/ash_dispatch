@@ -114,6 +114,19 @@ defmodule AshDispatch.Plugs.ResendWebhook do
   @doc false
   @spec init(keyword()) :: keyword()
   def init(opts) do
+    if is_nil(Keyword.get(opts, :tenant)) and AshDispatch.Tenancy.receipts_per_tenant?() do
+      # Per-tenant receipts and no tenant source: every webhook will look its
+      # message id up with no tenant, find nothing, and answer 200. Said at
+      # boot, because at request time it is indistinguishable from an event
+      # about a message this host never sent — which is the answer that is
+      # supposed to be a 200.
+      IO.warn(
+        "AshDispatch.Plugs.ResendWebhook: this host's receipts are per tenant and no " <>
+          "`tenant:` source is configured, so every webhook will be looked up in the wrong " <>
+          "schema and answer 200. Use `tenant: {:path_param, \"tenant\"}`."
+      )
+    end
+
     if Keyword.get(opts, :tenant) == :tag and not AshDispatch.Config.webhook_tenant_tag?() do
       # Said once, at boot, where a configuration mistake belongs. Without the
       # tag switched on the outgoing message carries no

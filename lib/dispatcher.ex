@@ -1776,7 +1776,12 @@ defmodule AshDispatch.Dispatcher do
              ]
          ) do
       {:ok, rendered} ->
-        rendered
+        # The trailing newline every text file ends with. For an email body it
+        # is invisible and the receipt's `:string` casting trims it anyway; an
+        # SMS pays for characters, and a Slack or Discord message renders a
+        # blank line. Only the trailing whitespace: a template that formats
+        # with leading indentation meant it.
+        String.trim_trailing(rendered)
 
       {:error, :template_not_found} ->
         nil

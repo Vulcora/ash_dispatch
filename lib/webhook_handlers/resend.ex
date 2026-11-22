@@ -233,7 +233,8 @@ defmodule AshDispatch.WebhookHandlers.Resend do
   """
   def process_webhook(params, opts \\ [])
 
-  def process_webhook(%{"type" => event_type, "data" => data} = params, opts) do
+  def process_webhook(%{"type" => event_type, "data" => data} = params, opts)
+      when is_map(data) do
     email_id = Map.get(data, "email_id")
     created_at = parse_timestamp(Map.get(params, "created_at"))
 
@@ -260,6 +261,10 @@ defmodule AshDispatch.WebhookHandlers.Resend do
     end
   end
 
+  # `"data": null` matched the clause above (the key IS there) and then
+  # `Map.get(nil, "email_id")` raised — a 500 and a stacktrace out of an
+  # endpoint a stranger can reach, where the documented answer is a 400. The
+  # guard above makes it this clause, which is the documented answer.
   def process_webhook(params, _opts) do
     Logger.warning("Resend webhook invalid format (keys: #{inspect(webhook_keys(params))})")
     {:error, :invalid_format}

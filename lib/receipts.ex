@@ -137,7 +137,11 @@ defmodule AshDispatch.Receipts do
     end
   end
 
-  defp normalise_tenant(attrs, nil), do: attrs
+  # An explicit `tenant: nil` is DELETED rather than passed on: Ash applies an
+  # attribute's default only when the input is ABSENT, so a literal nil
+  # defeats the default of a host's own `tenant` attribute — the same trap
+  # `Dispatcher.build_receipt/4` has a `maybe_put/3` for.
+  defp normalise_tenant(attrs, nil), do: Map.delete(attrs, :tenant)
 
   defp normalise_tenant(attrs, tenant) do
     case AshDispatch.Context.tenant_key(tenant) do
@@ -156,6 +160,12 @@ defmodule AshDispatch.Receipts do
 
   defp settle(receipt, {skipped, reason}, _opts) when skipped in [:skip, :skipped] do
     ReceiptStatus.skip(receipt, message(reason))
+  rescue
+    # The same rescue the other two outcomes have. `skip/2` does not raise on a
+    # refused transition, but a receipt resource of a host's own can raise in
+    # a validation or a change of its own, and `record/3` answering a tuple is
+    # the contract.
+    error -> {:error, Exception.message(error)}
   end
 
   defp settle(receipt, {:error, reason}, opts) do

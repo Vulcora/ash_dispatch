@@ -99,6 +99,29 @@ defmodule AshDispatch.Plugs.ResendWebhookTest do
       assert conn.status == 200
     end
 
+    test ~s(with "data": null answers the documented 400, not a 500) do
+      # `"data": null` matched the clause that destructures `"data"` — the key
+      # IS there — and then `Map.get(nil, "email_id")` raised: a 500 and a
+      # stacktrace out of an endpoint a stranger can reach.
+      body =
+        Jason.encode!(%{
+          "type" => "email.opened",
+          "created_at" => "2026-11-22T09:00:00.000Z",
+          "data" => nil
+        })
+
+      conn = ResendWebhook.call(request(body), secret: @secret)
+
+      assert conn.status == 400
+      assert conn.resp_body == "error"
+    end
+
+    test ~s(and so does a "data" that is a list) do
+      body = Jason.encode!(%{"type" => "email.opened", "data" => []})
+
+      assert ResendWebhook.call(request(body), secret: @secret).status == 400
+    end
+
     test "with a payload that is not a Resend event answers 400" do
       body = Jason.encode!(%{"hello" => "world"})
 
@@ -437,6 +460,58 @@ defmodule AshDispatch.Plugs.ResendWebhookTest do
   describe "init/1" do
     test "keeps the options, so a router can pass them" do
       assert ResendWebhook.init(secret: "x") == [secret: "x"]
+    end
+
+    test "warns for per-tenant receipts with no tenant source" do
+      # Every webhook would look its message id up in the wrong schema and
+      # answer 200 — and at request time that is indistinguishable from an
+      # event about a message this host never sent, which is the answer that
+      # is SUPPOSED to be a 200. So it has to be said at boot.
+      previous = Application.fetch_env(:ash_dispatch, :delivery_receipt_resource)
+
+      Application.put_env(
+        :ash_dispatch,
+        :delivery_receipt_resource,
+        AshDispatch.Test.PerTenant.Receipt
+      )
+
+      on_exit(fn ->
+        case previous do
+          {:ok, old} -> Application.put_env(:ash_dispatch, :delivery_receipt_resource, old)
+          :error -> Application.delete_env(:ash_dispatch, :delivery_receipt_resource)
+        end
+      end)
+
+      assert ExUnit.CaptureIO.capture_io(:stderr, fn ->
+               ResendWebhook.init(secret: "x")
+             end) =~ "per tenant and no"
+    end
+
+    test "and says nothing when a source is configured" do
+      previous = Application.fetch_env(:ash_dispatch, :delivery_receipt_resource)
+
+      Application.put_env(
+        :ash_dispatch,
+        :delivery_receipt_resource,
+        AshDispatch.Test.PerTenant.Receipt
+      )
+
+      on_exit(fn ->
+        case previous do
+          {:ok, old} -> Application.put_env(:ash_dispatch, :delivery_receipt_resource, old)
+          :error -> Application.delete_env(:ash_dispatch, :delivery_receipt_resource)
+        end
+      end)
+
+      assert ExUnit.CaptureIO.capture_io(:stderr, fn ->
+               ResendWebhook.init(secret: "x", tenant: {:path_param, "tenant"})
+             end) == ""
+    end
+
+    test "and nothing for public receipts" do
+      assert ExUnit.CaptureIO.capture_io(:stderr, fn ->
+               ResendWebhook.init(secret: "x")
+             end) == ""
     end
   end
 

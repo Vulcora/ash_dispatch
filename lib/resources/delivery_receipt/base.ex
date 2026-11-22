@@ -606,6 +606,11 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
           # stranded sweep reads never moves, so a receipt resumed every few
           # minutes still looks hours stranded and gets rescued or closed
           # underneath the attempt that is sending it.
+          #
+          # It IS a write where rc.5 made none, and an email job resumes by
+          # default, so this is a real change for a host whose notifier watches
+          # receipt updates: an interrupted email attempt now emits one update
+          # notification per resumption. The changelog says so.
           require_atomic? false
           change transition_state(:sending)
 

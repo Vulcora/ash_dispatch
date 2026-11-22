@@ -53,7 +53,14 @@ defmodule AshDispatch.Workers.Prune do
 
   Each pass deletes at most `:prune_batch_size` rows (default 5000) per table,
   so one run cannot lock a large table for minutes. What is left goes on the
-  next run.
+  next run, and a pass that took a full batch says so in the log — a nightly
+  cron that fills its batch every night never catches up.
+
+  The batch is per PASS, and with receipts per tenant there is one pass per
+  tenant: a hundred tenants is up to a hundred batches per table per run, in
+  sequence. On a PUBLIC table the whole run is one batch, however many tenants
+  the host has, because there is one pass. Size the batch for the shape you
+  have.
 
   ## Per tenant
 
@@ -263,14 +270,24 @@ defmodule AshDispatch.Workers.Prune do
       from(r in table,
         where: r.status in ^@terminal,
         where: r.inserted_at < ^cutoff,
+        # `jsonb_typeof(...) = 'object'` first: `?|` raises on a jsonb
+        # that is not an object, and `content['digest']['item']` is
+        # whatever a host's own `digest_item/2` returned — a string, a
+        # list, anything. One receipt shaped like that would have taken
+        # down every pass.
         where:
           (not is_nil(r.body_text) and r.body_text != ^@marker) or not is_nil(r.body_html) or
             fragment("(? \\?| array['html_body', 'text_body', 'message', 'body'])", r.content) or
             fragment(
-              "((? #> '{digest,item}') \\?| array['summary', 'title'])",
+              "(jsonb_typeof(? #> '{digest,item}') = 'object' and (? #> '{digest,item}') \\?| array['summary', 'title'])",
+              r.content,
               r.content
             ),
         select: r.id,
+        # Oldest first, and deterministic: without an order the batch is
+        # whatever the planner returns, so two passes can fight over the same
+        # rows while older ones are never reached.
+        order_by: [asc: r.inserted_at, asc: r.id],
         limit: ^batch_size()
       )
 
@@ -301,7 +318,7 @@ defmodule AshDispatch.Workers.Prune do
       where: r.status in ^@terminal,
       where: r.inserted_at < ^cutoff
     )
-    |> limited(table)
+    |> limited(table, :inserted_at)
   end
 
   @doc false
@@ -310,7 +327,7 @@ defmodule AshDispatch.Workers.Prune do
   # no `occurred_at` of its own.
   def notification_query(table, cutoff) do
     from(n in table, where: coalesce(n.occurred_at, n.inserted_at) < ^cutoff)
-    |> limited(table)
+    |> limited(table, :inserted_at)
   end
 
   # ── Helpers ─────────────────────────────────────────────────────────
@@ -319,8 +336,16 @@ defmodule AshDispatch.Workers.Prune do
   # `update_all` take no `limit` of their own in Postgres. One pass therefore
   # cannot hold a lock on a large table for minutes, and what is left goes on
   # the next run.
-  defp limited(query, table) do
-    ids = from(q in query, select: q.id, limit: ^batch_size())
+  defp limited(query, table, order_by) do
+    # Oldest first, and deterministic. Without an order the batch is whatever
+    # the planner returns, so two passes can fight over the same rows while
+    # older ones are never reached at all.
+    ids =
+      from(q in query,
+        select: q.id,
+        order_by: [asc: field(q, ^order_by), asc: q.id],
+        limit: ^batch_size()
+      )
 
     from(r in table, where: r.id in subquery(ids))
   end
@@ -396,6 +421,20 @@ defmodule AshDispatch.Workers.Prune do
       "Prune: emptied #{counts.bodies} receipt bodies, deleted #{counts.receipts} receipts " <>
         "and #{counts.notifications} notifications#{where(tenant)}"
     )
+
+    # A pass that took a FULL batch did not finish, and a nightly cron that
+    # takes a full batch every night never catches up: the backlog grows while
+    # the log says work is being done. Said once per pass, per table.
+    batch = batch_size()
+
+    for {what, count} <- counts, count >= batch do
+      Logger.warning(
+        "Prune: took a full batch of #{batch} #{what}#{where(tenant)} and stopped there. " <>
+          "Run it more often, or raise :prune_batch_size, or the backlog will not shrink."
+      )
+    end
+
+    :ok
   end
 
   defp where(nil), do: ""

@@ -127,6 +127,44 @@ defmodule AshDispatch.Workers.PruneTenancyPostgresTest do
     end
   end
 
+  describe "both per tenant" do
+    setup do
+      put_env(:notification_resource, PerTenant.Notification)
+      put_env(:delivery_receipt_resource, PerTenant.Receipt)
+      put_env(:notification_retention_hours, 24)
+      put_env(:receipt_retention_hours, 24)
+      :ok
+    end
+
+    test "one tenant's pass deletes in that tenant's schema and nowhere else" do
+      # The shape the first version of this worker could not do at all, and
+      # the one the earlier tests only checked through the query builders.
+      a_note = notification!(@tenant)
+      b_note = notification!(@other)
+      a_receipt = per_tenant_receipt!(@tenant)
+      b_receipt = per_tenant_receipt!(@other)
+
+      assert :ok = Prune.perform(%Oban.Job{args: %{"tenant" => @tenant}})
+
+      refute a_note in notification_ids(@tenant)
+      refute a_receipt in receipt_ids(@tenant)
+
+      assert b_note in notification_ids(@other)
+      assert b_receipt in receipt_ids(@other)
+    end
+
+    test "and a second pass clears the other one" do
+      a = notification!(@tenant)
+      b = notification!(@other)
+
+      assert :ok = Prune.perform(%Oban.Job{args: %{"tenant" => @tenant}})
+      assert :ok = Prune.perform(%Oban.Job{args: %{"tenant" => @other}})
+
+      refute a in notification_ids(@tenant)
+      refute b in notification_ids(@other)
+    end
+  end
+
   describe "the digest summary" do
     setup do
       # Both public, so the pass runs here rather than fanning out.
@@ -256,6 +294,26 @@ defmodule AshDispatch.Workers.PruneTenancyPostgresTest do
       PerTenant.Repo.query!("select count(*) from \"pt_public_receipts\"")
 
     count
+  end
+
+  defp per_tenant_receipt!(prefix) do
+    id = Ecto.UUID.generate()
+    at = old()
+
+    PerTenant.Repo.query!(
+      ~s(insert into "#{prefix}"."pt_receipts" ) <>
+        "(id, event_id, transport, audience, status, recipient, content, " <>
+        "provider_response, retry_count, inserted_at, updated_at) " <>
+        "values ($1, $2, 'email', 'user', 'sent', $3, '{}'::jsonb, '{}'::jsonb, 0, $4, $4)",
+      [Ecto.UUID.dump!(id), "orders.created", "a@b.c", at]
+    )
+
+    id
+  end
+
+  defp receipt_ids(prefix) do
+    %{rows: rows} = PerTenant.Repo.query!(~s(select id from "#{prefix}"."pt_receipts"))
+    rows |> List.flatten() |> Enum.map(&Ecto.UUID.load!/1) |> Enum.sort()
   end
 
   defp batched_receipt!(opts \\ []) do
