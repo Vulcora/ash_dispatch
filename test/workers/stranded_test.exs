@@ -101,4 +101,36 @@ defmodule AshDispatch.Workers.StrandedTest do
       assert fate(-3600) == :leave
     end
   end
+
+  describe "a receipt whose job is still coming" do
+    # A channel timed `{:in, 7200}` or `{:at, tomorrow 07:00}` leaves its receipt in
+    # `:scheduled` for hours with a job that will run on time. Deciding on age alone
+    # rescued it after the grace period and sent the mail at once, hours early.
+    test "is left alone past the grace period, whatever the job is waiting for" do
+      for state <- ~w(scheduled available executing retryable) do
+        assert fate(31 * 60, job_state: state) == :leave
+        assert fate(2 * 3600, job_state: state) == :leave
+      end
+    end
+
+    test "is not closed as too old either: the job decides when it is sent" do
+      assert fate(25 * 3600, job_state: "scheduled") == :leave
+      assert fate(8 * 86_400, job_state: "scheduled") == :leave
+    end
+
+    test "a job that is gone or finished changes nothing: age decides" do
+      for state <- [nil, "completed", "cancelled", "discarded"] do
+        assert fate(5, job_state: state) == :leave
+        assert fate(31 * 60, job_state: state) == :rescue
+        assert fate(25 * 3600, job_state: state) == :close
+      end
+    end
+
+    test "the state is accepted as Oban returns it or as an atom" do
+      assert Stranded.live_job?("scheduled")
+      assert Stranded.live_job?(:scheduled)
+      refute Stranded.live_job?("completed")
+      refute Stranded.live_job?(nil)
+    end
+  end
 end

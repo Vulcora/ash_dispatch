@@ -102,6 +102,13 @@ defmodule AshDispatch.Workers.Stranded do
 
   Both bounds are in the same unit the config uses (minutes and hours), and
   are converted here so callers never have to.
+
+  `:job_state` is the state of the receipt's Oban job, when the caller has
+  looked it up (see `live_job?/1`). A receipt whose job is still waiting or
+  running is not stranded at any age: a channel timed `{:in, 7200}` or
+  `{:at, tomorrow}` sits in `:scheduled` for hours with a job that will run
+  on time, and rescuing it would send the mail early. Without `:job_state`,
+  or with a job that is gone or finished, age alone decides, as before.
   """
   @spec action(DateTime.t() | NaiveDateTime.t(), keyword()) :: action()
   def action(age_reference, opts \\ []) do
@@ -112,11 +119,24 @@ defmodule AshDispatch.Workers.Stranded do
     seconds = age_in_seconds(age_reference, now)
 
     cond do
+      live_job?(Keyword.get(opts, :job_state)) -> :leave
       seconds < stuck_after -> :leave
       seconds >= stale_after -> :close
       true -> :rescue
     end
   end
+
+  @live_job_states ~w(available scheduled executing retryable)
+
+  @doc """
+  Whether an Oban job in this state is still going to run (or is running).
+
+  `nil` is a receipt with no job to be found: never enqueued, or pruned. A
+  `completed`, `cancelled` or `discarded` job is not coming back either.
+  """
+  @spec live_job?(String.t() | atom() | nil) :: boolean()
+  def live_job?(nil), do: false
+  def live_job?(state), do: to_string(state) in @live_job_states
 
   @doc """
   The reason written onto a receipt that is closed rather than sent.
