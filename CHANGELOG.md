@@ -7,29 +7,197 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.4-rc.6] - 2026-11-23
+
+### The host's own surface
+
+A host's upstream list, worked through: six fixes for things the library
+accepted and then silently dropped, and eight pieces of code several
+installations had each written for themselves. Three fixes that were waiting
+in open pull requests came in with it.
+
+Still a patch. No migration, no column added, changed or dropped; a
+`mix ash.codegen` on a host that changes nothing emits nothing. Every
+behaviour that does move is in the table at the end, with how to keep the old
+one.
+
 ### Fixed
 
-- **An event module named in `event_config[:module]` now resolves the recipients.** `Dispatcher.dispatch_channel/3` only ever asked the event registry, so a module passed explicitly — the documented path for a caller that builds its own context — never had its `recipients/2` called and the dispatch reached nobody; an event had to be registered on a resource just to have its recipients resolved. Without a `:module` nothing changes: the registry stays the fallback.
-- Slack and Discord now receive the body that was declared. The dispatcher
-  wrote it under `:message`, while both transports read `:notification_message`
-  for the payload's only required text field (`"text"` and `"content"`), so a
-  `content: [notification_message: ...]` channel — and a module's
-  `notification_message/2` — posted a payload whose text was `nil`.
-- `AshDispatch.Workers.ScrubSensitiveContent` removes `notification_message`
-  from `content` too, and names it in the clause that decides which receipts
-  still hold a body. Without it a `sensitive_content: true` event with a Slack
-  or Discord channel would keep its text past the retention window under the
-  key the fix above starts writing.
+- **A channel's `locale`, `locale_from` and `locales` were dropped.** All
+  three clauses of `ChannelResolver.to_channel_struct/1` built the runtime
+  channel without them, while `Dispatcher.resolve_channel_locale/3` read
+  exactly those fields and three guides taught declaring them. A
+  channel-level locale was silently the event's, for a DSL entry, a map and a
+  keyword list alike.
+- **A template filename could be a path.** `locale` comes from
+  `locale_from:`, which reads a column of the host's own, and `variant` from
+  `template_variant/2` — so both could carry whatever a row held, and both
+  became part of a filename that was then read and EEx-evaluated. They go
+  through the same check a layout name does (`[A-Za-z0-9_.-]`, never `.` or
+  `..`), and a refused value drops its own candidates rather than the
+  request: an exotic template filename outside that set now falls back to the
+  base template instead of being selected.
+- **`:sending` was a dead end.** A node that goes down between `mark_sending`
+  and the provider leaves the receipt there, and nothing looked: the retry
+  sweep queries `:failed`, the stranded sweep queried `:scheduled`, and no
+  transition led out. The message was gone and nothing said so. There is a
+  way out (`:resume_sending`), one place that decides whether to take it
+  (`ReceiptStatus.claim/2`), and the sweep can see `:sending` under a new
+  setting — see **Added** and the table.
 - **A delayed email was sent early by the stranded-receipt sweep.** A channel
   timed `{:in, seconds}` beyond the grace period (30 minutes by default), or
   `{:at, datetime}`, leaves its receipt in `:scheduled` with an Oban job that
   will run on time. The sweep decided on the receipt's age alone and never
-  looked at the job, so it moved the receipt to `:failed`, and the retry pass
-  sent it at once. Past 24 hours it closed the receipt as `failed_permanent`
-  and the mail was never sent. The sweep now reads the state of each
-  receipt's job and leaves a receipt alone while its job is waiting or
-  running (`Stranded.action/2` takes `:job_state`; `Stranded.live_job?/1`). A
-  receipt whose job is gone or finished is rescued or closed as before.
+  looked at the job, so it moved the receipt to `:failed` and the retry pass
+  sent it at once; past 24 hours it closed the receipt and the mail was never
+  sent. The sweep now reads each receipt's job state and leaves a receipt
+  alone while its job is waiting or running (`Stranded.action/2` takes
+  `:job_state`; `Stranded.live_job?/1`).
+- **And the same gate stops the sweep CREATING a loss.** Oban's `Lifeline`
+  rescues an orphaned `executing` job after 60 minutes by default and the
+  grace period here is 30, so under the new `stranded_sending: :close` the
+  sweep would have marked a receipt `failed_permanent` and the rescued job
+  would then have completed green without sending. A receipt whose job is
+  `available`, `scheduled`, `executing` or `retryable` is left alone. The
+  sweep's own moduledoc now says what it promises and what it does not.
+- **The webhook, Slack and Discord transports never recorded their Oban job.**
+  Email and SMS always wrote `oban_job_id`; those three did not, so the gate
+  above had no job to look up for them. They write it now, after the insert,
+  through `ReceiptStatus.put_oban_job_id/2`.
+- **Slack and Discord never received the body that was declared.** The
+  dispatcher wrote it under `:message` while both transports read
+  `:notification_message` for the payload's only required text field
+  (Slack's `"text"`, Discord's `"content"`), so a
+  `content: [notification_message: …]` channel — and a module's
+  `notification_message/2` — posted a payload whose text was `nil`. Both keys
+  carry it now, declared or rendered from a template.
+- **`ScrubSensitiveContent` removes `notification_message` too**, and names it
+  in the clause that decides which receipts still hold a body. Without it a
+  `sensitive_content: true` event with a Slack or Discord channel would keep
+  its text past the retention window under the key the fix above starts
+  writing.
+- **An event module named in `event_config[:module]` now resolves the
+  recipients.** `Dispatcher.dispatch_channel/3` only ever asked the event
+  registry, so a module passed explicitly — the documented path for a caller
+  that builds its own context — never had its `recipients/2` called and the
+  dispatch reached nobody. Without a `:module` nothing changes: the registry
+  stays the fallback.
+- **`Channel.new/3` built a channel without the options it was given.** It
+  hand-picked six fields, so `channel(:email, :user, locale: "sv")` — the
+  documented way to build one in a `channels/1` callback — dropped `locale`,
+  `content`, `metadata`, `load`, `deduplicate_group`, `idempotency_source`,
+  `optional` and `exclude_actor`.
+- **`"data": null` in a verified webhook raised** where the documented answer
+  is a 400, as did a `"data"` that is a list.
+- Three documented settings were read by nothing: `email_queue:` had no
+  effect at all (see **Added**), `max_email_attempts:` still does not exist
+  and the Oban guide no longer claims it, and `recipient_filters` remains on
+  the backlog.
+- Four things in the guides, one of them a security answer: the manual
+  dispatch guide showed `<iframe srcDoc={html} />` with **no `sandbox`**, the
+  ManualTrigger action names and result fields did not match the resource,
+  the DSL reference's channel table was missing `time`,
+  `idempotency_source`, `exclude_actor` and `queue`, and the
+  implementation-status section said Slack and SMS were planned (they were,
+  in 0.8.2).
+
+### Added
+
+- **`AshDispatch.Reason`** — the reason a letter was held back as a closed
+  code beside the sentence. `of/1` answers for every receipt, including every
+  receipt written before this release, by classifying the sentence when no
+  code is stored; `reason_codes: true` on `DeliveryReceipt.Base` also writes
+  `content["reason_code"]` so the reasons can be grouped in SQL.
+- **`AshDispatch.Resources.EventCatalogue.Base`** — the event catalogue as a
+  resource of your own: your policies (`policies: :own`) or the configured
+  `permission_checker` by default, and **every** transport rather than email
+  only. `AshDispatch.Resources.EmailEvent` is unchanged and frozen.
+- **`c:AshDispatch.Event.catalogue/0`** (optional) — what an event IS, in
+  words: name, description, trigger, audience, group, instruction. Surfaced
+  by `Preview.events/0` and by the catalogue resource. An event that does not
+  write one is listed exactly as before.
+- **`AshDispatch.Sample`** — `with_seed/2`, `build/2` (an in-memory Ash struct
+  from a resource's own attributes and relationships, with no read and no
+  write) and a rolling date anchor (`anchor/1`, `at/1`, `date/1`).
+- **`c:AshDispatch.Event.sample_data/1` may answer `%{data: …, variables: …}`**,
+  for a letter whose template prints a value only
+  `generate_send_variables/2` could mint. Both keys are required, so an event
+  whose own data key is `:data` is unaffected.
+- **`AshDispatch.Receipts.record/3`** — a receipt for a send made outside the
+  dispatcher, with `{:sent, response}`, `{:skipped, reason}` or
+  `{:error, reason}`.
+- **`AshDispatch.Plugs.ResendWebhook` and `.RawBodyReader`** — the provider's
+  delivery-webhook endpoint, finished and fail-closed, with no option that
+  turns verification off (BACKLOG 4). `plug` joins the optional dependencies.
+- **`AshDispatch.Workers.Prune`** — retention for bodies, receipts and
+  notifications. All three windows unset by default, so it deletes nothing
+  until a host asks (BACKLOG 3).
+- **`layout` and `layout_from` on a channel** — which layout wraps the body.
+- **`queue` on a channel**, and `email_queue`, `sms_queue` and
+  `webhook_queue` — which Oban queue a send runs in, with today's names as
+  the defaults. The per-transport keys were documented before this release
+  and read by nothing.
+- **Templates for transports other than email** — `sms.text.eex`,
+  `slack.text.eex` and the rest are rendered where a host wrote one, for a
+  channel whose body nobody declared.
+- **`locale` and `variant` on the ManualTrigger `:preview` action.**
+- **`config :ash_dispatch, stranded_sending:`** — what the sweep does with a
+  receipt stranded in `:sending`: `:ignore` (the default, and what every
+  earlier release did), `:close`, or `:rescue`.
+- **`email_resume_interrupted`, `sms_resume_interrupted`,
+  `webhook_resume_interrupted`** — whether a worker reclaims a receipt its
+  own earlier attempt left in `:sending`, defaulting to what each worker
+  already did.
+- **`config :ash_dispatch, discord_suppress_mentions: true`** — and the same
+  key on a channel's content. **Switch it on.** Discord parses every mention
+  in a message body by default, so an `@everyone` in a customer's company
+  name pings a whole server.
+
+### Compatibility
+
+| What moves | For whom | How to keep the old behaviour |
+|---|---|---|
+| A channel's declared `locale` reaches the send | A host that declared one and did not notice it being ignored | Remove the declaration |
+| A template filename outside `[A-Za-z0-9_.-]` is no longer selected | A host with an exotic locale or variant name | Rename the template |
+| A transport template (`sms.text.eex`) is rendered | A host that wrote one AND declares no body for that channel. A declared `message:`, a DSL `notification_message:` and a module's own `notification_message/2` all still win, and `default.*` is never used for a non-email body | Delete the template, or declare a body |
+| Slack and Discord receive the declared body | A host whose Slack or Discord payloads have been arriving with no text | — (they were empty) |
+| A delayed or in-flight receipt is no longer swept | Every host running the stranded sweep | — (it was sending mail early) |
+| `:resume_sending` writes `updated_at` | A host whose notifier watches receipt updates: an interrupted **email** attempt now emits one update notification per resumption, and email resumes by default | `email_resume_interrupted: false`, which loses the letter instead |
+| A webhook, Slack or Discord receipt gains an `oban_job_id` | A host reading that column — it was always NULL for those three | — |
+| `:skip` and `:mark_failed_permanent` become non-atomic | Only with `reason_codes: true` | Leave the option off (the default) |
+| `Preview.events/0` rows carry a `:catalogue` key | A reader that enumerates row keys | — |
+
+Email's resumption is **at-least-once**: the provider may have taken the
+first attempt and answered nothing. That has been true since 0.9.2; this
+release names it.
+
+Not in the table, because they are the defaults: `stranded_sending` is
+`:ignore`, SMS and webhook resumption are off, Discord mention suppression is
+off (rc.5 sent no `allowed_mentions` at all), and storing the reason code is
+off. Each of those is a behaviour this release makes available and does not
+impose.
+
+### Running the tests
+
+`mix test` without `ASH_DISPATCH_TEST_DATABASE_URL` excludes 159 tests and
+still prints "0 failures" — everything per-tenant, the pruner's and the
+scrub's JSONB, the reason code's merge and the one test about a real Oban job
+id. Set it to validate a change:
+
+    createdb ash_dispatch_test
+    ASH_DISPATCH_TEST_DATABASE_URL=postgres://localhost/ash_dispatch_test \
+      mix test --include postgres
+
+CI sets it and `test_helper.exs` raises without it there.
+
+### For 0.10.0
+
+- Storing the reason code by default, in a column of its own rather than in
+  `content`: one statement instead of two, and the three actions stay atomic.
+- Suppressing Discord mentions by default.
+- 5.11's acknowledgement half (`acknowledged_at`, `acknowledged_by_id`): two
+  nullable columns are a migration.
+- BACKLOG 11, 12 and 13's remaining halves, unchanged.
 
 ## [0.9.4-rc.5] - 2026-11-18
 
