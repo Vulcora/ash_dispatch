@@ -149,10 +149,16 @@ defmodule AshDispatch.EventResolver do
 
   @doc """
   Get sample data from an event module.
+
+  The event's DATA only. An event answering the `%{data: …, variables: …}`
+  form is unwrapped, so every caller that wants data keeps getting data.
   """
   @spec sample_data(module()) :: map()
   def sample_data(module) do
-    call_if_exported(module, :sample_data, [], default: %{})
+    module
+    |> call_if_exported(:sample_data, [], default: %{})
+    |> split()
+    |> Map.fetch!(:data)
   end
 
   @doc """
@@ -161,18 +167,73 @@ defmodule AshDispatch.EventResolver do
   Calls `sample_data/1` with `opts` (`seed: integer`) when the module exports
   it, and falls back on `sample_data/0` when it does not. Anything that is not
   a map counts as no sample data.
+
+  The DATA only; `sample/2` answers the variables too.
   """
   @spec sample_data(module(), keyword()) :: map()
   def sample_data(module, opts) do
-    result =
-      if exports?(module, :sample_data, 1) do
-        call_if_exported(module, :sample_data, [opts], default: %{})
-      else
-        sample_data(module)
-      end
-
-    if is_map(result), do: result, else: %{}
+    Map.fetch!(sample(module, opts), :data)
   end
+
+  @doc """
+  Sample data **and** sample variables from an event module.
+
+  `c:AshDispatch.Event.sample_data/1` may answer either form:
+
+      # The data, as it always was
+      %{booking: booking}
+
+      # The data and the template variables the letter prints
+      %{data: %{booking: booking}, variables: %{reset_url: "https://…/abc"}}
+
+  The second form exists because `generate_send_variables/2` is never run for
+  a preview — that is where events mint reset tokens and invitation links —
+  so a letter whose template prints such a variable had nowhere to get a
+  plausible one. The only way round it was to smuggle the variables into
+  `data` under a key and unpack them again on the rendering side, which every
+  event that did it had to do differently.
+
+  Always `%{data: map(), variables: map()}`, both of them maps.
+
+  ## Telling the two forms apart
+
+  The second form is a map whose keys are `:data`, or `:data` and
+  `:variables`, and nothing else. An event whose data genuinely has a
+  `:data` key beside others is the first form and is passed through
+  untouched.
+  """
+  @spec sample(module(), keyword()) :: %{data: map(), variables: map()}
+  def sample(module, opts \\ []) do
+    if exports?(module, :sample_data, 1) do
+      module
+      |> call_if_exported(:sample_data, [opts], default: %{})
+      |> split()
+    else
+      %{data: sample_data(module), variables: %{}}
+    end
+  end
+
+  # `%{data: …}` or `%{data: …, variables: …}` and nothing else is the second
+  # form. Anything else — including a data map that happens to carry a `:data`
+  # key beside others — is the data itself.
+  defp split(%{data: data} = answer) when is_map(data) do
+    if Map.keys(answer) -- [:data, :variables] == [] do
+      %{data: data, variables: as_map(Map.get(answer, :variables))}
+    else
+      %{data: answer, variables: %{}}
+    end
+  end
+
+  defp split(answer) when is_map(answer), do: %{data: answer, variables: %{}}
+  defp split(_answer), do: %{data: %{}, variables: %{}}
+
+  defp as_map(value) when is_map(value), do: value
+
+  defp as_map(value) when is_list(value) do
+    if Keyword.keyword?(value), do: Map.new(value), else: %{}
+  end
+
+  defp as_map(_value), do: %{}
 
   @doc """
   What the event says it is, in words, or `nil`.

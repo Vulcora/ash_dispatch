@@ -388,6 +388,28 @@ defmodule AshDispatch.Event do
 
         %{customer: %{name: Enum.at(names, rem(seed, length(names)))}}
       end
+
+  ## Sample variables (since 0.9.4)
+
+  A preview never runs `generate_send_variables/2` — that is where events mint
+  reset tokens and invitation links, and a preview must create none — so a
+  letter whose template prints such a variable had nowhere to get a plausible
+  one. The only way round it was to smuggle the variables into the data under
+  a key and unpack them again on the rendering side.
+
+  Answer both instead:
+
+      def sample_data(seed: _seed) do
+        %{
+          data: %{user: %{email: "alva@example.com"}},
+          variables: %{reset_url: "https://example.test/reset/sample-token"}
+        }
+      end
+
+  A caller's own `variables:` still wins over these. The form is recognised by
+  its keys being `:data`, or `:data` and `:variables`, and nothing else — an
+  event whose data genuinely carries a `:data` key beside others is the old
+  form and passes through untouched.
   """
   @callback sample_data(keyword()) :: map()
 

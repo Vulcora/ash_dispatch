@@ -64,6 +64,13 @@ defmodule AshDispatch.Test.Preview.Booking do
       channels: [
         [transport: :email, audience: :user]
       ]
+
+    event :minted,
+      trigger_on: :manual,
+      module: AshDispatch.Test.Preview.BookingMinted,
+      channels: [
+        [transport: :email, audience: :user]
+      ]
   end
 end
 

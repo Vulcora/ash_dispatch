@@ -28,7 +28,13 @@ defmodule AshDispatch.PreviewRenderTest do
 
     test "every registered event is listed" do
       ids = Preview.events() |> Enum.map(& &1.event_id) |> Enum.uniq() |> Enum.sort()
-      assert ids == ["booking.broken", "booking.confirmed", "booking.reminder"]
+
+      assert ids == [
+               "booking.broken",
+               "booking.confirmed",
+               "booking.minted",
+               "booking.reminder"
+             ]
     end
   end
 

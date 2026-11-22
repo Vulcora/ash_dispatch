@@ -107,7 +107,9 @@ defmodule AshDispatch.Preview do
 
   - `:sample` (the default) — the event's sample data:
     `sample_data/1` with the seed, falling back on `sample_data/0`. Without
-    either, the first record of the event's resource is read instead.
+    either, the first record of the event's resource is read instead. The
+    callback may answer `%{data: ..., variables: ...}` to supply template
+    variables too (since 0.9.4) — a `variables:` option here still wins
   - `{:record, id}` — the record with that id, from the event's resource. For
     an event triggered by a resource action this runs that action's path in
     full: the event's `load` and `prepare_data/2` (with a bare
@@ -160,7 +162,8 @@ defmodule AshDispatch.Preview do
   It never calls `generate_send_variables/2`. That callback is where events
   mint what a send needs — a reset token, an invitation JWT, a database row —
   and a preview must not create any of it. A letter that prints such a
-  variable is rendered with the one passed in `:variables` (or none).
+  variable is rendered with the one passed in `:variables`, the one the
+  event's own `sample_data/1` answered under `:variables`, or none.
 
   ## What it cannot show
 
@@ -323,9 +326,13 @@ defmodule AshDispatch.Preview do
   # modules — is sent by `Dispatcher.dispatch/3`. The preview opens the event
   # the way its own send opens it.
   defp prepare(event_id, module, source, seed, opts) do
-    variables = Keyword.get(opts, :variables, %{})
+    with {:ok, kind, data, sample_variables} <- source_data(event_id, module, source, seed, opts) do
+      # The event's own sample variables, under anything the caller passed:
+      # `variables:` is the explicit answer and wins. A preview still never
+      # runs `generate_send_variables/2`, so these are the only plausible
+      # values a letter printing a minted token can have.
+      variables = Map.merge(sample_variables, Keyword.get(opts, :variables, %{}))
 
-    with {:ok, kind, data} <- source_data(event_id, module, source, seed, opts) do
       prepared =
         case action_config(event_id) do
           {config, resource} -> prepare_from_record(config, resource, kind, data, variables, opts)
@@ -416,25 +423,25 @@ defmodule AshDispatch.Preview do
   # ── Sources ─────────────────────────────────────────────────────────
 
   defp source_data(_event_id, _module, data, _seed, _opts) when is_map(data) do
-    {:ok, :map, data}
+    {:ok, :map, data, %{}}
   end
 
   defp source_data(event_id, module, :sample, seed, opts) do
     read_records? = Keyword.get(opts, :read_records?, true)
 
     case sample_data(module, seed) do
-      {:ok, data} when map_size(data) > 0 ->
-        {:ok, :sample, data}
+      {:ok, data, variables} when map_size(data) > 0 ->
+        {:ok, :sample, data, variables}
 
-      {:ok, _empty} when not read_records? ->
+      {:ok, _empty, _variables} when not read_records? ->
         {:error, "#{inspect(module)} defines no sample data"}
 
-      {:ok, _empty} ->
+      {:ok, _empty, _variables} ->
         # No sample data: read a record instead, as the ManualTrigger preview
         # always has.
         with {:ok, resource, data_key, load} <- record_source(event_id, module),
              {:ok, record} <- read_first(resource, load, opts) do
-          {:ok, :record, %{data_key => record}}
+          {:ok, :record, %{data_key => record}, %{}}
         else
           {:error, :no_records} ->
             {:error,
@@ -456,7 +463,7 @@ defmodule AshDispatch.Preview do
     with {:ok, resource, data_key, load} <- record_source(event_id, module) do
       case read(resource, id, load, opts) do
         {:ok, record} ->
-          {:ok, :record, %{data_key => record}}
+          {:ok, :record, %{data_key => record}, %{}}
 
         {:error, error} ->
           Logger.error(
@@ -474,15 +481,12 @@ defmodule AshDispatch.Preview do
     {:error, "Unknown preview source: #{inspect(source)}"}
   end
 
+  # `EventResolver.sample/2` answers both forms of the callback: the data as it
+  # always was, and `%{data: ..., variables: ...}` for an event whose letter
+  # prints a variable a preview can never mint.
   defp sample_data(module, seed) do
-    data =
-      if EventResolver.exports?(module, :sample_data, 1) do
-        module.sample_data(seed: seed)
-      else
-        EventResolver.sample_data(module)
-      end
-
-    {:ok, if(is_map(data), do: data, else: %{})}
+    %{data: data, variables: variables} = EventResolver.sample(module, seed: seed)
+    {:ok, data, variables}
   rescue
     error ->
       {:error, "sample_data raised in #{inspect(module)}: #{Exception.message(error)}"}

@@ -157,6 +157,28 @@ end
 `sample_data/1` falls back on `sample_data/0`, so events that only define
 that keep working — and data they draw from `:rand` is reproducible anyway.
 
+### Sample variables
+
+A preview never runs `generate_send_variables/2`, so a letter whose template
+prints a minted value — a reset link, an invitation token — had nowhere to get
+a plausible one, and events smuggled them into the data under a key. Answer
+both instead (since 0.9.4):
+
+```elixir
+@impl true
+def sample_data(seed: _seed) do
+  %{
+    data: %{user: %{email: "alva@example.com"}},
+    variables: %{reset_url: "https://example.test/reset/sample-token"}
+  }
+end
+```
+
+A `variables:` passed to `render/3` still wins. The form is recognised by its
+keys being `:data`, or `:data` and `:variables`, and nothing else — an event
+whose data genuinely carries a `:data` key beside others is the old form and
+passes through untouched.
+
 ## Sending a test to yourself
 
 The ManualTrigger `:trigger` action's `recipient_email` sends the letter to
