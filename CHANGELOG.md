@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.4-rc.7] - 2026-11-23
+
+### What is about to go, and stopping it
+
+A surface that lists the mail about to go, and lets someone stop one, had to
+join Oban's table for the send time and had no way to stop a delivery except
+`:skip`, which left the job in the queue. Two additions close that.
+
+**One migration.** Unlike rc.6, this release adds a column: the receipt's
+`scheduled_for` (nullable). Run `mix ash.codegen` in the host and migrate. A
+receipt written before it has `scheduled_for` empty; nothing else changes for
+it. No behaviour moves for a host that does not call `:cancel`.
+
 ### Added
 
 - **A receipt says when its job is due: `scheduled_for`.** Set when the receipt
