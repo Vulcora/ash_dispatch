@@ -268,6 +268,7 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
           )
 
           transition(:skip, from: [:pending, :scheduled, :sending, :batched], to: :skipped)
+          transition(:cancel, from: [:pending, :scheduled, :batched], to: :skipped)
           transition(:retry, from: :failed, to: :scheduled)
 
           # `:failed_permanent` was a dead end. Nothing led out of it, and the
@@ -379,6 +380,14 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
         attribute :body_html, :string, allow_nil?: true, public?: true
         attribute :content, :map, default: %{}, allow_nil?: false, public?: true
         attribute :oban_job_id, :integer, allow_nil?: true, public?: true
+
+        attribute :scheduled_for, :utc_datetime_usec,
+          allow_nil?: true,
+          public?: true,
+          description:
+            "When the receipt's job is due to send it: set when the receipt moves to " <>
+              ":scheduled, from the job's own scheduled_at. Nil when not known."
+
         attribute :error_message, :string, allow_nil?: true, public?: true
         attribute :retry_count, :integer, default: 0, allow_nil?: false, public?: true
 
@@ -590,8 +599,23 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
         end
 
         update :schedule do
-          accept [:oban_job_id, :notification_id]
+          accept [:oban_job_id, :notification_id, :scheduled_for]
           change transition_state(:scheduled)
+        end
+
+        update :cancel do
+          description """
+          Stop a delivery that has not gone yet: the receipt is :skipped with the
+          reason, and its Oban job is cancelled so it never runs. Only a receipt
+          that is :pending, :scheduled or :batched; one that is :sending is
+          already on its way and cannot be called back.
+          """
+
+          require_atomic? false
+          accept [:error_message]
+          validate attribute_in(:status, [:pending, :scheduled, :batched])
+          change transition_state(:skipped)
+          change {AshDispatch.Changes.CancelJob, []}
         end
 
         update :mark_sending do
@@ -674,7 +698,7 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
 
         update :release do
           description "Send a batched email on its own: it was alone in its digest window"
-          accept [:oban_job_id]
+          accept [:oban_job_id, :scheduled_for]
           change transition_state(:scheduled)
         end
 

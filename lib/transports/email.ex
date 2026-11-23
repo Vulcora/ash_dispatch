@@ -333,7 +333,10 @@ defmodule AshDispatch.Transports.Email do
           {:ok, current_receipt} ->
             if current_receipt.status in [:pending] do
               # Only schedule if still pending
-              AshDispatch.ReceiptStatus.mark_scheduled(current_receipt, oban_job_id: job.id)
+              AshDispatch.ReceiptStatus.mark_scheduled(current_receipt,
+                oban_job_id: job.id,
+                scheduled_for: job.scheduled_at
+              )
             else
               # Already processed (inline mode) - just return current state
               Logger.debug(
