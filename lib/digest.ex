@@ -560,7 +560,10 @@ defmodule AshDispatch.Digest do
              |> Oban.insert() do
           {:ok, job} ->
             with {:ok, current} <- reread(digest), :pending <- current.status do
-              ReceiptStatus.mark_scheduled(current, oban_job_id: job.id)
+              ReceiptStatus.mark_scheduled(current,
+                oban_job_id: job.id,
+                scheduled_for: job.scheduled_at
+              )
             end
 
             :ok
