@@ -102,6 +102,15 @@ defmodule AshDispatch.Workers.SendEmail do
       states: [:available, :scheduled, :executing, :retryable]
     ]
 
+  # The queue is read at runtime rather than baked in by `use Oban.Worker`, so
+  # a host can put this transport's sends on a queue of its own without a fork
+  # — and so a campaign's channel can name a third queue through `queue:` on
+  # the channel, which `new/2` merges over this.
+  @impl Oban.Worker
+  def __opts__ do
+    Keyword.put(super(), :queue, AshDispatch.Transport.Queue.for_transport(:email))
+  end
+
   alias AshDispatch.Config
   alias AshDispatch.ContentMap
   alias AshDispatch.Delivery
@@ -169,6 +178,17 @@ defmodule AshDispatch.Workers.SendEmail do
   def new_for_receipt(receipt) do
     %{"receipt_id" => receipt.id}
     |> maybe_put_original_attachments(receipt)
+    |> AshDispatch.Tenancy.Job.put_tenant(receipt)
+    |> new()
+  end
+
+  @doc false
+  # The same, for a receipt that never had a job of its own — a released or a
+  # digest email (`AshDispatch.Digest`) — with the args it should start with
+  # (the app-wide default attachments).
+  def new_for_receipt(receipt, extra_args) when is_map(extra_args) do
+    %{"receipt_id" => receipt.id}
+    |> Map.merge(extra_args)
     |> AshDispatch.Tenancy.Job.put_tenant(receipt)
     |> new()
   end
@@ -279,39 +299,46 @@ defmodule AshDispatch.Workers.SendEmail do
            :continue <- check_skip_if_read_policy(receipt),
            :send <- check_user_preferences(receipt),
            :continue <- check_body(receipt, args) do
-        # Mark as sending - handle race condition gracefully
-        case ReceiptStatus.mark_sending(receipt) do
+        # Claim the receipt for this attempt - handle race conditions, and a
+        # receipt this job's own earlier attempt left in `:sending`, gracefully.
+        # `AshDispatch.ReceiptStatus.claim/2` is where that decision lives, for
+        # every transport.
+        # TRUE by default for email: this worker has resumed an interrupted
+        # attempt since 0.9.2, and that is the behaviour being kept.
+        # `config :ash_dispatch, email_resume_interrupted: false` turns it off
+        # for a host that would rather lose the letter than risk a duplicate.
+        resumed? =
+          interrupted_attempt?(receipt, attempt) and Config.resume_interrupted?(:email)
+
+        case ReceiptStatus.claim(receipt, attempt: attempt, resume: resumed?) do
           {:ok, receipt} ->
+            if resumed? do
+              # This job has run before and got as far as `:sending`, then
+              # stopped without a result: the node went down, or the job was
+              # killed and Oban's lifeline put it back. Nothing else is
+              # sending this receipt - THIS worker declares
+              # `unique: [keys: [:receipt_id, :tenant]]`, which SendWebhook
+              # does not - so completing here would lose the email for good.
+              Logger.warning(
+                "Receipt #{receipt.id} was left in :sending by an earlier attempt of this job, sending now"
+              )
+            end
+
             deliver(receipt, args)
 
+          :duplicate ->
+            # A first attempt that finds the receipt in a state it cannot
+            # leave: another job got there first.
+            Logger.info(
+              "Receipt #{receipt.id} state transition conflict (likely duplicate job), completing as success"
+            )
+
+            :ok
+
           {:error, %Ash.Error.Invalid{errors: errors}} ->
-            cond do
-              not Enum.any?(errors, &match?(%AshStateMachine.Errors.NoMatchingTransition{}, &1)) ->
-                # Some other validation error - let Oban retry
-                Logger.error("Receipt #{receipt.id} update failed: #{inspect(errors)}")
-                {:error, errors}
-
-              interrupted_attempt?(receipt, attempt) ->
-                # This job has run before and got as far as `:sending`, then
-                # stopped without a result: the node went down, or the job was
-                # killed and Oban's lifeline put it back. Nothing else is
-                # sending this receipt - the job is unique per receipt - so
-                # completing here would lose the email for good. Send it.
-                Logger.warning(
-                  "Receipt #{receipt.id} was left in :sending by an earlier attempt of this job, sending now"
-                )
-
-                deliver(receipt, args)
-
-              true ->
-                # A first attempt that finds the receipt in a state it cannot
-                # leave: another job got there first.
-                Logger.info(
-                  "Receipt #{receipt.id} state transition conflict (likely duplicate job), completing as success"
-                )
-
-                :ok
-            end
+            # Some other validation error - let Oban retry
+            Logger.error("Receipt #{receipt.id} update failed: #{inspect(errors)}")
+            {:error, errors}
 
           {:error, reason} ->
             Logger.error("Receipt #{receipt.id} mark_sending failed: #{inspect(reason)}")
@@ -552,31 +579,33 @@ defmodule AshDispatch.Workers.SendEmail do
 
   # Check skip_if_read policy
   defp check_skip_if_read_policy(receipt) do
+    case skip_if_read_reason(receipt) do
+      nil -> :continue
+      reason -> {:skip, reason}
+    end
+  end
+
+  @doc false
+  # The `skip_if_read` verdict for a receipt: a reason to skip it, or `nil`.
+  # Shared with `AshDispatch.Digest`, which leaves an email out of a digest
+  # when its in-app notification was read while it waited.
+  def skip_if_read_reason(receipt) do
     # Get policy from receipt content
-    policy = get_in(receipt.content, ["policy"]) || get_in(receipt.content, [:policy])
+    content = Map.get(receipt, :content) || %{}
+    policy = get_in(content, ["policy"]) || get_in(content, [:policy])
 
     if policy == :skip_if_read || policy == "skip_if_read" do
       # Load notification and check if it's read
       case load_notification(receipt) do
-        {:ok, notification} ->
-          if notification.read do
-            {:skip, "notification already read"}
-          else
-            :continue
-          end
-
-        {:error, _} ->
-          # If we can't load notification, continue with sending
-          :continue
+        {:ok, %{read: true}} -> "notification already read"
+        # If we can't load the notification, or it is unread, send
+        _ -> nil
       end
-    else
-      # No skip_if_read policy - continue
-      :continue
     end
   end
 
   defp load_notification(receipt) do
-    if receipt.notification_id do
+    if Map.get(receipt, :notification_id) do
       # In the receipt's own tenant: the notification it is linked to was
       # created in the same schema, and another tenant's would answer the
       # `skip_if_read` question about somebody else's reading.
@@ -611,6 +640,11 @@ defmodule AshDispatch.Workers.SendEmail do
       is_nil(receipt.user_id) ->
         :send
 
+      # A digest: every email in it passed the preference gate when it was
+      # batched, under its own event's category. The digest has none.
+      digest_receipt?(receipt) ->
+        :send
+
       # Check preferences
       true ->
         category = event_category(receipt)
@@ -628,6 +662,13 @@ defmodule AshDispatch.Workers.SendEmail do
             # (better to send than to silently skip)
             :send
         end
+    end
+  end
+
+  defp digest_receipt?(receipt) do
+    case ContentMap.get_content(Map.get(receipt, :content), :digest) do
+      %{} = digest -> Map.has_key?(digest, "entries") or Map.has_key?(digest, :entries)
+      _ -> false
     end
   end
 

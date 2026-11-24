@@ -110,5 +110,32 @@ defmodule AshDispatch.Test.TransportReceipt do
       accept [:error_message]
       change set_attribute(:status, :failed)
     end
+
+    update :batch do
+      require_atomic? false
+      argument :digest, :map, allow_nil?: false
+      change set_attribute(:status, :batched)
+      change {AshDispatch.Changes.PutDigest, []}
+    end
+
+    # The real base's primary `:update`, which is what
+    # `ReceiptStatus.put_oban_job_id/2` writes through: a receipt's job id
+    # without a transition.
+    update :update do
+      primary? true
+      accept [:oban_job_id, :notification_id, :provider_response, :error_message]
+    end
+
+    update :release do
+      accept [:oban_job_id]
+      change set_attribute(:status, :scheduled)
+    end
+
+    update :mark_digested do
+      require_atomic? false
+      argument :digest_receipt_id, :string, allow_nil?: false
+      change set_attribute(:status, :digested)
+      change {AshDispatch.Changes.PutDigest, []}
+    end
   end
 end

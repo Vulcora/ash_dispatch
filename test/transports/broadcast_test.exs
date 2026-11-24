@@ -1,8 +1,6 @@
 defmodule AshDispatch.Transports.BroadcastTest do
   use ExUnit.Case, async: true
 
-  alias AshDispatch.Transports.Broadcast
-
   # We test the pure functions without PubSub.
   # The deliver/4 function needs a PubSub module, so we test
   # the payload building and throttle logic directly.

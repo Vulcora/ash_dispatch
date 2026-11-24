@@ -7,6 +7,492 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.4-rc.8] - 2026-11-24
+
+### Content read back from the database
+
+A receipt's `content` is a JSONB column, so a receipt read back from the
+database has string keys. Two transports still read some of it by atom key
+only, and lost what the event had set: the email's own sender and the in-app
+notification's metadata (and, on a retry, its `invalidates`). Both now read
+through `ContentMap.get_content/2`, like the fields beside them. No migration,
+and nothing changes for a receipt whose content still has atom keys. From #65
+and #66; closes #64.
+
+### Fixed
+
+- **An event's own sender was lost whenever the receipt had been read back
+  from the database.** `content` is a JSONB column, so a reloaded receipt has
+  `"from"` and not `:from`, and `Transports.Email.get_from_field/1` read only
+  the atom key: the lookup missed and the configured default sender was used
+  instead. A host that sends from more than one address therefore had mail go
+  out from the wrong one for every event that is not `sensitive_content` —
+  those were unaffected, because a sensitive event's job carries no content
+  args and the worker reads the sender through `ContentMap` already. The
+  sender is read through `ContentMap.get_content/2` now, as the reply address
+  and the headers beside it always were, so both spellings answer. Nothing
+  changes for a receipt whose content still has atom keys.
+- **An in-app notification dropped the event's own metadata whenever the
+  receipt had been read back from the database.** `content` is a JSONB
+  column, so a reloaded receipt has `"metadata"` and not `:metadata`, and
+  `Transports.InApp` read only the atom key: whatever an event module adds
+  through `extra_content/2` was lost on the way to the notification, leaving
+  the idempotency key as the only way from a notification back to what it is
+  about. The metadata is read through `ContentMap.get_content/2` now, as the
+  title, message and the fields beside it always were, so both spellings
+  answer; the delivery priority is still added beside it rather than instead
+  of it. A retry reads its `invalidates` the same way, for the same reason —
+  a retry always works from a stored receipt. Nothing changes for a receipt
+  whose content still has atom keys.
+
+### A note on 0.9.4-rc.7
+
+rc.7 added a column to the receipt, `scheduled_for`, and in doing so broke
+this project's own rule that a patch release must not require a migration.
+The column is kept rather than withdrawn: hosts have already run the
+migration and read the field, and taking it away would cost them a second
+migration to arrive where they already are. The rule stands for the releases
+after it.
+
+## [0.9.4-rc.7] - 2026-11-23
+
+### What is about to go, and stopping it
+
+A surface that lists the mail about to go, and lets someone stop one, had to
+join Oban's table for the send time and had no way to stop a delivery except
+`:skip`, which left the job in the queue. Two additions close that.
+
+**One migration.** Unlike rc.6, this release adds a column: the receipt's
+`scheduled_for` (nullable). Run `mix ash.codegen` in the host and migrate. A
+receipt written before it has `scheduled_for` empty; nothing else changes for
+it. No behaviour moves for a host that does not call `:cancel`.
+
+### Added
+
+- **A receipt says when its job is due: `scheduled_for`.** Set when the receipt
+  moves to `:scheduled` (email, SMS, and a digest's lone email released on its
+  own), from the Oban job's own `scheduled_at`. Until now the send time lived
+  only in `oban_jobs`, so a surface listing what is about to go had to join
+  Oban's table. A new nullable column: run `mix ash.codegen` in the host.
+- **A delivery that has not gone yet can be stopped: `:cancel`.** The receipt
+  becomes `:skipped` with the reason, and its Oban job is cancelled so it never
+  runs (`AshDispatch.ReceiptStatus.cancel/2`). Only from `:pending`,
+  `:scheduled` or `:batched`; a receipt that is `:sending` is already on its
+  way. `:skip` stays as it was, for the paths that record a delivery held back.
+
+## [0.9.4-rc.6] - 2026-11-23
+
+### The host's own surface
+
+A host's upstream list, worked through: six fixes for things the library
+accepted and then silently dropped, and eight pieces of code several
+installations had each written for themselves. Three fixes that were waiting
+in open pull requests came in with it.
+
+Still a patch. No migration, no column added, changed or dropped; a
+`mix ash.codegen` on a host that changes nothing emits nothing. Every
+behaviour that does move is in the table at the end, with how to keep the old
+one.
+
+### Fixed
+
+- **A channel's `locale`, `locale_from` and `locales` were dropped.** All
+  three clauses of `ChannelResolver.to_channel_struct/1` built the runtime
+  channel without them, while `Dispatcher.resolve_channel_locale/3` read
+  exactly those fields and three guides taught declaring them. A
+  channel-level locale was silently the event's, for a DSL entry, a map and a
+  keyword list alike.
+- **A template filename could be a path.** `locale` comes from
+  `locale_from:`, which reads a column of the host's own, and `variant` from
+  `template_variant/2` — so both could carry whatever a row held, and both
+  became part of a filename that was then read and EEx-evaluated. They go
+  through the same check a layout name does (`[A-Za-z0-9_.-]`, never `.` or
+  `..`), and a refused value drops its own candidates rather than the
+  request: an exotic template filename outside that set now falls back to the
+  base template instead of being selected.
+- **`:sending` was a dead end.** A node that goes down between `mark_sending`
+  and the provider leaves the receipt there, and nothing looked: the retry
+  sweep queries `:failed`, the stranded sweep queried `:scheduled`, and no
+  transition led out. The message was gone and nothing said so. There is a
+  way out (`:resume_sending`), one place that decides whether to take it
+  (`ReceiptStatus.claim/2`), and the sweep can see `:sending` under a new
+  setting — see **Added** and the table.
+- **A delayed email was sent early by the stranded-receipt sweep.** A channel
+  timed `{:in, seconds}` beyond the grace period (30 minutes by default), or
+  `{:at, datetime}`, leaves its receipt in `:scheduled` with an Oban job that
+  will run on time. The sweep decided on the receipt's age alone and never
+  looked at the job, so it moved the receipt to `:failed` and the retry pass
+  sent it at once; past 24 hours it closed the receipt and the mail was never
+  sent. The sweep now reads each receipt's job state and leaves a receipt
+  alone while its job is waiting or running (`Stranded.action/2` takes
+  `:job_state`; `Stranded.live_job?/1`).
+- **And the same gate stops the sweep CREATING a loss.** Oban's `Lifeline`
+  rescues an orphaned `executing` job after 60 minutes by default and the
+  grace period here is 30, so under the new `stranded_sending: :close` the
+  sweep would have marked a receipt `failed_permanent` and the rescued job
+  would then have completed green without sending. A receipt whose job is
+  `available`, `scheduled`, `executing` or `retryable` is left alone. The
+  sweep's own moduledoc now says what it promises and what it does not.
+- **The webhook, Slack and Discord transports never recorded their Oban job.**
+  Email and SMS always wrote `oban_job_id`; those three did not, so the gate
+  above had no job to look up for them. They write it now, after the insert,
+  through `ReceiptStatus.put_oban_job_id/2`.
+- **Slack and Discord never received the body that was declared.** The
+  dispatcher wrote it under `:message` while both transports read
+  `:notification_message` for the payload's only required text field
+  (Slack's `"text"`, Discord's `"content"`), so a
+  `content: [notification_message: …]` channel — and a module's
+  `notification_message/2` — posted a payload whose text was `nil`. Both keys
+  carry it now, declared or rendered from a template.
+- **`ScrubSensitiveContent` removes `notification_message` too**, and names it
+  in the clause that decides which receipts still hold a body. Without it a
+  `sensitive_content: true` event with a Slack or Discord channel would keep
+  its text past the retention window under the key the fix above starts
+  writing.
+- **An event module named in `event_config[:module]` now resolves the
+  recipients.** `Dispatcher.dispatch_channel/3` only ever asked the event
+  registry, so a module passed explicitly — the documented path for a caller
+  that builds its own context — never had its `recipients/2` called and the
+  dispatch reached nobody. Without a `:module` nothing changes: the registry
+  stays the fallback.
+- **`Channel.new/3` built a channel without the options it was given.** It
+  hand-picked six fields, so `channel(:email, :user, locale: "sv")` — the
+  documented way to build one in a `channels/1` callback — dropped `locale`,
+  `content`, `metadata`, `load`, `deduplicate_group`, `idempotency_source`,
+  `optional` and `exclude_actor`.
+- **`"data": null` in a verified webhook raised** where the documented answer
+  is a 400, as did a `"data"` that is a list.
+- Three documented settings were read by nothing: `email_queue:` had no
+  effect at all (see **Added**), `max_email_attempts:` still does not exist
+  and the Oban guide no longer claims it, and `recipient_filters` remains on
+  the backlog.
+- Four things in the guides, one of them a security answer: the manual
+  dispatch guide showed `<iframe srcDoc={html} />` with **no `sandbox`**, the
+  ManualTrigger action names and result fields did not match the resource,
+  the DSL reference's channel table was missing `time`,
+  `idempotency_source`, `exclude_actor` and `queue`, and the
+  implementation-status section said Slack and SMS were planned (they were,
+  in 0.8.2).
+
+### Added
+
+- **`AshDispatch.Reason`** — the reason a letter was held back as a closed
+  code beside the sentence. `of/1` answers for every receipt, including every
+  receipt written before this release, by classifying the sentence when no
+  code is stored; `reason_codes: true` on `DeliveryReceipt.Base` also writes
+  `content["reason_code"]` so the reasons can be grouped in SQL.
+- **`AshDispatch.Resources.EventCatalogue.Base`** — the event catalogue as a
+  resource of your own: your policies (`policies: :own`) or the configured
+  `permission_checker` by default, and **every** transport rather than email
+  only. `AshDispatch.Resources.EmailEvent` is unchanged and frozen.
+- **`c:AshDispatch.Event.catalogue/0`** (optional) — what an event IS, in
+  words: name, description, trigger, audience, group, instruction. Surfaced
+  by `Preview.events/0` and by the catalogue resource. An event that does not
+  write one is listed exactly as before.
+- **`AshDispatch.Sample`** — `with_seed/2`, `build/2` (an in-memory Ash struct
+  from a resource's own attributes and relationships, with no read and no
+  write) and a rolling date anchor (`anchor/1`, `at/1`, `date/1`).
+- **`c:AshDispatch.Event.sample_data/1` may answer `%{data: …, variables: …}`**,
+  for a letter whose template prints a value only
+  `generate_send_variables/2` could mint. Both keys are required, so an event
+  whose own data key is `:data` is unaffected.
+- **`AshDispatch.Receipts.record/3`** — a receipt for a send made outside the
+  dispatcher, with `{:sent, response}`, `{:skipped, reason}` or
+  `{:error, reason}`.
+- **`AshDispatch.Plugs.ResendWebhook` and `.RawBodyReader`** — the provider's
+  delivery-webhook endpoint, finished and fail-closed, with no option that
+  turns verification off (BACKLOG 4). `plug` joins the optional dependencies.
+- **`AshDispatch.Workers.Prune`** — retention for bodies, receipts and
+  notifications. All three windows unset by default, so it deletes nothing
+  until a host asks (BACKLOG 3).
+- **`layout` and `layout_from` on a channel** — which layout wraps the body.
+- **`queue` on a channel**, and `email_queue`, `sms_queue` and
+  `webhook_queue` — which Oban queue a send runs in, with today's names as
+  the defaults. The per-transport keys were documented before this release
+  and read by nothing.
+- **Templates for transports other than email** — `sms.text.eex`,
+  `slack.text.eex` and the rest are rendered where a host wrote one, for a
+  channel whose body nobody declared.
+- **`locale` and `variant` on the ManualTrigger `:preview` action.**
+- **`config :ash_dispatch, stranded_sending:`** — what the sweep does with a
+  receipt stranded in `:sending`: `:ignore` (the default, and what every
+  earlier release did), `:close`, or `:rescue`.
+- **`email_resume_interrupted`, `sms_resume_interrupted`,
+  `webhook_resume_interrupted`** — whether a worker reclaims a receipt its
+  own earlier attempt left in `:sending`, defaulting to what each worker
+  already did.
+- **`config :ash_dispatch, discord_suppress_mentions: true`** — and the same
+  key on a channel's content. **Switch it on.** Discord parses every mention
+  in a message body by default, so an `@everyone` in a customer's company
+  name pings a whole server.
+
+### Compatibility
+
+| What moves | For whom | How to keep the old behaviour |
+|---|---|---|
+| A channel's declared `locale` reaches the send | A host that declared one and did not notice it being ignored | Remove the declaration |
+| A template filename outside `[A-Za-z0-9_.-]` is no longer selected | A host with an exotic locale or variant name | Rename the template |
+| A transport template (`sms.text.eex`) is rendered | A host that wrote one AND declares no body for that channel. A declared `message:`, a DSL `notification_message:` and a module's own `notification_message/2` all still win, and `default.*` is never used for a non-email body | Delete the template, or declare a body |
+| Slack and Discord receive the declared body | A host whose Slack or Discord payloads have been arriving with no text | — (they were empty) |
+| A delayed or in-flight receipt is no longer swept | Every host running the stranded sweep | — (it was sending mail early) |
+| `:resume_sending` writes `updated_at` | A host whose notifier watches receipt updates: an interrupted **email** attempt now emits one update notification per resumption, and email resumes by default | `email_resume_interrupted: false`, which loses the letter instead |
+| A webhook, Slack or Discord receipt gains an `oban_job_id` | A host reading that column — it was always NULL for those three | — |
+| `:skip` and `:mark_failed_permanent` become non-atomic | Only with `reason_codes: true` | Leave the option off (the default) |
+| `Preview.events/0` rows carry a `:catalogue` key | A reader that enumerates row keys | — |
+
+Email's resumption is **at-least-once**: the provider may have taken the
+first attempt and answered nothing. That has been true since 0.9.2; this
+release names it.
+
+Not in the table, because they are the defaults: `stranded_sending` is
+`:ignore`, SMS and webhook resumption are off, Discord mention suppression is
+off (rc.5 sent no `allowed_mentions` at all), and storing the reason code is
+off. Each of those is a behaviour this release makes available and does not
+impose.
+
+### Running the tests
+
+`mix test` without `ASH_DISPATCH_TEST_DATABASE_URL` excludes 159 tests and
+still prints "0 failures" — everything per-tenant, the pruner's and the
+scrub's JSONB, the reason code's merge and the one test about a real Oban job
+id. Set it to validate a change:
+
+    createdb ash_dispatch_test
+    ASH_DISPATCH_TEST_DATABASE_URL=postgres://localhost/ash_dispatch_test \
+      mix test --include postgres
+
+CI sets it and `test_helper.exs` raises without it there.
+
+### For 0.10.0
+
+- Storing the reason code by default, in a column of its own rather than in
+  `content`: one statement instead of two, and the three actions stay atomic.
+- Suppressing Discord mentions by default.
+- 5.11's acknowledgement half (`acknowledged_at`, `acknowledged_by_id`): two
+  nullable columns are a migration.
+- BACKLOG 11, 12 and 13's remaining halves, unchanged.
+
+## [0.9.4-rc.5] - 2026-11-18
+
+### Per-recipient digests
+
+A person who gets a status change, three comments and a reassignment in two
+minutes gets five emails, and reads none of them. The library could delay an
+email (`{:in, seconds}`) or send it at a time (`{:at, …}`), but it could not
+send several as one. Since 0.6.3 the names for that have been reserved and
+documented as planned; this release builds it.
+
+A channel opts in with a digest time:
+
+    [transport: :email, audience: :user, time: {:digest, {:quiet, 300}}]
+
+Its emails are rendered and receipted exactly as before, then held in the new
+`:batched` state instead of getting a send job. When the recipient's window
+is due, one waiting email goes out **as itself**, and two or more go out as
+**one digest** with a receipt of its own; each of them is marked `:digested`
+and points at it. Windows: `{:quiet, seconds}` (a few minutes after the last
+email, capped by `digest_max_wait`), `:daily`, `:weekly`.
+
+### Added
+
+- **`time: {:digest, window}`** on email channels, and `AshDispatch.Digest`.
+- **`DeliveryReceipt.Base`: states `:batched` and `:digested`**, actions
+  `:batch`, `:release` and `:mark_digested`. `:mark_sending` and `:skip` also
+  start from `:batched`, and "send now" accepts a batched receipt (it is then
+  sent on its own). The status is stored as text, so **no migration**: a host
+  that does not use digests sees nothing new.
+- **`AshDispatch.Workers.FlushDigests`**: one job per recipient and window,
+  scheduled for when it is due and moved (not duplicated) by newer emails;
+  without a recipient, a sweep that fans out per tenant.
+- **`RetryFailedDeliveries` sweeps overdue digests** on every run, so a lost
+  flush job costs one retry interval and needs no new crontab entry.
+- **`c:AshDispatch.UserPreference.user_digest_mode/2`** (optional): a
+  person's `:off`, `:default` or own window, asked only for channels that
+  opted in.
+- **`c:AshDispatch.Event.digest_item/2`** (optional): what an email
+  contributes to a digest; otherwise its subject and first paragraph.
+- **`AshDispatch.DigestRenderer`** and a plain default; `config
+  :ash_dispatch, digest_renderer:` for a host's own design.
+- **`AshDispatch.Test.flush_digests/1`**.
+- Config: `digest_queue` (`:emails`), `digest_renderer`, `digest_max_wait`
+  (1800), `digest_send_at` (`~T[07:00:00]`), `digest_time_zone`
+  (`"Etc/UTC"`), `digest_week_day` (1), `digest_event_id`
+  (`"ash_dispatch.digest"`).
+
+### Changed
+
+- **The reserved design, one change:** there is no `DigestEntry.Base`. A
+  batched email *is* its receipt, holding the letter it always held; an entry
+  table would have been a second copy of it, and a second place for the
+  receipt-first pattern to drift.
+
+### Never batched
+
+A `sensitive_content` event, an event with attachments of its own (they live
+only in the send job's args), and a manual dispatch with a recipient
+override. They are sent at once, as if the channel had no digest time.
+
+### Fixed
+
+- **`Notification.Base`'s `unread_notifications` counter counted 0 for
+  everyone** (since 0.9.0). Its `query_filter: [read: false, archived_at:
+  nil]` became `archived_at == nil`, which Ash — like SQL — never finds true.
+  In a keyword `query_filter`, `nil` now means `is_nil`. The broadcast
+  (`Notifier.CounterHandler`) and the first count a page renders
+  (`Helpers.CounterLoader`) had a copy each of this code; they now share
+  one, so the two cannot disagree again. Found by the first host to run a
+  0.9 release candidate with the in-app centre on, from its test log.
+
+### Compatibility
+
+Nothing changes for a host that does not put `{:digest, …}` on a channel.
+Two places that list statuses gained the new ones: the receipt's `status`
+constraint, and the scrub's terminal statuses (`digested`). The stand-in
+receipts in this library's own test support follow the real one, as their
+transition check requires.
+
+## [0.9.4-rc.4] - 2026-11-14
+
+### What the first host found in rc.2
+
+rc.2 answered three things the first per-tenant host reported (#50). It took
+rc.2 and came back with three more: one of the two answers did not catch the
+case it was written for, the other was on in every configuration, and the
+third — the one rc.2 declined to build until somebody wanted it — is now
+wanted. `sdk: false` worked exactly as documented, and nothing else moved
+between rc.1 and rc.2.
+
+1. **The installer's `uuid_generate_v7()` warning could not see the host's
+   case.** It looked for the string `"ash-functions"` in the repo's source.
+   The host's repo listed it and the function was missing anyway: ash_postgres
+   emits `uuid_generate_v7()` only when it is *not* relying on the server's
+   own, which it derives from `min_pg_version/0` (`major >= 18`), and that
+   host's `ash-functions` migration had been generated while the answer was
+   18. Lowering it to 17 afterwards does not rewrite a file already on disk.
+2. **`sdk: :if_events` was `:always`** for any host using
+   `Notification.Base`. The base declares the `unread_notifications` counter,
+   rc.2 counted every counter it found, and the host saw
+   `Found 0 events, 1 counters` while declaring none.
+3. **The timestamps the library writes from Elixir are now on a clock the host
+   can supply.** rc.2 wrote this down (BACKLOG 13) rather than building it,
+   because a clock nothing persisted reads is worse than no clock. A host has
+   asked.
+
+### Added
+
+- **`AshDispatch.Doctor`**, the `uuid_generate_v7()` check that asks the
+  database — which is the only check that can settle it. `check/1` returns
+  `:ok` or `{:error, %AshDispatch.Doctor.Error{}}` whose message carries the
+  exact migration to add; `check!/1` raises it. For a boot that should refuse
+  to start, or a test:
+
+      test "the database has what ash_dispatch's tables need" do
+        assert :ok = AshDispatch.Doctor.check()
+      end
+
+  It asks for the function **this** host's migrations name — read from the
+  repo the way ash_postgres decides it, `use_builtin_uuidv7_function?/0` — and
+  for the one an existing table's column `DEFAULT` names when the two have
+  come apart. Where the function exists in a schema this connection cannot
+  resolve, it says which schema and what the `search_path` is, which is the
+  per-tenant trap rather than a missing migration. It opens no connection of
+  its own, so the repo must be started.
+- **`mix ash_dispatch.doctor`**, the same check from a shell, exit 1 on a
+  problem, for a deploy script or a CI job.
+- **`config :ash_dispatch, clock: {Module, :function, args}`**, read by
+  `AshDispatch.Clock`, and **nothing else in the library asks what time it
+  is**. Unset it is `DateTime.utc_now/0`, byte-for-byte what every release
+  before this one did. `clock: MyApp.Clock` means that module's `utc_now/0`,
+  and any 0-arity function is accepted.
+
+  Through it: `occurred_at`, `sent_at`, `read_at`, `seen_at`, `archived_at`,
+  `last_retry_at`, the cut-off `RetryFailedDeliveries` compares
+  `last_retry_at` against, both cut-offs in `ScrubSensitiveContent`,
+  `AshDispatch.Workers.Stranded`'s staleness bounds,
+  `AshDispatch.Context`'s `:now` (so the broadcast payload's timestamp comes
+  from it without anyone passing anything), a webhook envelope's `sent_at`
+  and a Resend event's `webhook_received_at`.
+
+  **Not** through it, in both cases on purpose and both written down in
+  `AshDispatch.Clock`'s moduledoc: `inserted_at`/`updated_at`, which are
+  Ash's and whose default is the one value ash_postgres turns into a column
+  `DEFAULT` (0.10.0, BACKLOG 13); and the Resend webhook's timestamp
+  tolerance, which compares our wall clock against the *sender's* to reject a
+  replayed signature — a frozen clock would let a stale one through. The
+  "Generated at" banners in the code generators are build-time text and are
+  not a stored or compared value.
+
+### Changed
+
+- **`mix ash_dispatch.install` reads three things about `uuid_generate_v7()`
+  instead of one**, all from the project's files and still with no database
+  connection: whether `installed_extensions/0` lists `"ash-functions"`, what
+  `min_pg_version/0` answers, and whether a migration that installs Ash's
+  functions defines the function (`FUNCTION uuid_generate_v7` — the
+  definition, not the `fragment("uuid_generate_v7()")` column default that
+  every table migration mentions). It warns in three distinct cases now,
+  including the host's: the extension listed, the answer lowered to 17, and
+  the migration still without the function. **Every notice says plainly that
+  listing the extension is not sufficient** and gives
+  `SELECT to_regprocedure('public.uuid_generate_v7()')` as the authoritative
+  check, with `AshDispatch.Doctor` beside it.
+- **`sdk: :if_events` counts what the host declared.** Each `Base` macro now
+  states what it declared on the resource it builds
+  (`AshDispatch.Resources.Base`), and the generator discounts it. A host with
+  the three bases and nothing else generates nothing; one event, or one
+  counter of its own, and the client appears. `mix ash_dispatch.gen --verbose`
+  says how many of the counters it found came from the bases.
+
+  **`true` and `false` are unchanged.** That matters here: the generated
+  `NotificationBell` and `useNotifications` read `unread_notifications`, so a
+  host that uses the in-app bell needs the client **for** the base's counter
+  and `sdk: true` (the default) is how it says so. `:if_events` is the wrong
+  switch for that host — an inbox is not an event, and `:if_events` would
+  also start writing the client the day it declares its first one. The Code
+  Generation guide has a table of the three wishes and their spellings.
+
+### Documentation
+
+- **The Tenancy guide says that listing the extension is not sufficient**, in
+  those words, and gives the SQL check as authoritative. A new section
+  explains why a repo that lists `"ash-functions"` can lack the function:
+  ash_postgres's `use_builtin_uuidv7_function?/0`, the fact that the
+  `ash-functions` migration is generated once, and that
+  `mix igniter.install ash_postgres` fills `min_pg_version/0` in from the
+  *local* `postgres -V` — which is how 18 gets written into a project that
+  deploys against 17.
+- **The install guide's Prerequisites say the same**, with
+  `mix ash_dispatch.doctor` and `AshDispatch.Doctor.check!/1` next to the SQL.
+- **The testing guide documents the clock**, with a frozen-clock module a host
+  can copy, a test asserting on the instant it chose, and a second one moving
+  the clock an hour so `RetryFailedDeliveries` finds a receipt without
+  waiting. The table of "whose clock" now has a row a host can answer *yes*
+  to, and says why the other two rows still cannot move.
+- **The changelog's rc.2 entry carries a correction**: "`:if_events` … has
+  events, counters … in your resources" was the wrong sentence for what rc.2
+  shipped.
+- **BACKLOG 13** records the migration-free half as done and keeps the two
+  halves that need 0.10.0 — `inserted_at`/`updated_at` on the same clock, and
+  `timestamptz` columns — with the reason each one is a migration. Both are
+  now only the migration question: the clock they would read already exists.
+
+### Compatibility
+
+Still a patch. No migration, no column changed, and no default changed for a
+host that has not opted in. `occurred_at` moved onto the clock without
+touching its migration, because its default was already an `{m, f, a}` tuple
+and ash_postgres derives a column `DEFAULT` only from a function capture — a
+test pins that, and pins that `inserted_at`/`updated_at` still carry Ash's
+own `&DateTime.utc_now/0`.
+
+Upgrading from rc.2 or rc.3 and setting none of the new options gives you what
+rc.3 gave you, with one exception, which is the fix: `sdk: :if_events` on a
+host that declared nothing of its own now generates nothing, where before it
+generated the client. A host that wants the client should say `sdk: true`.
+
+1147 tests pass with a database and 1038 without, none failing (1102 and 995
+on rc.3; 45 added).
+
 ## [0.9.4-rc.3] - 2026-11-14
 
 ### Slack and Discord webhook URLs stay out of the job table and the log
@@ -94,6 +580,10 @@ fix" are not the same sentence.
   client's static files since 0.8.0, and a patch release does not stop writing
   files a host already has. Set it, run `mix ash.codegen`, delete the files
   once.
+  **Correction (0.9.4-rc.4):** "in your resources" was the wrong sentence.
+  As shipped in rc.2 this counted every counter it found, and
+  `Notification.Base` declares one — so `:if_events` was `:always` for every
+  host with an in-app inbox. It means "declared by you" from rc.4 on.
 - **`primary_key:` on all three `Base` macros** (`:uuid_v7` or `:uuid`), and
   through `AshDispatch.Setup`, which passes it on. For a host whose database
   will not define functions: `:uuid` means `gen_random_uuid()`, built into

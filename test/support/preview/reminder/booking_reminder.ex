@@ -53,6 +53,21 @@ defmodule AshDispatch.Test.Preview.BookingReminder do
     %{reference: booking.reference}
   end
 
+  # `catalogue/0`: what this event is, in words. The other fixtures declare
+  # none, so the suite covers both halves.
+  @impl true
+  def catalogue do
+    %{
+      name: "Booking reminder",
+      description: "Sent the day before a booking, to the guest.",
+      trigger: "Automatically, 24 hours before the start time.",
+      audience: "The guest who made the booking.",
+      group: "Bookings",
+      instruction: "Send by hand only if the guest says they never got it.",
+      icon: "bell"
+    }
+  end
+
   @impl true
   def sample_data do
     %{

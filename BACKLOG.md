@@ -62,12 +62,19 @@ Swedishspytours works around it by dispatching directly with an overridden
 recipient in its own controller — that pattern could become a library
 helper (`Dispatcher.dispatch_to/4`?).
 
-## 3. Sensitive content retention — RESOLVED in 0.5.4
+## 3. Sensitive content retention — RESOLVED in 0.5.4, the rest in 0.9.4
 
 Shipped as `AshDispatch.Workers.ScrubSensitiveContent` + per-event
 `metadata: [sensitive_content: true]` + `config :ash_dispatch,
-:scrub_after_hours`. Consumers still need to schedule the cron entry and tag
-their events. Original finding kept below for context.
+:scrub_after_hours` in 0.5.4. The half this entry kept open — "no
+retention/pruning at all for receipts or notifications" — is
+`AshDispatch.Workers.Prune` (0.9.4): `body_retention_hours`,
+`receipt_retention_hours` and `notification_retention_hours`, all three unset
+by default, so the worker is inert until a host asks. Three consumers had
+written their own.
+
+Consumers still need to schedule both cron entries and tag their sensitive
+events. Original finding kept below for context.
 
 ### Original finding
 
@@ -81,12 +88,16 @@ the other consumers store reset-link bodies indefinitely today.
 Fix: per-event `metadata: [sensitive_content: true]` + a library-provided
 scrub/retention worker, so app-level workarounds can be retired.
 
-## 4. Ship a Resend webhook signature verifier — RESOLVED in 0.5.4
+## 4. Ship a Resend webhook signature verifier — RESOLVED in 0.5.4, finished in 0.9.4
 
-Shipped as `AshDispatch.WebhookHandlers.Resend.verify/3` (Svix HMAC,
-constant-time compare, multi-signature, replay window). Consumers still need
-to wire it into their controllers with a raw-body reader; a ready-made plug
-remains open. Original finding kept below for context.
+Shipped as `AshDispatch.WebhookHandlers.Resend.verify/4` in 0.5.4 (Svix HMAC,
+constant-time compare, multi-signature, replay window). The plug this entry
+kept open is `AshDispatch.Plugs.ResendWebhook` (0.9.4), with
+`AshDispatch.Plugs.RawBodyReader` for `Plug.Parsers`: it verifies, takes the
+tenant from a path param or the provider tag, calls `process_webhook/2`, and
+answers 200 or 400 with no reason in the body. There is no option that turns
+verification off — four consumers had written this themselves, one of them
+fail-open. Original finding kept below for context.
 
 ### Original finding
 
@@ -258,10 +269,11 @@ beside it and preferring that would silently stop calling such a host's
 override — a patch must not do that. 0.10.0 can change the callback to take a
 context, with a deprecation path for `/1`.
 
-## 13. A host cannot supply the clock the library's timestamps come from — 0.10.0
+## 13. The library's timestamp columns are not the host's — 0.10.0
 
-Reported by the first per-tenant host (#50, point 3). Documented in the
-*Previews and testing* guide for 0.9.4-rc.2; not changed.
+Reported by the first per-tenant host (#50, point 3). Documented for
+0.9.4-rc.2; the migration-free half built in 0.9.4-rc.4, when that host asked
+for it. What is left needs a migration, and therefore 0.10.0.
 
 What is true today:
 
@@ -274,29 +286,28 @@ What is true today:
   is built. The `DEFAULT (now() AT TIME ZONE 'utc')` that ash_postgres writes
   into the migration for that same default is only a safety net for an
   `INSERT` that does not go through Ash;
-- `occurred_at`, `sent_at`, `read_at`, `seen_at`, `archived_at`,
-  `last_retry_at` and the rest are set by this library calling
-  `DateTime.utc_now/0` directly;
-- so a host that controls time through one module of its own controls none of
-  them, and `writable?: false` on the two timestamps means an action cannot be
-  given them either.
+- `writable?: false` on those two means an action cannot be given them either.
 
-### The migration-free half, if a host asks for it
+### The migration-free half — DONE in 0.9.4-rc.4
 
-The values this library writes **from Elixir** — everything in the third
-bullet — can be routed through a configurable clock without touching a column:
+The values this library writes **from Elixir** go through `AshDispatch.Clock`:
 
 ```elixir
-config :ash_dispatch, clock: MyApp.Clock   # default: DateTime
+config :ash_dispatch, clock: {MyApp.Clock, :utc_now, []}   # default: DateTime.utc_now/0
 ```
 
-one `AshDispatch.Clock.utc_now/0` helper, and the ~12 call sites replaced.
-`AshDispatch.Context` already carries `:now` (settable per dispatch, read today
-only by the broadcast transport's payload timestamp), so the seam half exists.
-Nothing about the schema changes and the default is `DateTime`, so it is
-inside what a 0.9.x patch may do, and it could land in one if a host asks.
-It is here rather than in rc.2 because no host has asked for more than the
-note, and a clock nothing reads is worse than no clock.
+`occurred_at`, `sent_at`, `read_at`, `seen_at`, `archived_at`,
+`last_retry_at`, the retry and scrub cut-offs, `AshDispatch.Workers.Stranded`'s
+bounds, `AshDispatch.Context`'s `:now` and the two webhook payload
+timestamps. No column changed and no default moved for a host that sets
+nothing, which is what made it a 0.9.x patch. The *Previews and testing*
+guide has an example of a test freezing it.
+
+Two time sources stayed off it on purpose, and both are in
+`AshDispatch.Clock`'s moduledoc: the Resend webhook's timestamp tolerance
+(it compares our wall clock against the *sender's*, to reject a replayed
+signature — a frozen clock would break that), and the "Generated at" banners
+in the code generators (build-time text, nothing stores or compares it).
 
 ### The halves that need 0.10.0
 
@@ -313,3 +324,7 @@ note, and a clock nothing reads is worse than no clock.
   is a different storage type, so switching is an `ALTER COLUMN … TYPE` on
   tables that may be large, per tenant for a per-tenant host. A patch may not
   require a migration; this one requires several.
+
+Both are now only the migration question: the clock they would read already
+exists and is already what the rest of the library uses, so neither needs a
+new seam, only a release that may change a column.

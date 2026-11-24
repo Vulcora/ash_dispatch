@@ -10,6 +10,11 @@ defmodule AshDispatch.Dsl.Channel do
     :transport,
     :audience,
     :variant,
+    :locale,
+    :locale_from,
+    :layout,
+    :layout_from,
+    :queue,
     :webhook_url,
     :deduplicate_group,
     :idempotency_source,
@@ -22,7 +27,8 @@ defmodule AshDispatch.Dsl.Channel do
     metadata: %{},
     opts: %{},
     counters: [],
-    load: []
+    load: [],
+    locales: []
   ]
 
   @type t :: %__MODULE__{
@@ -31,6 +37,12 @@ defmodule AshDispatch.Dsl.Channel do
           time: any(),
           policy: atom(),
           variant: atom() | nil,
+          locale: String.t() | nil,
+          locale_from: atom() | nil,
+          locales: [String.t()],
+          layout: atom() | String.t() | nil,
+          layout_from: atom() | nil,
+          queue: atom() | nil,
           webhook_url: String.t() | nil,
           deduplicate_group: atom() | nil,
           idempotency_source: atom() | nil,

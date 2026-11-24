@@ -101,7 +101,7 @@ defmodule AshDispatch.Transports.Broadcast do
     |> maybe_put(:message, get_content(content, :message))
     |> maybe_put(:invalidates, if(invalidates != [], do: invalidates))
     |> maybe_put(:toast, if(toast_fields != %{}, do: toast_fields))
-    |> Map.put(:timestamp, (context.now || DateTime.utc_now()) |> DateTime.to_iso8601())
+    |> Map.put(:timestamp, (context.now || AshDispatch.Clock.utc_now()) |> DateTime.to_iso8601())
   end
 
   # ── Throttle ──────────────────────────────────────────────────

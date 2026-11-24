@@ -79,34 +79,92 @@ Run migrations:
 mix ecto.migrate
 ```
 
-## Custom Queue Name
+## Which queue a send runs in
 
-If you want to use a different queue name (e.g., `mailer` instead of `emails`), configure AshDispatch:
+Two levels, and the names the library has always used are both defaults.
+
+### Per transport
 
 ```elixir
 # config/config.exs
 config :ash_dispatch,
-  email_queue: :mailer  # Use :mailer queue instead of :emails
+  email_queue: :emails,      # AshDispatch.Workers.SendEmail
+  sms_queue: :sms,           # AshDispatch.Workers.SendSMS
+  webhook_queue: :webhooks   # AshDispatch.Workers.SendWebhook — also :slack
+                             # and :discord, which share that worker
 ```
 
-Then add the queue to your Oban config:
+Every job of that transport goes there, retries and digest flushes included,
+because the workers read the setting at runtime. Whatever name you pick has to
+exist in your Oban config:
 
 ```elixir
 config :my_app, Oban,
-  queues: [
-    mailer: 10  # AshDispatch will use this queue
-  ]
+  queues: [mailer: 10]
 ```
+
+> #### These three only worked from 0.9.4 {: .warning}
+>
+> `email_queue:` was documented here before 0.9.4 and had no effect: the
+> workers were bound to `:emails`, `:sms` and `:webhooks` at compile time. If
+> you set it and nothing moved, this is why.
+
+### Per channel
+
+A campaign that sends two thousand letters will starve every booking
+confirmation behind it for minutes. `queue:` on the channel puts that one
+channel somewhere else:
+
+```elixir
+dispatch do
+  event :campaign_sent,
+    trigger_on: :create,
+    channels: [
+      # Its own queue, so a slow campaign cannot delay anything else
+      [transport: :email, audience: :subscribers, queue: :bulk_emails]
+    ]
+
+  event :booking_confirmed,
+    trigger_on: :create,
+    channels: [
+      # Still :emails — a channel that names no queue goes where it always did
+      [transport: :email, audience: :user]
+    ]
+end
+```
+
+```elixir
+config :my_app, Oban,
+  queues: [emails: 10, bulk_emails: 3]
+```
+
+Oban does not complain about a job enqueued into a queue it is not running:
+the row is inserted and nothing picks it up, which is a silently lost letter.
+The library logs a warning once per queue per boot when it sees that, as long
+as Oban is started and can be asked.
 
 ## Retry Configuration
 
-By default, email jobs retry up to 5 times with exponential backoff. You can customize this:
+Two mechanisms, and they are easy to confuse.
+
+**Oban's own attempts.** A send job has `max_attempts: 5`, baked into the
+worker: a job that answers `{:error, _}` is retried by Oban with its own
+backoff. There is no setting for this — `max_email_attempts` was documented
+here and never read by anything.
+
+**The library's retry sweep.** `AshDispatch.Workers.RetryFailedDeliveries`
+picks up receipts left in `failed` and enqueues a fresh job for each:
 
 ```elixir
 # config/config.exs
 config :ash_dispatch,
-  max_email_attempts: 3  # Only retry failed emails 3 times
+  max_retries: 5,            # before the receipt becomes failed_permanent
+  retry_delay_minutes: 15,   # between sweeps picking the same receipt up
+  retry_queue: :default      # where the sweep itself runs
 ```
+
+See the *Delivery receipts* guide for the receipt states those move between,
+and for the stranded sweep that runs on the same pass.
 
 ## Queue Concurrency
 

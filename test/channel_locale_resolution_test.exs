@@ -16,7 +16,7 @@ defmodule AshDispatch.ChannelLocaleResolutionTest do
   alias AshDispatch.Context
   alias AshDispatch.Dispatcher
 
-  defp ctx(opts \\ []) do
+  defp ctx(opts) do
     %Context{
       event_id: "test",
       resource_key: :record,

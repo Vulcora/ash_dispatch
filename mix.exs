@@ -1,7 +1,7 @@
 defmodule AshDispatch.MixProject do
   use Mix.Project
 
-  @version "0.9.4-rc.3"
+  @version "0.9.4-rc.8"
   @description "Event-driven notification system for Ash Framework with multiple transport types"
   @source_url "https://github.com/Vulcora/ash_dispatch"
 
@@ -54,6 +54,10 @@ defmodule AshDispatch.MixProject do
       # behind Plug (which brings plug_crypto), and a custom topic names a
       # PubSub server. Declared so Hex can hold them to compatible versions.
       {:plug_crypto, "~> 1.2 or ~> 2.0", optional: true},
+      # `AshDispatch.Plugs.ResendWebhook` and `.RawBodyReader` call Plug.Conn
+      # at runtime and never reference it at compile time, so the library
+      # compiles without it exactly as before.
+      {:plug, "~> 1.14", optional: true},
       {:phoenix_pubsub, "~> 2.0", optional: true},
       # AshDispatch.Phoenix.LiveView (the on_mount hook) compiles only with it.
       {:phoenix_live_view, "~> 1.0", optional: true},
@@ -109,6 +113,7 @@ defmodule AshDispatch.MixProject do
         "lib/documentation/topics/recipient-resolution.md",
         "lib/documentation/topics/recipient-extractor.md",
         "lib/documentation/topics/user-preferences.md",
+        "lib/documentation/topics/digests.md",
         "lib/documentation/topics/tenancy.md",
         "lib/documentation/topics/oban-configuration.md",
         "lib/documentation/topics/previews-and-testing.md",
@@ -127,12 +132,14 @@ defmodule AshDispatch.MixProject do
           AshDispatch.Event.RecipientExtractor,
           AshDispatch.Dispatcher,
           AshDispatch.Context,
+          AshDispatch.Clock,
           AshDispatch.Log,
           AshDispatch.Channel
         ],
         "Previews & Templates": [
           AshDispatch.Preview,
           AshDispatch.Preview.Rendered,
+          AshDispatch.Event.Catalogue,
           AshDispatch.TemplateResolver,
           AshDispatch.StrictTemplates,
           AshDispatch.TemplateError
@@ -142,7 +149,8 @@ defmodule AshDispatch.MixProject do
           AshDispatch.DeliveryMode,
           AshDispatch.EligibleRecipient,
           AshDispatch.Gate,
-          AshDispatch.Gate.Info
+          AshDispatch.Gate.Info,
+          AshDispatch.Reason
         ],
         Tenancy: [
           AshDispatch.Tenancy,
@@ -161,16 +169,33 @@ defmodule AshDispatch.MixProject do
         "Email Backend": [
           AshDispatch.EmailBackend.Swoosh
         ],
+        "Webhooks & Plugs": [
+          AshDispatch.WebhookHandlers.Resend,
+          AshDispatch.Plugs.ResendWebhook,
+          AshDispatch.Plugs.RawBodyReader
+        ],
         Workers: [
+          AshDispatch.Transport.Queue,
           AshDispatch.Workers.SendEmail,
           AshDispatch.Workers.SendWebhook,
-          AshDispatch.Workers.RetryFailedDeliveries
+          AshDispatch.Workers.RetryFailedDeliveries,
+          AshDispatch.Workers.Prune,
+          AshDispatch.Workers.Stranded,
+          AshDispatch.Workers.FlushDigests
+        ],
+        Digests: [
+          AshDispatch.Digest,
+          AshDispatch.DigestRenderer,
+          AshDispatch.DigestRenderer.Default
         ],
         Resources: [
+          AshDispatch.Receipts,
           AshDispatch.Resources.DeliveryReceipt,
           AshDispatch.Resources.Notification,
           AshDispatch.Resources.Notification.Base,
-          AshDispatch.Resources.Preference.Base
+          AshDispatch.Resources.Preference.Base,
+          AshDispatch.Resources.EventCatalogue,
+          AshDispatch.Resources.EventCatalogue.Base
         ],
         "Preferences & LiveView": [
           AshDispatch.UserPreference.Resource,
@@ -187,7 +212,10 @@ defmodule AshDispatch.MixProject do
           AshDispatch.Dsl.Sections
         ],
         Testing: [
-          AshDispatch.Test
+          AshDispatch.Test,
+          AshDispatch.Sample,
+          AshDispatch.Doctor,
+          AshDispatch.Doctor.Error
         ]
       ],
       before_closing_head_tag: &before_closing_head_tag/1,

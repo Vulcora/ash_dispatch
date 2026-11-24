@@ -71,6 +71,16 @@ defmodule AshDispatch.Workers.SendWebhook do
     queue: :webhooks,
     max_attempts: 5
 
+  # The queue is read at runtime rather than baked in by `use Oban.Worker`, so
+  # a host can put this transport's sends on a queue of its own without a fork
+  # — and so a campaign's channel can name a third queue through `queue:` on
+  # the channel, which `new/2` merges over this.
+  @impl Oban.Worker
+  def __opts__ do
+    Keyword.put(super(), :queue, AshDispatch.Transport.Queue.for_transport(:webhook))
+  end
+
+  alias AshDispatch.Config
   alias AshDispatch.Delivery
   alias AshDispatch.ReceiptStatus
   alias AshDispatch.Transports.WebhookUrl
@@ -116,7 +126,7 @@ defmodule AshDispatch.Workers.SendWebhook do
   every level and on every outcome.
   """
   @impl Oban.Worker
-  def perform(%Oban.Job{args: args}) do
+  def perform(%Oban.Job{args: args} = job) do
     receipt_id = args["receipt_id"]
 
     Logger.info("Processing webhook job for receipt #{receipt_id}")
@@ -125,7 +135,7 @@ defmodule AshDispatch.Workers.SendWebhook do
     # tenant the job names.
     case AshDispatch.Tenancy.Job.receipt(args) do
       {:ok, receipt} ->
-        process_webhook(receipt, args)
+        process_webhook(receipt, args, job.attempt)
 
       {:cancel, reason} ->
         {:cancel, reason}
@@ -138,21 +148,92 @@ defmodule AshDispatch.Workers.SendWebhook do
 
   # Private functions
 
-  defp process_webhook(receipt, args) do
+  defp process_webhook(receipt, args, attempt) do
     case Delivery.verdict(receipt) do
       {:skip, reason} ->
         Delivery.hold(receipt, reason)
         :ok
 
       :send ->
-        post(receipt, args)
+        post(receipt, args, attempt)
     end
   end
 
-  defp post(receipt, args) do
-    # Mark as sending
-    {:ok, receipt} = ReceiptStatus.mark_sending(receipt)
+  defp post(receipt, args, attempt) do
+    # Claiming the receipt used to be `{:ok, receipt} = mark_sending(receipt)`,
+    # which raised a MatchError on a state the transition cannot leave — so a
+    # duplicate job crashed instead of completing, and a receipt an earlier
+    # attempt had left in `:sending` crashed on every attempt until the job
+    # gave up, never sending. `claim/2` answers all three cases; see
+    # `AshDispatch.ReceiptStatus.claim/2`.
+    # FALSE by default: before 0.9.4 this worker raised a MatchError on a
+    # receipt it could not claim and never POSTed, so resuming by default
+    # would mean a host that upgrades and changes nothing can get a second
+    # Slack or Discord post. This worker also declares no `unique:`, unlike
+    # SendEmail and SendSMS, so two jobs for one receipt are possible here in
+    # a way they are not there. `config :ash_dispatch,
+    # webhook_resume_interrupted: true` asks for it.
+    resume? =
+      Config.resume_interrupted?(:webhook) and is_integer(attempt) and attempt > 1
 
+    case ReceiptStatus.claim(receipt, attempt: attempt, resume: resume?) do
+      {:ok, claimed} ->
+        if receipt.status == :sending do
+          Logger.warning(
+            "Receipt #{receipt.id} was left in :sending by an earlier attempt of this job, sending now"
+          )
+        end
+
+        send_claimed(claimed, args)
+
+      :duplicate ->
+        duplicate(receipt)
+
+      {:error, reason} ->
+        Logger.error("Receipt #{receipt.id} mark_sending failed: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  # A receipt this job cannot claim.
+  #
+  # On rc.5 the hard match raised, so the job FAILED, Oban retried it and
+  # eventually discarded it — and that failing job is a signal a host's
+  # alerting sees. Completing as a success instead is a quieter library and an
+  # undisclosed change to what a host's dashboard shows, so it is not the
+  # default: the job fails, as it did.
+  #
+  # It completes only for a host that has asked for one of the two mechanisms
+  # that make an unclaimable receipt an expected state rather than a surprise:
+  # `webhook_resume_interrupted: true`, which says "my own earlier attempt may
+  # be holding this", or a `stranded_sending` other than `:ignore`, which says
+  # "the sweep will deal with what is left". Either way the host knows what it
+  # is looking at, and the noise is the thing it opted out of.
+  #
+  # `{:error, _}` rather than re-raising: Oban records both in the job's
+  # `errors` and retries both, so the signal is identical, and a stacktrace
+  # from a state machine refusing a transition tells nobody anything.
+  defp duplicate(receipt) do
+    if Config.resume_interrupted?(:webhook) or
+         AshDispatch.Workers.Stranded.sending_mode() != :ignore do
+      Logger.info(
+        "Receipt #{receipt.id} state transition conflict (likely duplicate job), " <>
+          "completing as success"
+      )
+
+      :ok
+    else
+      Logger.error(
+        "Receipt #{receipt.id} could not be claimed (status #{receipt.status}); failing the " <>
+          "job, as before 0.9.4. `webhook_resume_interrupted: true` or a `stranded_sending` " <>
+          "other than :ignore makes this a success instead."
+      )
+
+      {:error, :receipt_not_claimable}
+    end
+  end
+
+  defp send_claimed(receipt, args) do
     # Send webhook
     case send_webhook(args) do
       {:ok, response} ->

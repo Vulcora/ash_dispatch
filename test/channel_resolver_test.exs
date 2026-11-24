@@ -62,6 +62,86 @@ defmodule AshDispatch.ChannelResolverTest do
       assert result.time == {:in, 30}
     end
 
+    # Until 0.9.4 every clause dropped these three, so a channel that declared
+    # `locale: "sv"` was rendered in the event's locale and nothing said so.
+    # One test per input form, because the bug was one clause at a time.
+    test "carries locale, locale_from and locales from a DSL entry" do
+      dsl_channel = %AshDispatch.Dsl.Channel{
+        transport: :email,
+        audience: :admin,
+        locale: "sv",
+        locale_from: :visitor_locale,
+        locales: ["sv", "en"]
+      }
+
+      result = ChannelResolver.to_channel_struct(dsl_channel)
+
+      assert result.locale == "sv"
+      assert result.locale_from == :visitor_locale
+      assert result.locales == ["sv", "en"]
+    end
+
+    test "carries locale, locale_from and locales from a map" do
+      result =
+        ChannelResolver.to_channel_struct(%{
+          transport: :email,
+          audience: :customer,
+          locale: "no",
+          locale_from: :visitor_locale,
+          locales: ["no"]
+        })
+
+      assert result.locale == "no"
+      assert result.locale_from == :visitor_locale
+      assert result.locales == ["no"]
+    end
+
+    test "carries locale, locale_from and locales from a keyword list" do
+      result =
+        ChannelResolver.to_channel_struct(
+          transport: :email,
+          audience: :customer,
+          locale: "fi",
+          locale_from: :visitor_locale,
+          locales: ["fi", "sv"]
+        )
+
+      assert result.locale == "fi"
+      assert result.locale_from == :visitor_locale
+      assert result.locales == ["fi", "sv"]
+    end
+
+    test "a channel that declares no locale keeps the empty defaults" do
+      for input <- [
+            %AshDispatch.Dsl.Channel{transport: :email, audience: :user},
+            %{transport: :email, audience: :user},
+            [transport: :email, audience: :user]
+          ] do
+        result = ChannelResolver.to_channel_struct(input)
+
+        assert result.locale == nil
+        assert result.locale_from == nil
+        assert result.locales == []
+      end
+    end
+
+    test "the locale reaches the dispatcher's resolution through the resolver" do
+      context = %Context{
+        event_id: "test.event",
+        resource_key: :record,
+        data: %{},
+        variables: %{},
+        locale: "en"
+      }
+
+      [channel] =
+        ChannelResolver.get_dsl_channels("test.event",
+          dsl_channels: [[transport: :email, audience: :admin, locale: "sv"]]
+        )
+
+      assert AshDispatch.Dispatcher.resolve_channel_locale(channel, context, nil) == "sv"
+    end
+
     test "converts content and metadata lists to maps" do
       channel_kw = [
         transport: :email,

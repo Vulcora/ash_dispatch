@@ -8,6 +8,24 @@ defmodule AshDispatch.Channel do
   - **Time** - When to deliver (immediate, delayed, scheduled)
   - **Policy** - Delivery policy (:always, :skip_if_read)
   - **Variant** - Template variant (e.g., :admin for admin-specific templates)
+  - **Layout** - Which layout wraps the rendered body (`layout`, or
+    `layout_from` to read it off the record)
+  - **Queue** - Which Oban queue this channel's send job runs in, instead of
+    the transport's
+
+  ## Layout
+
+  `layout: :urgent` renders through
+  `priv/ash_dispatch/layouts/urgent/email.html.heex`, falling back on
+  `priv/ash_dispatch/layouts/email.html.heex` when that subdirectory has no
+  layout for the format. `layout_from: :brand` reads the name off the event's
+  record instead, which is how one installation sends each brand's mail in its
+  own frame. Unset — which is every channel that does not say otherwise — the
+  default layout is used, exactly as before.
+
+  A layout name is a directory name, so only letters, digits, `_`, `-` and
+  `.` are accepted; anything else is ignored with a warning rather than joined
+  into a path.
 
   ## Time
 
@@ -15,6 +33,9 @@ defmodule AshDispatch.Channel do
   - `{:in, seconds}` — deliver after a relative delay
   - `{:at, %DateTime{}}` — deliver at an absolute time (a time in the past
     means now)
+  - `{:digest, window}` — email only: hold it for the recipient's digest,
+    sent when the window is due — `{:quiet, seconds}`, `{:quiet, seconds,
+    max_wait}`, `:daily` or `:weekly`. See `AshDispatch.Digest`
   - `{:window, map}` — **deprecated**, delivers immediately
 
   Only asynchronous transports honour the delay; `:in_app` writes its
@@ -56,9 +77,11 @@ defmodule AshDispatch.Channel do
           :immediate
           | {:in, non_neg_integer()}
           | {:at, DateTime.t()}
+          | {:digest, AshDispatch.Digest.window()}
           | {:window, map()}
   @type policy :: :always | :skip_if_read | {:gate, function()}
   @type variant :: atom() | nil
+  @type layout :: atom() | String.t() | nil
 
   @type t :: %__MODULE__{
           transport: transport(),
@@ -69,6 +92,9 @@ defmodule AshDispatch.Channel do
           locale: String.t() | nil,
           locale_from: atom() | nil,
           locales: [String.t()],
+          layout: layout(),
+          layout_from: atom() | nil,
+          queue: atom() | nil,
           webhook_url: String.t() | nil,
           content: map(),
           metadata: map(),
@@ -87,6 +113,9 @@ defmodule AshDispatch.Channel do
     :variant,
     :locale,
     :locale_from,
+    :layout,
+    :layout_from,
+    :queue,
     :webhook_url,
     :deduplicate_group,
     :idempotency_source,
@@ -121,13 +150,31 @@ defmodule AshDispatch.Channel do
     time = Keyword.get(opts, :time, {:in, 0})
     policy = if Keyword.get(opts, :skip_if_read), do: :skip_if_read, else: :always
 
+    # Every field of the struct a caller can name, not a hand-picked few: this
+    # function built a channel without `locale`, `layout` or `queue` even when
+    # asked for them, so a `channels/1` callback using it silently lost what
+    # the inline DSL carried. `Keyword.get/2` for each, so a caller that names
+    # none gets exactly the struct it got before.
     %__MODULE__{
       transport: transport,
       audience: audience,
       time: normalize_time(time),
       policy: Keyword.get(opts, :policy, policy),
       variant: Keyword.get(opts, :variant),
+      locale: Keyword.get(opts, :locale),
+      locale_from: Keyword.get(opts, :locale_from),
+      locales: Keyword.get(opts, :locales, []),
+      layout: Keyword.get(opts, :layout),
+      layout_from: Keyword.get(opts, :layout_from),
+      queue: Keyword.get(opts, :queue),
       webhook_url: Keyword.get(opts, :webhook_url),
+      deduplicate_group: Keyword.get(opts, :deduplicate_group),
+      idempotency_source: Keyword.get(opts, :idempotency_source),
+      optional: Keyword.get(opts, :optional, false),
+      exclude_actor: Keyword.get(opts, :exclude_actor, false),
+      content: Keyword.get(opts, :content, %{}),
+      metadata: Keyword.get(opts, :metadata, %{}),
+      load: Keyword.get(opts, :load, []),
       opts: Keyword.get(opts, :opts, %{})
     }
   end
@@ -168,6 +215,7 @@ defmodule AshDispatch.Channel do
   def normalize_time({:in, _} = time), do: time
   def normalize_time({:at, %DateTime{}} = time), do: time
   def normalize_time({:window, _} = time), do: time
+  def normalize_time({:digest, _} = time), do: time
   def normalize_time(time), do: time
 
   @doc """
@@ -192,7 +240,7 @@ defmodule AshDispatch.Channel do
   def calculate_delay(%__MODULE__{time: :immediate}), do: 0
 
   def calculate_delay(%__MODULE__{time: {:at, datetime}}) do
-    DateTime.diff(datetime, DateTime.utc_now(), :second)
+    DateTime.diff(datetime, AshDispatch.Clock.utc_now(), :second)
   end
 
   def calculate_delay(%__MODULE__{time: {:window, _window}}), do: 0

@@ -158,12 +158,30 @@ defmodule AshDispatch.Resources.ManualTrigger.Base do
           argument :audience, :atom
           argument :transport, :atom
 
+          # `AshDispatch.Preview.render/3` has supported both since 0.8.6; this
+          # action did not forward them, so an admin could not read a letter in
+          # the language its recipient gets it in, or see a variant without
+          # knowing the audience that selects it.
+          #
+          # Strings, not atoms: neither has a closed list, and casting an atom
+          # from a request body grows the atom table from outside input.
+          # `Preview.render/3` compares variants as strings anyway.
+          argument :locale, :string do
+            description "Render in this locale, whatever the channel or recipient would choose"
+          end
+
+          argument :variant, :string do
+            description "Only render channels whose template variant is this one"
+          end
+
           prepare fn query, context ->
             event_id = Ash.Query.get_argument(query, :event_id)
             context_data = Ash.Query.get_argument(query, :context_data)
             recipient_email = Ash.Query.get_argument(query, :recipient_email)
             audience = Ash.Query.get_argument(query, :audience)
             transport = Ash.Query.get_argument(query, :transport)
+            locale = Ash.Query.get_argument(query, :locale)
+            variant = Ash.Query.get_argument(query, :variant)
 
             with :ok <- Helpers.validate_channel_selection(audience, transport),
                  {:ok, previews} <-
@@ -173,7 +191,9 @@ defmodule AshDispatch.Resources.ManualTrigger.Base do
                      Helpers.build_channel_filter(audience, transport),
                      recipient_email,
                      context.actor,
-                     tenant: context.tenant
+                     tenant: context.tenant,
+                     locale: locale,
+                     variant: variant
                    ) do
               records =
                 Enum.map(previews, fn preview_data ->
@@ -343,6 +363,16 @@ defmodule AshDispatch.Resources.ManualTrigger.Base do
         attribute :notification_message, :string do
           public? true
           description "Message for in-app notification preview"
+        end
+
+        attribute :locale, :string do
+          public? true
+          description "The locale the previewed letter was rendered in"
+        end
+
+        attribute :variant, :string do
+          public? true
+          description "The template variant the previewed letter was rendered with"
         end
 
         attribute :user_configurable, :boolean do

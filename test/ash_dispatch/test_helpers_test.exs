@@ -41,7 +41,14 @@ defmodule AshDispatch.TestHelpersTest do
     results = AshDispatch.Test.render_all()
 
     assert Enum.map(results, & &1.row.event_id) |> Enum.uniq() |> Enum.sort() ==
-             ["booking.broken", "booking.confirmed", "booking.reminder"]
+             [
+               "booking.broken",
+               "booking.confirmed",
+               "booking.minted",
+               "booking.reminder",
+               "booking.texted",
+               "booking.untexted"
+             ]
 
     assert [broken] = Enum.filter(results, &(&1.problems != []))
     assert broken.row.event_id == "booking.broken"

@@ -7,8 +7,9 @@ defmodule AshDispatch.Workers.ScrubSensitiveContent do
   codes and password-reset links means live secrets in the database. Once a
   receipt is older than `config :ash_dispatch, :scrub_after_hours` (default
   24), its `body_text` is replaced with a marker, `body_html` cleared and the
-  copies of the text in `content` (`html_body`, `text_body`, and an SMS's
-  `message` and `body`) removed.
+  copies of the text in `content` (`html_body`, `text_body`, an SMS's
+  `message` and `body`, and a Slack or Discord channel's `notification_message`
+  — the key those two transports read their payload text from) removed.
   Recipient, subject, status and delivery timestamps are untouched.
 
   Terminal receipts (`:sent`, `:skipped`, `:failed_permanent`) are scrubbed
@@ -67,7 +68,10 @@ defmodule AshDispatch.Workers.ScrubSensitiveContent do
   # Nothing is left to send from these. Any other status may still reach the
   # worker, which for a sensitive event reads the body from the receipt alone,
   # so it gets the longer `@stranded_hours`.
-  @terminal ["sent", "skipped", "failed_permanent"]
+  # `digested` is terminal too: the letter went out inside a digest, whose own
+  # receipt is the one that may still be sent. (A sensitive event is never
+  # batched, so this is completeness, not a path in use.)
+  @terminal ["sent", "skipped", "failed_permanent", "digested"]
   @stranded_hours 7 * 24
 
   @doc "The replacement text written into scrubbed `body_text` fields."
@@ -93,7 +97,7 @@ defmodule AshDispatch.Workers.ScrubSensitiveContent do
         :ok
 
       event_ids ->
-        {cutoff, stranded_cutoff} = cutoffs(DateTime.utc_now())
+        {cutoff, stranded_cutoff} = cutoffs(AshDispatch.Clock.utc_now())
 
         {count, _} =
           Config.repo().update_all(
@@ -132,9 +136,13 @@ defmodule AshDispatch.Workers.ScrubSensitiveContent do
   # on an email receipt: in `body_text`/`body_html` and again under
   # `html_body`/`text_body` in `content` (the dispatcher stores the whole
   # rendered content map), so both are emptied, and an SMS keeps its text only
-  # in `content` (`message`, `body`). A receipt already carrying the
+  # in `content` (`message`, `body`). A Slack or Discord receipt keeps it there
+  # TWICE — under `message`, which `AshDispatch.Preview` renders from, and
+  # under `notification_message`, which the transport reads for the payload's
+  # text — so both names are subtracted. A receipt already carrying the
   # marker is picked up again while its content still holds a body, so
-  # receipts scrubbed before 0.8.7 lose the copy too.
+  # receipts scrubbed before 0.8.7, and receipts scrubbed before
+  # `notification_message` was named here, lose the copy too.
   def scrub_query(table, event_ids, cutoff, stranded_cutoff) do
     from(r in table,
       where: r.event_id in ^event_ids,
@@ -142,12 +150,19 @@ defmodule AshDispatch.Workers.ScrubSensitiveContent do
         (r.status in ^@terminal and r.inserted_at < ^cutoff) or r.inserted_at < ^stranded_cutoff,
       where:
         (not is_nil(r.body_text) and r.body_text != ^@marker) or not is_nil(r.body_html) or
-          fragment("(? \\?| array['html_body', 'text_body', 'message', 'body'])", r.content),
+          fragment(
+            "(? \\?| array['html_body', 'text_body', 'message', 'notification_message', 'body'])",
+            r.content
+          ),
       update: [
         set: [
           body_text: ^@marker,
           body_html: nil,
-          content: fragment("(? - 'html_body' - 'text_body' - 'message' - 'body')", r.content)
+          content:
+            fragment(
+              "(? - 'html_body' - 'text_body' - 'message' - 'notification_message' - 'body')",
+              r.content
+            )
         ]
       ]
     )

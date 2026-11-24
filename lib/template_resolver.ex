@@ -29,6 +29,41 @@ defmodule AshDispatch.TemplateResolver do
         </body>
       </html>
 
+  ### A layout per channel
+
+  A subdirectory holds a second frame:
+  `priv/ash_dispatch/layouts/urgent/email.html.heex`. Which one a letter gets
+  is the channel's to say (since 0.9.4):
+
+      channels: [
+        # The default layout, as before
+        [transport: :email, audience: :user],
+
+        # layouts/urgent/email.html.heex, falling back on the default when
+        # that directory has no layout for the format
+        [transport: :email, audience: :admin, layout: :urgent],
+
+        # The name off the record: one frame per brand
+        [transport: :email, audience: :customer, layout_from: :brand]
+      ]
+
+  A layout name becomes a directory name, so only letters, digits, `_`, `-`
+  and `.` are accepted — `layout_from` reads a column this library has never
+  seen, and a row holding `"../../.."` must not pick the file it names. A
+  refused name is logged and the default layout is used.
+
+  A channel that names no layout gets the default one, which is what every
+  channel got before 0.9.4.
+
+  > #### Compiled templates have no layout {: .info}
+  >
+  > The legacy `__compiled_templates__/0` path (a module that compiled its
+  > templates into itself) has never wrapped anything in a layout: it is
+  > called without the OTP app, and `priv/ash_dispatch/layouts/` is found
+  > through that. `layout:` is therefore ignored there — before 0.9.4 as much
+  > as after, since the default layout was not applied either. Everything else
+  > — files, and the `priv/` manifest a release uses — wraps as described.
+
   ## Compilation Strategy
 
   **Development:** Templates are loaded from files for fast iteration.
@@ -48,6 +83,46 @@ defmodule AshDispatch.TemplateResolver do
   2. **Transport-specific:** `email.html.heex` (default for transport)
   3. **Generic fallback:** `default.html.heex` (if exists)
   4. **Error:** `:template_not_found`
+
+  ## Transports other than email
+
+  The candidates are built from the transport, so `sms.text.eex`,
+  `slack.text.eex`, `in_app.text.eex` and `webhook.text.eex` have always been
+  findable here. Until 0.9.4 the dispatcher only ever asked for
+  `transport: :email`, so a host that wrote one had a file that rendered
+  nothing — and no way to tell.
+
+  Now a non-email channel's body comes from its template, **when the host
+  declared no body at all**. The order, highest first:
+
+  1. a body declared on the channel or the event (`content: [message: …]` or
+     `notification_message:`);
+  2. an event module's own `notification_message/2`;
+  3. the transport's template file;
+  4. the placeholder `use AshDispatch.Event` answers when nothing was
+     declared ("You have a new notification").
+
+  So a template fills a body nobody wrote, and never overrides one somebody
+  did. That order is deliberate and it is the conservative one: a host that
+  upgrades and changes nothing must get the text it already got, and a file
+  beating a callback would have changed an SMS under it.
+
+  ### The `default.*` fallback does not apply
+
+  The chain above ends at the transport's own name. `default.<ext>` — the
+  "ultimate fallback" in the chain further up this page — is **not** a
+  candidate for a non-email body, because a host's `default.text.eex` is its
+  generic *letter*: read as an SMS it is several paid segments, and as an
+  in-app notification it is an email in a bell menu. Only a filename that
+  names the transport is a body somebody wrote for that transport. Email
+  reaches `default.*` exactly as it always has.
+
+  Text only: `message` is the body for these transports, and there is nowhere
+  for a second rendered format to go. `:broadcast` and `:oban` are never
+  rendered — they reach a topic and a queue, not a person.
+
+  An installation that has written no `<transport>.*` template sees no
+  difference, whatever else is in its templates directory.
 
   ## Template Formats
 
@@ -94,6 +169,10 @@ defmodule AshDispatch.TemplateResolver do
   * `:transport` - Required. The transport type (e.g., `:email`)
   * `:variant` - Optional. A variant hint like "admin" or "user"
   * `:locale` - Optional. Locale for i18n template selection (e.g., "en", "sv")
+  * `:layout` - Optional. Layout subdirectory under
+    `priv/ash_dispatch/layouts/`, falling back on the default layout for the
+    transport. Since 0.9.4 the dispatcher passes the channel's `layout` /
+    `layout_from` here
   * `:assigns` - Required. Map of variables available in template as @variable
 
   ## Template Path Resolution
@@ -131,6 +210,8 @@ defmodule AshDispatch.TemplateResolver do
     transport = Keyword.fetch!(opts, :transport)
     variant = Keyword.get(opts, :variant)
     locale = Keyword.get(opts, :locale)
+    layout = Keyword.get(opts, :layout)
+    fallback? = Keyword.get(opts, :fallback?, true)
     assigns = Keyword.fetch!(opts, :assigns)
 
     # Try priv templates first (production), fall back to files (development)
@@ -138,7 +219,7 @@ defmodule AshDispatch.TemplateResolver do
     cond do
       # 1. Event module with compiled templates (legacy, deprecated)
       event_module && function_exported?(event_module, :__compiled_templates__, 0) ->
-        render_from_compiled(event_module, transport, variant, locale, format, assigns)
+        render_from_compiled(event_module, transport, variant, locale, format, assigns, fallback?)
 
       # 2. File-based: Explicit template path (highest priority for user overrides)
       template_path ->
@@ -151,13 +232,26 @@ defmodule AshDispatch.TemplateResolver do
           format,
           assigns,
           false,
-          otp_app
+          otp_app,
+          layout,
+          fallback?
         )
 
       # 3. File-based: Explicit event_dir with templates/ subdirectory
       event_dir ->
         # Module-based: event_dir is __DIR__, add /templates subdirectory
-        render_from_files(event_dir, transport, variant, locale, format, assigns, true, otp_app)
+        render_from_files(
+          event_dir,
+          transport,
+          variant,
+          locale,
+          format,
+          assigns,
+          true,
+          otp_app,
+          layout,
+          fallback?
+        )
 
       # 4. File-based: Derive event_dir from module source (development)
       event_module && derive_module_dir(event_module) ->
@@ -169,7 +263,9 @@ defmodule AshDispatch.TemplateResolver do
           format,
           assigns,
           true,
-          otp_app
+          otp_app,
+          layout,
+          fallback?
         )
 
       # 5. Priv directory manifest (module-based events)
@@ -181,7 +277,9 @@ defmodule AshDispatch.TemplateResolver do
           variant,
           locale,
           format,
-          assigns
+          assigns,
+          layout,
+          fallback?
         )
 
       # 5. Priv directory manifest (convention-based events)
@@ -193,7 +291,9 @@ defmodule AshDispatch.TemplateResolver do
           variant,
           locale,
           format,
-          assigns
+          assigns,
+          layout,
+          fallback?
         )
 
       # 6. File-based: Convention-based path (development fallback)
@@ -209,7 +309,9 @@ defmodule AshDispatch.TemplateResolver do
           format,
           assigns,
           false,
-          otp_app
+          otp_app,
+          layout,
+          fallback?
         )
 
       true ->
@@ -296,10 +398,18 @@ defmodule AshDispatch.TemplateResolver do
     end
   end
 
-  # Render from compiled templates (production)
-  defp render_from_compiled(event_module, transport, variant, locale, format, assigns) do
+  # Render from compiled templates (legacy, deprecated).
+  #
+  # No `otp_app` and no `transport` reach `render_template_content/4` here, so
+  # `wrap_in_layout/6` is never called: this path has never applied a layout,
+  # default or named. `layout:` is accordingly not threaded in — passing it
+  # would read as support for something that does not happen. The moduledoc
+  # says so.
+  defp render_from_compiled(event_module, transport, variant, locale, format, assigns, fallback?) do
     templates = event_module.__compiled_templates__()
-    candidates = build_template_candidates(transport, variant, locale, format)
+
+    candidates =
+      build_template_candidates(transport, variant, locale, format, fallback?: fallback?)
 
     case Enum.find_value(candidates, fn
            nil ->
@@ -323,8 +433,19 @@ defmodule AshDispatch.TemplateResolver do
   end
 
   # Render from priv directory manifest
-  defp render_from_priv_manifest(lookup_key, otp_app, transport, variant, locale, format, assigns) do
-    candidates = build_template_candidates(transport, variant, locale, format)
+  defp render_from_priv_manifest(
+         lookup_key,
+         otp_app,
+         transport,
+         variant,
+         locale,
+         format,
+         assigns,
+         layout,
+         fallback?
+       ) do
+    candidates =
+      build_template_candidates(transport, variant, locale, format, fallback?: fallback?)
 
     with {:ok, manifest} <- load_manifest(otp_app),
          manifest_key <- format_manifest_key(lookup_key),
@@ -335,6 +456,7 @@ defmodule AshDispatch.TemplateResolver do
         otp_app: otp_app,
         transport: transport,
         locale: locale,
+        layout: layout,
         source: Path.join("priv/ash_dispatch/templates", dest_filename)
       )
     else
@@ -397,10 +519,20 @@ defmodule AshDispatch.TemplateResolver do
          format,
          assigns,
          add_templates_subdir,
-         otp_app
+         otp_app,
+         layout,
+         fallback?
        ) do
     template_path =
-      resolve_template(event_dir, transport, variant, locale, format, add_templates_subdir)
+      resolve_template(
+        event_dir,
+        transport,
+        variant,
+        locale,
+        format,
+        add_templates_subdir,
+        fallback?
+      )
 
     case template_path do
       {:ok, path} ->
@@ -410,6 +542,7 @@ defmodule AshDispatch.TemplateResolver do
           otp_app: otp_app,
           transport: transport,
           locale: locale,
+          layout: layout,
           source: Path.relative_to_cwd(path)
         )
 
@@ -421,7 +554,15 @@ defmodule AshDispatch.TemplateResolver do
       {:error, error}
   end
 
-  defp resolve_template(event_dir, transport, variant, locale, format, add_templates_subdir) do
+  defp resolve_template(
+         event_dir,
+         transport,
+         variant,
+         locale,
+         format,
+         add_templates_subdir,
+         fallback?
+       ) do
     # For module-based events, add /templates subdirectory
     # For convention-based paths, the path already points to the template directory
     templates_dir =
@@ -432,7 +573,7 @@ defmodule AshDispatch.TemplateResolver do
       end
 
     candidates =
-      build_template_candidates(transport, variant, locale, format)
+      build_template_candidates(transport, variant, locale, format, fallback?: fallback?)
       |> Enum.map(&Path.join(templates_dir, &1))
 
     Enum.find_value(candidates, :error, fn path ->
@@ -442,8 +583,25 @@ defmodule AshDispatch.TemplateResolver do
 
   # Build template candidate filenames with locale support
   # Fallback chain: variant+locale → variant → locale → base → default+locale → default
-  defp build_template_candidates(transport, variant, locale, format) do
+  #
+  # `fallback?: false` stops before the two `default.*` names. The non-email
+  # body path (`Dispatcher.render_transport_body/5`) passes it, and the reason
+  # is the whole of why: `default.text.eex` is a host's GENERIC letter, written
+  # for email because email was the only transport that could reach it. Reading
+  # it as an SMS body turns one letter into several paid segments, and as an
+  # in-app notification it fills a bell menu with an email. Email keeps the
+  # fallback exactly as it has always had it.
+  #
+  # `variant` and `locale` become path segments, so they go through the same
+  # check `layout` does (`Dispatcher.resolve_channel_layout/2`): `locale` is
+  # read off a record field by `locale_from` and `variant` off
+  # `template_variant/2`, which is to say both can carry whatever a row holds.
+  # A refused value drops its candidates rather than its request, so a bad
+  # locale falls back to the base template instead of rendering nothing.
+  defp build_template_candidates(transport, variant, locale, format, opts) do
     extension = extension_for(format)
+    variant = safe_segment(variant, :variant)
+    locale = safe_segment(locale, :locale)
 
     [
       # Most specific: variant + locale
@@ -453,14 +611,48 @@ defmodule AshDispatch.TemplateResolver do
       # Locale only
       locale && "#{transport}.#{locale}.#{extension}",
       # Base template
-      "#{transport}.#{extension}",
-      # Default with locale
-      locale && "default.#{locale}.#{extension}",
-      # Ultimate fallback
-      "default.#{extension}"
+      "#{transport}.#{extension}"
     ]
+    |> Kernel.++(
+      if Keyword.get(opts, :fallback?, true) do
+        [
+          # Default with locale
+          locale && "default.#{locale}.#{extension}",
+          # Ultimate fallback
+          "default.#{extension}"
+        ]
+      else
+        []
+      end
+    )
     |> Enum.reject(&is_nil/1)
     |> Enum.uniq()
+  end
+
+  @segment ~r/^[A-Za-z0-9_\-.]+$/
+
+  # One path segment, never a path. Same rule as a layout name.
+  defp safe_segment(nil, _what), do: nil
+
+  defp safe_segment(value, what) when is_atom(value),
+    do: safe_segment(Atom.to_string(value), what)
+
+  defp safe_segment(value, what) when is_binary(value) do
+    if value != "" and value not in [".", ".."] and Regex.match?(@segment, value) do
+      value
+    else
+      Logger.warning(
+        "[AshDispatch] ignoring #{what} #{inspect(value)} for template selection: it becomes " <>
+          "part of a filename, so only letters, digits, _, - and . are accepted"
+      )
+
+      nil
+    end
+  end
+
+  defp safe_segment(value, what) do
+    Logger.warning("[AshDispatch] ignoring #{what} #{inspect(value)}: not a name")
+    nil
   end
 
   # Format to file extension mapping
@@ -514,6 +706,13 @@ defmodule AshDispatch.TemplateResolver do
     # auto-escape semantics. Other formats (text, etc.) are emitted as
     # plain `<%= @var %>` and rely on the format's own quoting rules.
     preprocessed = preprocess_heex_attributes(template_content, format)
+
+    # A 0-arity function is assigns the caller does not want BUILT unless a
+    # template was actually found: `prepare_template_assigns/2` is host code,
+    # and the non-email body path must not call it on every dispatch of every
+    # channel just to discover there is no template. Resolved here, after the
+    # template has been located and read.
+    assigns = if is_function(assigns, 0), do: assigns.(), else: assigns
 
     # Normalize assigns (convert struct to map if needed)
     normalized_assigns = if is_struct(assigns), do: Map.from_struct(assigns), else: assigns
@@ -592,6 +791,22 @@ defmodule AshDispatch.TemplateResolver do
     {:ok, rendered}
   end
 
+  # A layout name is one directory name, never a path.
+  defp safe_subdir(nil), do: nil
+  defp safe_subdir(subdir) when is_atom(subdir), do: safe_subdir(Atom.to_string(subdir))
+
+  defp safe_subdir(subdir) when is_binary(subdir) do
+    if subdir != "" and subdir not in [".", ".."] and
+         Regex.match?(~r/^[A-Za-z0-9_\-.]+$/, subdir) do
+      subdir
+    else
+      Logger.warning("[AshDispatch] ignoring layout #{inspect(subdir)}: not a directory name")
+      nil
+    end
+  end
+
+  defp safe_subdir(_), do: nil
+
   # Load layout from priv/ash_dispatch/layouts/
   # layout_subdir allows per-channel overrides (e.g., "urgent" -> layouts/urgent/email.html.heex)
   defp load_layout(otp_app, transport, format, layout_subdir)
@@ -599,6 +814,11 @@ defmodule AshDispatch.TemplateResolver do
   defp load_layout(otp_app, transport, format, layout_subdir) do
     extension = extension_for(format)
     layout_filename = "#{transport}.#{extension}"
+    # The subdirectory becomes a path segment. The dispatcher already refuses
+    # anything that is not a plain name (`Dispatcher.resolve_channel_layout/2`,
+    # which is what `layout_from` goes through), and this is the same refusal
+    # for a direct caller of `render/1`.
+    layout_subdir = safe_subdir(layout_subdir)
 
     case :code.priv_dir(otp_app) do
       {:error, _} ->

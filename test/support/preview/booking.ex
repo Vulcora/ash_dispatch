@@ -5,6 +5,9 @@ defmodule AshDispatch.Test.Preview.Domain do
   resources do
     resource AshDispatch.Test.Preview.Booking
     resource AshDispatch.Test.Preview.ManualTrigger
+    resource AshDispatch.Test.Preview.Catalogue
+    resource AshDispatch.Test.Preview.OwnPolicyCatalogue
+    resource AshDispatch.Test.Preview.EmailOnlyCatalogue
   end
 end
 
@@ -60,6 +63,36 @@ defmodule AshDispatch.Test.Preview.Booking do
       module: AshDispatch.Test.Preview.BookingBroken,
       channels: [
         [transport: :email, audience: :user]
+      ]
+
+    event :minted,
+      trigger_on: :manual,
+      module: AshDispatch.Test.Preview.BookingMinted,
+      channels: [
+        [transport: :email, audience: :user]
+      ]
+
+    # Templates for transports that are not email: `sms.text.eex` renders, and
+    # the :in_app channel (which has no template here) still falls back on the
+    # content callbacks.
+    event :texted,
+      trigger_on: :manual,
+      module: AshDispatch.Test.Preview.BookingTexted,
+      channels: [
+        [transport: :sms, audience: :user],
+        [transport: :in_app, audience: :user],
+        [transport: :slack, audience: :user]
+      ]
+
+    # The same templates, and an event that declared no body at all.
+    event :untexted,
+      trigger_on: :manual,
+      module: AshDispatch.Test.Preview.BookingUntexted,
+      channels: [
+        [transport: :sms, audience: :user],
+        [transport: :in_app, audience: :user],
+        [transport: :slack, audience: :user],
+        [transport: :discord, audience: :user]
       ]
   end
 end

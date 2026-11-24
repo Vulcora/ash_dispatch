@@ -141,8 +141,16 @@ defmodule AshDispatch.Transports.Webhook do
     # `NoMatchingTransition` in the middle of a successful delivery.
     scheduled = AshDispatch.ReceiptStatus.mark_scheduled(receipt)
 
-    case job_args |> SendWebhook.new() |> Oban.insert() do
-      {:ok, _job} ->
+    case job_args
+         |> SendWebhook.new(AshDispatch.Transport.Queue.opts(channel))
+         |> Oban.insert() do
+      {:ok, job} ->
+        # The job id, written after the insert because the transition had to
+        # happen before it. Without it the stranded sweep has no job to look
+        # up for this receipt and decides on age alone — which is how it could
+        # close a receipt whose job Oban was about to rescue.
+        AshDispatch.ReceiptStatus.put_oban_job_id(scheduled, job.id)
+
         Logger.info("Webhook job enqueued for receipt #{receipt.id}")
         # Re-read: if the job has already run (inline, or a fast worker),
         # `scheduled` is a stale picture, and reporting `:scheduled` for
@@ -194,7 +202,7 @@ defmodule AshDispatch.Transports.Webhook do
       "content" => content_map(receipt),
       # The signing key never travels inside the body it signs.
       "metadata" => metadata |> Map.drop(forbidden_metadata_keys()) |> stringify_keys(),
-      "sent_at" => DateTime.utc_now() |> DateTime.to_iso8601()
+      "sent_at" => AshDispatch.Clock.utc_now() |> DateTime.to_iso8601()
     }
   end
 

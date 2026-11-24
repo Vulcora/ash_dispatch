@@ -70,8 +70,14 @@ Delivery receipts follow a state machine pattern:
 These actions are typically called by workers and internal processes:
 
 ```elixir
-# Mark as sending (worker starting delivery)
+# Mark as sending (worker starting delivery). Not legal from `sending`: that
+# refusal is the mutex that stops two jobs sending one receipt.
 Ash.update(receipt, :mark_sending)
+
+# Reclaim a receipt this job's own earlier attempt left in `sending`
+# (`sending` → `sending`, since 0.9.4). Use `ReceiptStatus.claim/2`, which
+# decides between this and `mark_sending` for you.
+Ash.update(receipt, :resume_sending)
 
 # Mark as sent (delivery successful)
 Ash.update(receipt, :mark_sent, %{
@@ -293,12 +299,175 @@ The retry worker:
 - Finds receipts in `failed` status with `retry_count < max_retries`
 - Re-queues them for delivery
 - Marks permanently failed after max retries exceeded
+- Sweeps receipts stranded in `scheduled` on the same pass (see below)
+
+## A receipt for a send the library did not make
+
+Every installation has a send that does not go through the dispatcher: a
+provider's own SDK, a one-off script, a confirmation written before this
+library arrived, a transport it has no backend for. Those leave no receipt,
+and a missing receipt is not a neutral gap — it reads as "nothing was sent".
+One installation measured ninety-two of ninety-six cases where a recipient had
+been reached and no letter existed to prove it.
+
+`AshDispatch.Receipts.record/2` writes the receipt without sending anything:
+
+```elixir
+AshDispatch.Receipts.record(
+  %{
+    event_id: "bookings.reminder",
+    transport: :sms,
+    audience: :user,
+    recipient: "+46701234567",
+    user_id: user.id,
+    content: %{message: text},
+    source_type: "Booking",
+    source_id: booking.id
+  },
+  {:sent, %{id: provider_message_id}}
+)
+```
+
+| Outcome | Receipt |
+|---|---|
+| `{:sent, response}` | `sent`, with `provider_id` from the response — so the delivery webhook finds it exactly as it finds ours |
+| `{:skipped, reason}` | `skipped`, with the reason |
+| `{:error, reason}` | `failed_permanent`, **not** `failed`: a `failed` receipt is what the retry sweep picks up, and it would send our rendering of a letter we never composed. `retry?: true` if you want it to |
+
+Nothing is delivered, no job is enqueued, no notification is written. Any key
+the receipt resource does not accept is dropped rather than raised on, and
+`tenant:` is the schema the row is written to.
+
+## Why a letter was not sent
+
+`error_message` is written for a person to read, and this library rewords it
+whenever the prose can be clearer. Counting it therefore means matching
+substrings against sentences that are free to change — which is what every
+host that wanted "how much did we hold back last month, and why" ended up
+doing.
+
+`AshDispatch.Reason.of/1` answers it as a code, and needs nothing stored:
+
+```elixir
+AshDispatch.Reason.of(receipt)
+#=> :user_opted_out
+```
+
+It reads a stored code when there is one and classifies the sentence when
+there is not — the substring matching, done once, by the library that wrote
+the sentences. So every receipt answers, including every receipt written
+before 0.9.4, with no column, no backfill and no row touched. The list is
+closed on purpose: a code meaning "some other thing" is worth nothing to
+count, so a new reason gets a new code in a new release rather than being
+folded into `:other`. See `AshDispatch.Reason` for the table.
+
+To group in SQL rather than in Elixir, the code has to be on the row, which is
+a write on three actions that did not write before. So it is opt-in:
+
+```elixir
+use AshDispatch.Resources.DeliveryReceipt.Base,
+  repo: MyApp.Repo,
+  domain: MyApp.Deliveries,
+  notification_resource: MyApp.Notifications.Notification,
+  reason_codes: true
+```
+
+```sql
+SELECT content->>'reason_code' AS reason, count(*)
+FROM delivery_receipts
+WHERE status IN ('skipped', 'failed_permanent')
+GROUP BY 1 ORDER BY 2 DESC;
+```
+
+With the option off, `skip`, `mark_failed` and `mark_failed_permanent` are
+exactly what they were in 0.9.4-rc.5 — atomic included, so a
+`Ash.bulk_update(query, :skip, …)` of your own still runs under the default
+atomic strategy. With it on, the key is merged into the stored JSONB server
+side rather than written back from a struct, so a `ScrubSensitiveContent` pass
+landing in between is not undone; those two actions become non-atomic, which
+is the cost of the option. The merge runs after the transaction has
+committed, so a receipt whose code could not be stored still has its status
+and its sentence — and `Reason.of/1` answers from the sentence. Storing it by default is 0.10.0 work, with a column
+of its own.
+
+## Stranded receipts
+
+Two statuses promise that something is in flight, and something can die
+holding either of them.
+
+**`scheduled`** says a job is coming. The sweep checks whether one actually
+is: past a grace period a receipt is handed back to the retry machinery, and
+past a staleness ceiling it is closed rather than delivered months late. This
+is on by default and has been since 0.9.0.
+
+**`sending`** says the provider is being called right now. A node that goes
+down between `mark_sending` and the provider leaves the receipt there, and
+until 0.9.4 nothing looked at it: the message was lost without a trace.
+
+Two different things can have gone wrong, and they have separate settings.
+
+*The job survived* — Oban's lifeline put it back. The next attempt can reclaim
+the receipt (`AshDispatch.ReceiptStatus.claim/2`) and send it. Whether it does
+is per transport, defaulting to what each worker already did:
+
+```elixir
+config :ash_dispatch,
+  email_resume_interrupted: true,    # since 0.9.2; this is that behaviour
+  sms_resume_interrupted: false,     # it used to send nothing
+  webhook_resume_interrupted: false  # it used to raise and never POST
+```
+
+Turning one on means a message the provider may already have taken can go out
+again. **Email's default is already that**: since 0.9.2 an interrupted email
+attempt is resumed, which is at-least-once delivery — the provider may have
+taken the first attempt and answered nothing. `email_resume_interrupted:
+false` is the at-most-once choice, and loses the letter instead. For the webhook worker, note also that it declares no `unique:`, so two
+jobs for one receipt are possible there in a way they are not for email and
+SMS, which both key on the receipt id.
+
+*The job is gone* — pruned, cancelled or discarded mid-send. Nothing will come
+back for it, and that is the sweep's business:
+
+What makes `sending` different is that **we do not know whether the provider
+got the message**, so resending is an at-least-once delivery and the
+recipient may get the same letter twice. That is your call, not the
+library's:
+
+```elixir
+config :ash_dispatch,
+  stranded_sending: :ignore   # the default
+```
+
+| Mode | What the sweep does with a stranded `sending` receipt |
+|---|---|
+| `:ignore` | Nothing. Exactly what every release before 0.9.4 did |
+| `:close` | `failed_permanent`, with a reason saying the outcome is unknown. **Nothing is sent twice, and the silent loss stops being silent** |
+| `:rescue` | `failed`, so the retry machinery takes over. At-least-once: a letter the provider already accepted may go out again |
+
+`:close` is the one to pick if you do not want to think about it: it makes the
+loss visible without risking a duplicate. The grace period
+(`:stranded_stuck_after_minutes`) applies under both, so a send that is
+merely in progress is never touched.
+
+See `AshDispatch.Workers.Stranded`.
 
 ## Best Practices
 
 ### 1. Use ReceiptStatus helper
 
-For status updates in custom workers, use the centralized helper:
+For status updates in custom workers, use the centralized helper. Claim the
+receipt with `claim/2` rather than `mark_sending/1`: it keeps the mutex that
+stops two jobs sending one receipt, *and* lets your worker's own interrupted
+attempt finish the job instead of completing green on a letter nobody sent.
+
+```elixir
+case AshDispatch.ReceiptStatus.claim(receipt, attempt: job.attempt) do
+  {:ok, receipt} -> deliver(receipt)
+  # Another job has it. Nothing was lost; finish as a success.
+  :duplicate -> :ok
+  {:error, reason} -> {:error, reason}
+end
+```
 
 ```elixir
 alias AshDispatch.ReceiptStatus
@@ -350,20 +519,113 @@ A receipt skipped by the transport gate carries
 path carries `"User opted out of this email category"`. A count of opt-outs
 has to know about both.
 
-## Webhook Signature Verification
+## The provider's delivery webhook
 
-Resend webhooks mutate receipt state (opened/bounced/delivered), so verify
-the Svix signature before handing the payload to `process_webhook/1`:
+Resend webhooks mutate receipt state (opened, bounced, delivered), so an
+unverified endpoint is receipt mutation by anyone who can guess a provider
+id. Since 0.9.4 the endpoint ships finished — two plugs, and no option that
+turns verification off:
+
+```elixir
+# endpoint.ex — the raw body a signature can be checked against
+plug Plug.Parsers,
+  parsers: [:urlencoded, :multipart, :json],
+  pass: ["*/*"],
+  json_decoder: Jason,
+  body_reader:
+    {AshDispatch.Plugs.RawBodyReader, :read_body, [paths: ["/webhooks/"]]}
+
+# router.ex
+post "/webhooks/resend",
+  AshDispatch.Plugs.ResendWebhook,
+  secret: {:system, "RESEND_WEBHOOK_SECRET"}
+```
+
+The body reader exists because a JSON parser consumes the body and hands you
+a map, and re-encoding that map gives different bytes — so the signature never
+matches. Name the paths: nothing but the webhook route needs a raw body.
+`Plug.Parsers`' `:length` limit (8 MB by default) still applies — a body over
+it gets a 413, as it would without the reader in the way.
+
+The plug answers **200** when the receipt was updated and when no receipt has
+that message id (a webhook about a message you never sent is not your error,
+and a 4xx would have the provider retrying until it gave up), and **400** for
+everything else: no secret, no raw body, a signature that does not verify, a
+payload that is not a Resend event. The body is `ok` or `error` and never a
+reason — the endpoint is reachable by strangers, and a reason tells them
+whether a tenant exists or a message id is known. Your log keeps the
+distinction.
+
+For receipts per tenant, `tenant: {:path_param, "tenant"}` with
+`post "/webhooks/resend/:tenant"`, which is the setup to prefer; `tenant: :tag`
+reads the `X-AshDispatch-Tenant` tag back out of the payload instead (and
+needs `webhook_tenant_tag: true`, or nothing carries the tag), and is only
+safe behind this plug. See
+`AshDispatch.WebhookHandlers.Resend.process_webhook/2` for why.
+
+A configured tenant source that yields nothing is a **400**: a typo'd route,
+or a payload with no tag, would otherwise look the message id up in the wrong
+schema, find nothing, and tell the provider everything was fine. With
+`tenant: :tag` that is the common case rather than the exotic one — Resend's
+`opened` and `clicked` events carry no headers at all — which is the other
+reason to prefer `{:path_param, …}`.
+
+If you would rather wire it yourself, `verify/4` and `process_webhook/2` are
+unchanged and public:
 
 ```elixir
 case AshDispatch.WebhookHandlers.Resend.verify(raw_body, headers, secret) do
   :ok -> AshDispatch.WebhookHandlers.Resend.process_webhook(params)
-  {:error, _} -> # respond 400
+  {:error, _} -> # respond 400, without the reason
 end
 ```
 
-`raw_body` must be the request body exactly as received — cache it before
-your JSON parser runs. See `AshDispatch.WebhookHandlers.Resend.verify/4`.
+## Retention
+
+The scrub below covers the events you have marked
+`sensitive_content: true`. Everything else a receipt holds is kept forever —
+and a rendered letter is a letter: a name, an address, an order, a booking.
+`AshDispatch.Workers.Prune` is the retention worker for the rest, and all
+three of its windows are **unset** by default, so a host that schedules it and
+configures nothing has a job that deletes nothing:
+
+```elixir
+config :ash_dispatch,
+  # Empty old bodies. The receipt stays: who, about what, when, and whether
+  # it arrived.
+  body_retention_hours: 24 * 90,
+
+  # Delete old receipts, bodies and all.
+  receipt_retention_hours: 24 * 365,
+
+  # Delete old notifications.
+  notification_retention_hours: 24 * 180
+```
+
+```elixir
+config :my_app, Oban,
+  plugins: [
+    {Oban.Plugins.Cron, crontab: [{"40 3 * * *", AshDispatch.Workers.Prune}]}
+  ]
+```
+
+Only **terminal** receipts (`sent`, `skipped`, `failed_permanent`,
+`digested`) are touched: anything else may still be sent, and for a sensitive
+event the receipt is where the worker reads the body. A receipt is deleted at
+the **later** of the receipt and body windows, so configuring only the shorter
+one cannot delete a row whose body you meant to keep. One pass handles at most
+`:prune_batch_size` rows per table (5000 by default), so it cannot lock a
+large table for minutes; what is left goes on the next run.
+
+The body window also strips `content["digest"]["item"]["summary"]`, which is
+the fourth place a letter's text lives: a batched email keeps its first
+paragraph there for the digest to list.
+
+One pass per tenant, like the scrub — and because receipts and notifications
+take multitenancy **independently**, each table is addressed with its own
+resource's schema and the fan-out happens when either is per tenant. Public
+receipts with per-tenant notifications is a supported shape, and so is the
+other way round.
 
 ## Sensitive Content Retention
 

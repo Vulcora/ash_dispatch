@@ -149,10 +149,16 @@ defmodule AshDispatch.EventResolver do
 
   @doc """
   Get sample data from an event module.
+
+  The event's DATA only. An event answering the `%{data: …, variables: …}`
+  form is unwrapped, so every caller that wants data keeps getting data.
   """
   @spec sample_data(module()) :: map()
   def sample_data(module) do
-    call_if_exported(module, :sample_data, [], default: %{})
+    module
+    |> call_if_exported(:sample_data, [], default: %{})
+    |> split()
+    |> Map.fetch!(:data)
   end
 
   @doc """
@@ -161,17 +167,129 @@ defmodule AshDispatch.EventResolver do
   Calls `sample_data/1` with `opts` (`seed: integer`) when the module exports
   it, and falls back on `sample_data/0` when it does not. Anything that is not
   a map counts as no sample data.
+
+  The DATA only; `sample/2` answers the variables too.
   """
   @spec sample_data(module(), keyword()) :: map()
   def sample_data(module, opts) do
-    result =
-      if exports?(module, :sample_data, 1) do
-        call_if_exported(module, :sample_data, [opts], default: %{})
-      else
-        sample_data(module)
-      end
+    Map.fetch!(sample(module, opts), :data)
+  end
 
-    if is_map(result), do: result, else: %{}
+  @doc """
+  Sample data **and** sample variables from an event module.
+
+  `c:AshDispatch.Event.sample_data/1` may answer either form:
+
+      # The data, as it always was
+      %{booking: booking}
+
+      # The data and the template variables the letter prints
+      %{data: %{booking: booking}, variables: %{reset_url: "https://…/abc"}}
+
+  The second form exists because `generate_send_variables/2` is never run for
+  a preview — that is where events mint reset tokens and invitation links —
+  so a letter whose template prints such a variable had nowhere to get a
+  plausible one. The only way round it was to smuggle the variables into
+  `data` under a key and unpack them again on the rendering side, which every
+  event that did it had to do differently.
+
+  Always `%{data: map(), variables: map()}`, both of them maps.
+
+  ## Telling the two forms apart
+
+  The second form is a map whose keys are **exactly** `:data` and
+  `:variables`. Both are required: an event whose own data key happens to be
+  `:data` — a resource called `Data`, a context key somebody named that —
+  answers a lone `%{data: record}`, and reading that as the wrapper unwrapped
+  its record into the whole data map and rendered the event with nothing. An
+  event on the new form writes `variables: %{}` when it has none, which is a
+  cheaper mistake than emptying somebody's sample data.
+  """
+  @spec sample(module(), keyword()) :: %{data: map(), variables: map()}
+  def sample(module, opts \\ []) do
+    if exports?(module, :sample_data, 1) do
+      module
+      |> call_if_exported(:sample_data, [opts], default: %{})
+      |> split()
+    else
+      %{data: sample_data(module), variables: %{}}
+    end
+  end
+
+  # `%{data: …, variables: …}` and NOTHING else is the second form. Both keys
+  # are required: an event whose own data key happens to be `:data` — a
+  # resource called `Data`, a context key somebody named that — answered a
+  # lone `%{data: record}` and had its record unwrapped into the whole data
+  # map, so the event rendered with no data at all.
+  #
+  # Requiring both costs an event on the new form one key it would rather
+  # leave out (`variables: %{}`), and that is a cheaper mistake than silently
+  # emptying somebody's sample data.
+  defp split(%{data: data, variables: variables} = answer) when is_map(data) do
+    if Map.keys(answer) -- [:data, :variables] == [] do
+      %{data: data, variables: as_map(variables)}
+    else
+      %{data: answer, variables: %{}}
+    end
+  end
+
+  defp split(answer) when is_map(answer), do: %{data: answer, variables: %{}}
+  defp split(_answer), do: %{data: %{}, variables: %{}}
+
+  defp as_map(value) when is_map(value), do: value
+
+  defp as_map(value) when is_list(value) do
+    if Keyword.keyword?(value), do: Map.new(value), else: %{}
+  end
+
+  defp as_map(_value), do: %{}
+
+  @doc """
+  What the event says it is, in words, or `nil`.
+
+  `c:AshDispatch.Event.catalogue/0` is optional and not defaulted, so an
+  event that does not describe itself answers `nil` here and is listed exactly
+  as it was. See `AshDispatch.Event.Catalogue`.
+  """
+  @spec catalogue(module()) :: AshDispatch.Event.Catalogue.t() | nil
+  def catalogue(module) do
+    if exports?(module, :catalogue, 0) do
+      module
+      |> call_if_exported(:catalogue, [], default: nil)
+      |> AshDispatch.Event.Catalogue.new()
+    end
+  end
+
+  @doc """
+  Whether `value` is a body the host actually declared, rather than the
+  placeholder `use AshDispatch.Event` answers when nothing was.
+
+  `notification_message/2`'s generated default answers "You have a new
+  notification" for an event that declares nothing, so "did the host say what
+  this says?" cannot be answered by `function_exported?`. The macro states its
+  own placeholder (`__ash_dispatch_placeholder__/1`) and this compares against
+  it.
+
+  Used for one decision: a transport's template file (`sms.text.eex` and
+  friends) fills a body the host never wrote, and never overrides one it did.
+  """
+  @spec declared?(module() | nil, atom(), term()) :: boolean()
+  def declared?(_module, _key, value) when value in [nil, ""], do: false
+
+  def declared?(module, key, value) when is_binary(value) do
+    value != placeholder(module, key)
+  end
+
+  def declared?(_module, _key, _value), do: true
+
+  @doc false
+  @spec placeholder(module() | nil, atom()) :: String.t() | nil
+  def placeholder(nil, _key), do: nil
+
+  def placeholder(module, key) do
+    if exports?(module, :__ash_dispatch_placeholder__, 1) do
+      call_if_exported(module, :__ash_dispatch_placeholder__, [key], default: nil)
+    end
   end
 
   @doc """
@@ -502,6 +620,20 @@ defmodule AshDispatch.EventResolver do
   @spec attachments(module(), Context.t(), AshDispatch.Channel.t()) :: [map()]
   def attachments(module, context, channel) do
     call_if_exported(module, :attachments, [context, channel], default: [])
+  end
+
+  @doc """
+  What an email contributes to a digest (optional `digest_item/2`). Events
+  without the callback → `%{}`, and `AshDispatch.Digest` fills in the
+  defaults. A callback that returns something other than a map counts as
+  `%{}`.
+  """
+  @spec digest_item(module(), Context.t(), AshDispatch.Channel.t()) :: map()
+  def digest_item(module, context, channel) do
+    case call_if_exported(module, :digest_item, [context, channel], default: %{}) do
+      %{} = item -> item
+      _ -> %{}
+    end
   end
 
   @doc """

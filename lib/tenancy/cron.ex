@@ -38,9 +38,20 @@ defmodule AshDispatch.Tenancy.Cron do
   """
   @type plan :: {:run, term()} | {:fan_out, [term()]} | :no_tenants
 
-  @doc "What this run of a cross-tenant worker should do. See `t:plan/0`."
-  @spec plan(map()) :: plan()
-  def plan(args) do
+  @doc """
+  What this run of a cross-tenant worker should do. See `t:plan/0`.
+
+  `per_tenant?` is whether anything the worker touches lives in a schema per
+  tenant. It defaults to the receipt resource, which is what the retry and
+  scrub passes read — but a worker that also touches notifications has to say
+  so, because the two resources take multitenancy independently and a host
+  can have per-tenant notifications with public receipts.
+  """
+  @spec plan(map(), boolean()) :: plan()
+  def plan(args, per_tenant? \\ nil) do
+    per_tenant? =
+      if is_boolean(per_tenant?), do: per_tenant?, else: Tenancy.receipts_per_tenant?()
+
     cond do
       tenant = args["tenant"] || args[:tenant] ->
         case Tenants.check(tenant) do
@@ -60,7 +71,7 @@ defmodule AshDispatch.Tenancy.Cron do
             {:run, tenant}
         end
 
-      not Tenancy.receipts_per_tenant?() ->
+      not per_tenant? ->
         {:run, nil}
 
       true ->

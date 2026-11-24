@@ -789,6 +789,149 @@ defmodule AshDispatch.Config do
   end
 
   @doc """
+  The Oban queue `AshDispatch.Workers.FlushDigests` runs in. Defaults to
+  `:emails`, the queue the emails a digest replaces run in.
+
+      config :ash_dispatch, digest_queue: :emails
+  """
+  @spec digest_queue() :: atom()
+  def digest_queue do
+    Application.get_env(:ash_dispatch, :digest_queue, :emails)
+  end
+
+  @doc """
+  Whether a send worker may RECLAIM a receipt its own earlier attempt left in
+  `:sending`, and send it.
+
+  Per transport, because what each worker did before 0.9.4 differs and a patch
+  may not change any of them:
+
+    * `:email` — **true**. `AshDispatch.Workers.SendEmail` has resumed an
+      interrupted attempt since 0.9.2; this is that behaviour, named.
+    * `:sms` — **false**. `SendSMS` logged "likely duplicate job" and answered
+      `:ok` without sending. Turning this on means a letter the provider may
+      already have taken goes out again.
+    * `:webhook`, `:slack`, `:discord` — **false**. `SendWebhook` raised a
+      MatchError and never POSTed. Note that this worker declares no
+      `unique:`, so a duplicate job for one receipt is possible for it in a
+      way it is not for email and SMS, which both key on `receipt_id`.
+
+      config :ash_dispatch,
+        email_resume_interrupted: true,
+        sms_resume_interrupted: false,
+        webhook_resume_interrupted: false
+
+  This is about THIS job's own earlier attempt, which Oban's lifeline puts
+  back. A job that is gone entirely is the stranded sweep's business
+  (`config :ash_dispatch, stranded_sending:`), and the two are separate
+  settings because they answer different questions.
+  """
+  @spec resume_interrupted?(atom()) :: boolean()
+  def resume_interrupted?(:email) do
+    Application.get_env(:ash_dispatch, :email_resume_interrupted, true) == true
+  end
+
+  def resume_interrupted?(:sms) do
+    Application.get_env(:ash_dispatch, :sms_resume_interrupted, false) == true
+  end
+
+  def resume_interrupted?(transport) when transport in [:webhook, :slack, :discord] do
+    Application.get_env(:ash_dispatch, :webhook_resume_interrupted, false) == true
+  end
+
+  def resume_interrupted?(_transport), do: false
+
+  @doc """
+  The Oban queue a transport's send jobs run in.
+
+  `:emails`, `:sms` and `:webhooks` are the defaults, and they are what the
+  three workers were hard-bound to before 0.9.4. An installation that sends
+  two thousand letters in a campaign starved every booking confirmation behind
+  them for minutes, with no way to separate the two short of a second send
+  path of its own — one host wrote three hundred lines for exactly that.
+
+      config :ash_dispatch,
+        email_queue: :emails,
+        sms_queue: :sms,
+        webhook_queue: :webhooks
+
+  A `queue:` on the channel wins over this, per channel, so the campaign's
+  own channel can name `:bulk_emails` while every other email channel stays
+  where it was.
+
+  `:slack`, `:discord` and `:webhook` all run in the webhook queue, because
+  they all run in `AshDispatch.Workers.SendWebhook`.
+  """
+  @spec transport_queue(atom()) :: atom()
+  def transport_queue(:email), do: Application.get_env(:ash_dispatch, :email_queue, :emails)
+  def transport_queue(:sms), do: Application.get_env(:ash_dispatch, :sms_queue, :sms)
+
+  def transport_queue(transport) when transport in [:webhook, :slack, :discord] do
+    Application.get_env(:ash_dispatch, :webhook_queue, :webhooks)
+  end
+
+  def transport_queue(_transport), do: nil
+
+  @doc """
+  The module that renders a digest (`AshDispatch.DigestRenderer`). Defaults to
+  `AshDispatch.DigestRenderer.Default`, a plain English list.
+
+      config :ash_dispatch, digest_renderer: MyApp.DigestRenderer
+  """
+  @spec digest_renderer() :: module()
+  def digest_renderer do
+    Application.get_env(:ash_dispatch, :digest_renderer, AshDispatch.DigestRenderer.Default)
+  end
+
+  @doc """
+  The longest a `{:quiet, seconds}` digest waits after its first email, in
+  seconds, however often new ones arrive. Defaults to 1800 (30 minutes). A
+  window that names its own (`{:quiet, seconds, max_wait}`) wins.
+  """
+  @spec digest_max_wait() :: pos_integer()
+  def digest_max_wait do
+    Application.get_env(:ash_dispatch, :digest_max_wait, 1800)
+  end
+
+  @doc """
+  When `:daily` and `:weekly` digests go out, as a `Time` in
+  `digest_time_zone/0`. Defaults to `~T[07:00:00]`.
+  """
+  @spec digest_send_at() :: Time.t()
+  def digest_send_at do
+    case Application.get_env(:ash_dispatch, :digest_send_at, ~T[07:00:00]) do
+      %Time{} = time -> time
+      string when is_binary(string) -> Time.from_iso8601!(string)
+    end
+  end
+
+  @doc """
+  The time zone `digest_send_at/0` is read in. Defaults to `"Etc/UTC"`. Any
+  other zone needs a time zone database (`config :elixir,
+  :time_zone_database, …`); without one the send time is read in UTC and a
+  warning is logged once.
+  """
+  @spec digest_time_zone() :: String.t()
+  def digest_time_zone do
+    Application.get_env(:ash_dispatch, :digest_time_zone, "Etc/UTC")
+  end
+
+  @doc "The weekday `:weekly` digests go out on, 1 (Monday) to 7 (Sunday). Defaults to 1."
+  @spec digest_week_day() :: 1..7
+  def digest_week_day do
+    Application.get_env(:ash_dispatch, :digest_week_day, 1)
+  end
+
+  @doc """
+  The event id a digest's own receipt carries. Defaults to
+  `"ash_dispatch.digest"`; a host that lists receipts by event can rename it.
+  """
+  @spec digest_event_id() :: String.t()
+  def digest_event_id do
+    Application.get_env(:ash_dispatch, :digest_event_id, "ash_dispatch.digest")
+  end
+
+  @doc """
   Whether to compile templates at build time.
 
   Defaults to `false`.
@@ -824,8 +967,12 @@ defmodule AshDispatch.Config do
   - unset — derive the path from `config :ash_typescript, output_file:`
 
   `config :ash_dispatch, sdk:` is the companion switch: `true` (the default),
-  `false`, or `:if_events` to write the SDK only when this app has events,
-  counters, a `resource_meta` or an `entity_changes` block. See
+  `false`, or `:if_events` to write the SDK only when this app declares
+  events, counters, a `resource_meta` or an `entity_changes` block **of its
+  own**. What `AshDispatch.Resources.Notification.Base` and friends declare
+  does not count — but the counter one of them brings,
+  `unread_notifications`, is the one the generated bell reads, so a host that
+  uses the in-app bell wants `sdk: true` rather than `:if_events`. See
   `Mix.Tasks.AshDispatch.Gen` and the Code Generation guide.
   """
   @spec sdk_output_path() :: String.t() | false | nil

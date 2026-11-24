@@ -117,12 +117,22 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
     end
   end
 
+  @doc false
+  # How recent is too recent: a receipt whose `last_retry_at` is after this is
+  # left for the next pass. On `AshDispatch.Clock`, so a host that configured
+  # one can move this cut-off in a test without waiting for the delay. Public
+  # for that reason only; not API.
+  @spec cutoff(number()) :: DateTime.t()
+  def cutoff(retry_delay_minutes) do
+    DateTime.add(AshDispatch.Clock.utc_now(), -retry_delay_minutes * 60, :second)
+  end
+
   defp run(tenant) do
     max_retries = get_config(:max_retries, @default_max_retries)
     retry_delay_minutes = get_config(:retry_delay_minutes, @default_retry_delay_minutes)
 
     # Calculate cutoff time (don't retry if last attempt was too recent)
-    cutoff_time = DateTime.add(DateTime.utc_now(), -retry_delay_minutes * 60, :second)
+    cutoff_time = cutoff(retry_delay_minutes)
 
     Logger.info(
       "RetryFailedDeliveries: Starting retry job (max_retries=#{max_retries}, delay=#{retry_delay_minutes}m)"
@@ -144,6 +154,12 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
     # this pass is already `:failed` when the query below runs and gets its
     # retry immediately instead of waiting a further cycle.
     sweep_stranded(tenant)
+
+    # Digests whose flush job was lost or raced (`AshDispatch.Digest`): every
+    # group that is due goes out now, so a missing job costs at most one retry
+    # interval. A group that is not due yet is left to its own job. Errors are
+    # logged inside and never stop the retry pass.
+    AshDispatch.Digest.sweep(tenant)
 
     case Ash.read(query, [authorize?: false] ++ Tenancy.opts(resource, tenant)) do
       {:ok, receipts} ->
@@ -180,7 +196,8 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
   end
 
   @doc """
-  Sweeps receipts stranded in `:scheduled`.
+  Sweeps receipts stranded in `:scheduled`, and in `:sending` when a host has
+  asked for it.
 
   `:scheduled` promises that a job is coming. Nothing ever checked whether one
   actually was, and this sweep is that check. See
@@ -189,8 +206,15 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
   and the staleness ceiling stops us delivering a months-old mail to someone
   who has long since moved on.
 
+  `:sending` is swept only under `config :ash_dispatch, stranded_sending:`
+  (`:close` or `:rescue`); `:ignore` is the default and the behaviour of every
+  release before 0.9.4. The reason it is a choice at all is that a `:sending`
+  receipt may already have reached the provider, so resending it is an
+  at-least-once delivery.
+
   Errors are logged and swallowed: a sweep that cannot read must not take the
-  ordinary retry pass down with it.
+  ordinary retry pass down with it, and the two passes cannot take each other
+  down either.
   """
   @spec sweep_stranded(term()) :: :ok
   def sweep_stranded(tenant \\ nil) do
@@ -198,11 +222,30 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
       get_config(:stranded_stuck_after_minutes, Stranded.default_stuck_after_minutes())
 
     stale_after = get_config(:stranded_stale_after_hours, Stranded.default_stale_after_hours())
+    opts = [stuck_after_minutes: stuck_after, stale_after_hours: stale_after]
+
+    # Once per sweep, not once per receipt: a misspelled `stranded_sending:`
+    # should say so on every pass and not a hundred times on one.
+    Stranded.forget_warning()
+
+    sweep_status(:scheduled, tenant, opts)
+
+    # `:sending` is a separate pass and a separate query, because what it means
+    # is different: the provider may already have the message. Off unless a
+    # host says otherwise — see `AshDispatch.Workers.Stranded`.
+    if Stranded.sending_mode() != :ignore do
+      sweep_status(:sending, tenant, opts)
+    end
+
+    :ok
+  end
+
+  defp sweep_status(status, tenant, opts) do
     resource = Config.delivery_receipt_resource()
 
     query =
       resource
-      |> Ash.Query.filter(status == :scheduled)
+      |> Ash.Query.filter(status == ^status)
       |> Ash.Query.limit(100)
       |> Ash.Query.sort(inserted_at: :asc)
 
@@ -211,16 +254,25 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
         :ok
 
       {:ok, receipts} ->
-        opts = [stuck_after_minutes: stuck_after, stale_after_hours: stale_after]
+        # One read for the whole pass, for the receipts already loaded.
+        job_states = job_states(receipts)
 
         tally =
           receipts
-          |> Enum.map(&handle_stranded(Tenancy.remember(&1, tenant), opts))
+          |> Enum.map(fn receipt ->
+            job_state = Map.get(job_states, Map.get(receipt, :oban_job_id))
+
+            handle_stranded(
+              Tenancy.remember(receipt, tenant),
+              status,
+              Keyword.put(opts, :job_state, job_state)
+            )
+          end)
           |> Enum.frequencies()
 
         if Map.get(tally, :leave, 0) != length(receipts) do
           Logger.warning(
-            "RetryFailedDeliveries: stranded sweep — " <>
+            "RetryFailedDeliveries: stranded sweep (#{status}) — " <>
               "#{Map.get(tally, :rescue, 0)} rescued, #{Map.get(tally, :close, 0)} closed, " <>
               "#{Map.get(tally, :leave, 0)} still in flight"
           )
@@ -229,33 +281,123 @@ defmodule AshDispatch.Workers.RetryFailedDeliveries do
         :ok
 
       {:error, reason} ->
-        Logger.error("RetryFailedDeliveries: stranded sweep query failed: #{inspect(reason)}")
+        Logger.error(
+          "RetryFailedDeliveries: stranded sweep (#{status}) query failed: #{inspect(reason)}"
+        )
+
         :ok
     end
   rescue
     error ->
-      Logger.error("RetryFailedDeliveries: stranded sweep crashed: #{Exception.message(error)}")
+      Logger.error(
+        "RetryFailedDeliveries: stranded sweep (#{status}) crashed: #{Exception.message(error)}"
+      )
+
       :ok
   end
 
-  defp handle_stranded(receipt, opts) do
+  # The state of each receipt's Oban job, by job id. A receipt in `:scheduled`
+  # whose job is still waiting is a delayed send, not a stranded one, and the
+  # sweep must leave it alone (`Stranded.action/2`). Without a configured repo,
+  # or if the lookup fails, no state is known and age alone decides, as it did
+  # before the sweep looked at jobs at all.
+  defp job_states(receipts) do
+    ids =
+      receipts
+      |> Enum.map(&Map.get(&1, :oban_job_id))
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+
+    case {ids, Config.repo()} do
+      {[], _} ->
+        %{}
+
+      {_, nil} ->
+        %{}
+
+      {ids, repo} ->
+        import Ecto.Query, only: [from: 2]
+
+        from(j in Oban.Job, where: j.id in ^ids, select: {j.id, j.state})
+        |> repo.all(oban_prefix())
+        |> Map.new()
+    end
+  rescue
+    error ->
+      Logger.warning(
+        "RetryFailedDeliveries: could not read job states, deciding on age alone: " <>
+          Exception.message(error)
+      )
+
+      %{}
+  end
+
+  @doc false
+  # A host that runs Oban in a schema of its own (`prefix: "oban"`) keeps its
+  # job table there, and a query without the prefix reads `public.oban_jobs`
+  # — which either does not exist, or is somebody else's. Asked of Oban
+  # rather than configured again here, and `[]` when Oban is not running,
+  # which is the same "no state known" the rest of this function falls back
+  # to. Public-but-undocumented so the two answers can be tested.
+  @spec oban_prefix() :: keyword()
+  def oban_prefix do
+    case Oban.config() do
+      %{prefix: prefix} when is_binary(prefix) and prefix != "" -> [prefix: prefix]
+      _ -> []
+    end
+  rescue
+    _ -> []
+  catch
+    _, _ -> []
+  end
+
+  defp handle_stranded(receipt, status, opts) do
     reference = Map.get(receipt, :updated_at) || Map.get(receipt, :inserted_at)
 
-    case Stranded.action(reference, opts) do
+    decision =
+      case status do
+        :scheduled ->
+          Stranded.action(reference, opts)
+
+        :sending ->
+          # The receipt's own budget goes with it: `:rescue` hands a receipt to
+          # machinery that only looks at receipts with retries LEFT, so one
+          # whose budget is spent is closed rather than parked in `:failed`
+          # for ever.
+          Stranded.sending_action(
+            reference,
+            nil,
+            opts ++
+              [
+                retry_count: Map.get(receipt, :retry_count) || 0,
+                max_retries: get_config(:max_retries, @default_max_retries)
+              ]
+          )
+      end
+
+    case decision do
       :leave ->
         :leave
 
       :rescue ->
         # Moved to :failed so the machinery that already exists takes over.
         # No second send path, no new terminal state.
-        mark_failed(receipt, "Stranded in :scheduled with no live job — returned for retry.")
+        mark_failed(receipt, rescue_reason(status))
         :rescue
 
       :close ->
-        mark_failed_permanent(receipt, Stranded.close_reason(reference, opts))
+        mark_failed_permanent(receipt, close_reason(status, reference, opts))
         :close
     end
   end
+
+  defp rescue_reason(:scheduled),
+    do: "Stranded in :scheduled with no live job — returned for retry."
+
+  defp rescue_reason(:sending), do: Stranded.sending_rescue_reason()
+
+  defp close_reason(:scheduled, reference, opts), do: Stranded.close_reason(reference, opts)
+  defp close_reason(:sending, reference, opts), do: Stranded.sending_close_reason(reference, opts)
 
   @doc """
   Retry a single failed delivery receipt.

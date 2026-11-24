@@ -1,0 +1,1 @@
+GENERIC LETTER for <%= @reference %>. This is the whole email a host wrote for every event that has no template of its own, and it must never become an SMS.

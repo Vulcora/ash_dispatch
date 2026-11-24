@@ -59,6 +59,20 @@ defmodule AshDispatch.Resources.EmailEvent do
       end
 
   **Note:** Add authorization policies in your app's domain configuration.
+
+  ## Frozen, and what replaced it
+
+  Three things about this resource are nailed down: its policies are
+  `actor_attribute_equals(:super_admin, true)`, it is a module rather than a
+  macro, and it drops every event that has no email channel. A host whose
+  permission model is not a `super_admin` boolean cannot use it, and a host
+  delivering by SMS, Slack or in-app notifications cannot see those events in
+  it.
+
+  `AshDispatch.Resources.EventCatalogue.Base` (0.9.4) is the same catalogue as
+  a macro: your own policies, the configured `permission_checker` by default,
+  and every transport. This resource stays exactly as it is, down to the keys
+  in its channel maps, so nothing reading it through RPC moves.
   """
 
   use Ash.Resource,
@@ -287,6 +301,8 @@ defmodule AshDispatch.Resources.EmailEvent do
 
   defp serialize_time({:at, %DateTime{} = dt}),
     do: %{type: "scheduled", datetime: DateTime.to_iso8601(dt)}
+
+  defp serialize_time({:digest, window}), do: %{type: "digest", window: inspect(window)}
 
   defp serialize_time(_), do: %{type: "unknown"}
 

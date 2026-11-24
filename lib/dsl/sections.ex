@@ -165,7 +165,10 @@ defmodule AshDispatch.Dsl.Sections do
           - :immediate or {:in, 0} - Send immediately
           - {:in, seconds} - Delay by seconds
           - {:at, DateTime.t()} - Send at specific time
-          - {:window, map()} - Send within time window
+          - {:digest, window} - Email only: collect into the recipient's digest
+            ({:quiet, seconds}, {:quiet, seconds, max_wait}, :daily, :weekly;
+            see AshDispatch.Digest)
+          - {:window, map()} - Deprecated; sends immediately
           """
         ],
         policy: [
@@ -182,6 +185,66 @@ defmodule AshDispatch.Dsl.Sections do
           required: false,
           doc: """
           Template variant to use (e.g., :admin for admin-specific templates).
+          """
+        ],
+        locale: [
+          type: :string,
+          required: false,
+          doc: """
+          Static locale for this channel, whatever the record or the recipient
+          says (e.g. "sv" for a channel that is always read by the same office).
+          Highest priority in the locale chain.
+          """
+        ],
+        locale_from: [
+          type: :atom,
+          required: false,
+          doc: """
+          Field on the event's record to read the locale from (e.g.
+          :visitor_locale). A preference, not a constraint: when the field is
+          missing or nil the chain carries on to the recipient's locale and
+          then the event's.
+          """
+        ],
+        locales: [
+          type: {:list, :string},
+          default: [],
+          doc: """
+          Locales to generate templates for, when they differ from the
+          resource's or the event's.
+          """
+        ],
+        layout: [
+          type: {:or, [:atom, :string]},
+          required: false,
+          doc: """
+          Which layout wraps this channel's rendered body:
+          `priv/ash_dispatch/layouts/<layout>/<transport>.<ext>`, falling back
+          on the default layout for the transport. Unset, the default layout
+          is used — exactly what every channel did before 0.9.4.
+          """
+        ],
+        layout_from: [
+          type: :atom,
+          required: false,
+          doc: """
+          Field on the event's record to read the layout name from, for an
+          installation whose frame depends on the data (one brand per
+          customer, say). Only letters, digits, `_`, `-` and `.` are accepted:
+          the name becomes a directory.
+          """
+        ],
+        queue: [
+          type: :atom,
+          required: false,
+          doc: """
+          Which Oban queue this channel's send job runs in, instead of the
+          transport's (`config :ash_dispatch, email_queue:` and friends). For
+          a campaign that must not starve the booking confirmations behind it.
+
+          The queue has to exist in your Oban configuration — a name nothing
+          runs means jobs that are never picked up. The library logs once per
+          boot when it enqueues into a queue Oban is not running.
           """
         ],
         webhook_url: [

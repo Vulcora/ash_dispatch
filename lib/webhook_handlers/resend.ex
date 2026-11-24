@@ -155,6 +155,11 @@ defmodule AshDispatch.WebhookHandlers.Resend do
 
   defp decode_secret(_), do: {:error, :invalid_secret}
 
+  # The one time source in the library that is NOT `AshDispatch.Clock`, and
+  # the reason is the whole point of the check: this compares our wall clock
+  # against the SENDER's, to reject a replayed signature. A host clock that is
+  # frozen or travelled would let a stale signature through, or refuse a fresh
+  # one. `:now` is here for tests, as it has been.
   defp check_freshness(ts, opts) do
     tolerance = Keyword.get(opts, :tolerance_s, @default_tolerance_s)
     now = Keyword.get(opts, :now, System.system_time(:second))
@@ -228,7 +233,8 @@ defmodule AshDispatch.WebhookHandlers.Resend do
   """
   def process_webhook(params, opts \\ [])
 
-  def process_webhook(%{"type" => event_type, "data" => data} = params, opts) do
+  def process_webhook(%{"type" => event_type, "data" => data} = params, opts)
+      when is_map(data) do
     email_id = Map.get(data, "email_id")
     created_at = parse_timestamp(Map.get(params, "created_at"))
 
@@ -255,6 +261,10 @@ defmodule AshDispatch.WebhookHandlers.Resend do
     end
   end
 
+  # `"data": null` matched the clause above (the key IS there) and then
+  # `Map.get(nil, "email_id")` raised — a 500 and a stacktrace out of an
+  # endpoint a stranger can reach, where the documented answer is a 400. The
+  # guard above makes it this clause, which is the documented answer.
   def process_webhook(params, _opts) do
     Logger.warning("Resend webhook invalid format (keys: #{inspect(webhook_keys(params))})")
     {:error, :invalid_format}
@@ -358,6 +368,28 @@ defmodule AshDispatch.WebhookHandlers.Resend do
 
   # Resend echoes custom headers as a list of `%{"name" => _, "value" => _}`;
   # a map is accepted too, because a gateway in between may normalise them.
+  @doc """
+  The tenant tag in a webhook payload, or `nil`.
+
+  `config :ash_dispatch, webhook_tenant_tag: true` makes an outgoing message
+  carry `X-AshDispatch-Tenant`, and a provider that echoes headers sends it
+  back. Public so a caller can tell "this payload names a tenant" from "it
+  does not" BEFORE acting on it — `AshDispatch.Plugs.ResendWebhook` refuses a
+  request with no tag when the receipts are per tenant, because looking a
+  message id up in the wrong schema answers "not found" and a 200, which is
+  the webhook silently doing nothing.
+
+  Not every event carries headers: Resend's `opened` and `clicked` events do
+  not, and nor does any event about a message sent before the flag was
+  switched on.
+  """
+  @spec tenant_tag(map()) :: String.t() | nil
+  def tenant_tag(%{"data" => data}) when is_map(data), do: tenant_tag(data)
+
+  def tenant_tag(%{"headers" => headers}), do: header_value(headers, @tenant_header)
+
+  def tenant_tag(_params), do: nil
+
   defp header_value(headers, name) when is_list(headers) do
     Enum.find_value(headers, fn
       %{"name" => n, "value" => v} -> if downcase(n) == downcase(name), do: v
@@ -474,7 +506,7 @@ defmodule AshDispatch.WebhookHandlers.Resend do
   defp webhook_event_entry(event_type, data) do
     %{
       event_type =>
-        Map.put(data, "webhook_received_at", DateTime.utc_now() |> DateTime.to_iso8601())
+        Map.put(data, "webhook_received_at", AshDispatch.Clock.utc_now() |> DateTime.to_iso8601())
     }
   end
 

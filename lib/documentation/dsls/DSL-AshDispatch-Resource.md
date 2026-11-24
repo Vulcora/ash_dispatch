@@ -326,17 +326,54 @@ Channels define how and where the event is delivered.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `transport` | `atom` | ✅ | Transport type: `:email`, `:in_app`, `:broadcast`, `:discord`, `:slack`, `:sms`, `:webhook` |
+| `transport` | `atom` | ✅ | Transport type: `:email`, `:in_app`, `:broadcast`, `:discord`, `:slack`, `:sms`, `:webhook`, `:push` |
 | `audience` | `atom` | ✅ | Who receives this: `:user`, `:admin`, or custom audience |
-| `delay` | `integer` | ❌ | Delay in seconds before delivering (default: 0) |
+| `time` | `term` | ❌ | When to deliver: `:immediate`, `{:in, seconds}`, `{:at, %DateTime{}}`, `{:digest, window}` (email only — see the *Digests* guide). Default `{:in, 0}` |
+| `delay` | `integer` | ❌ | Delay in seconds before delivering (default: 0). The older spelling of `time: {:in, seconds}` |
 | `policy` | `atom` | ❌ | Delivery policy: `:always` or `:skip_if_read` (default: `:always`) |
 | `variant` | `atom` | ❌ | Template variant (e.g., `:admin` for `email.admin.html.heex`) |
 | `locale` | `string` | ❌ | Static locale override (e.g., `"sv"` - always use Swedish) |
 | `locale_from` | `atom` | ❌ | Field on record to extract locale from (e.g., `:visitor_locale`) |
 | `locales` | `[string]` | ❌ | Locales for template generation (defaults to resource/event locales) |
+| `layout` | `atom \| string` | ❌ | Which layout wraps the body: `priv/ash_dispatch/layouts/<layout>/<transport>.<ext>`, falling back on the default (since 0.9.4) |
+| `layout_from` | `atom` | ❌ | Field on record to read the layout name from, for one frame per brand (since 0.9.4) |
+| `queue` | `atom` | ❌ | Which Oban queue this channel's send job runs in, instead of the transport's (since 0.9.4). The queue must exist in your Oban config |
 | `webhook_url` | `string` | ❌ | Webhook URL (required for `:webhook` transport) |
 | `deduplicate_group` | `atom` | ❌ | Group channels for deduplication (see below) |
+| `idempotency_source` | `atom` | ❌ | For `:in_app`: the key in `data` naming the record that identifies the OCCURRENCE. **Set it whenever `data` carries more than one record with an `:id`** — see below |
+| `exclude_actor` | `boolean` | ❌ | Do not notify whoever triggered the event (default: `false`) |
 | `optional` | `boolean` | ❌ | Suppress warnings when no recipients found (default: `false`) |
+
+### `idempotency_source`
+
+The in-app transport keys each notification on the occurrence, so a retried
+job does not write a second one. Without `idempotency_source` the key falls
+back on a heuristic, and when `data` carries more than one record with an
+`:id` that heuristic can key on the **recipient** — which makes the event
+deliverable once per recipient for the lifetime of that recipient, and the
+second occurrence silently vanishes.
+
+```elixir
+channels: [
+  # `data` holds both the booking and the guest: say which one the
+  # notification is ABOUT.
+  [transport: :in_app, audience: :user, idempotency_source: :booking]
+]
+```
+
+### `exclude_actor`
+
+```elixir
+channels: [
+  # The person who commented does not need to be told they commented
+  [transport: :in_app, audience: :team, exclude_actor: true]
+]
+```
+
+For an action-triggered event that is the action's actor. For a manual
+dispatch it is the user found in `data`, and the dispatch's `:actor` too
+(since 0.9.0; `config :ash_dispatch, exclude_actor_on_manual_dispatch: false`
+keeps the 0.8.x behaviour).
 
 ### Deduplication with `deduplicate_group`
 
@@ -442,6 +479,11 @@ channels: [
 
 ### Channel Locale Examples
 
+Channel-level `locale`, `locale_from` and `locales` are carried through to the
+send from 0.9.4. Before that release the three fields were accepted and
+silently dropped on the way to the dispatcher, so the letter went out in the
+event's locale whatever the channel said.
+
 ```elixir
 channels: [
   # Customer email - locale from their visitor_locale field
@@ -457,6 +499,41 @@ channels: [
   [transport: :email, audience: :admin, variant: :admin, locale: "sv"]
 ]
 ```
+
+### Channel Layout Examples
+
+```elixir
+channels: [
+  # The default layout: priv/ash_dispatch/layouts/email.html.heex
+  [transport: :email, audience: :user],
+
+  # priv/ash_dispatch/layouts/urgent/email.html.heex
+  [transport: :email, audience: :admin, layout: :urgent],
+
+  # The frame named by the record: one per brand
+  [transport: :email, audience: :customer, layout_from: :brand]
+]
+```
+
+A layout name becomes a directory name, so only letters, digits, `_`, `-` and
+`.` are accepted; anything else is logged and the default layout is used. The
+same rule applies to `locale` and `variant`, which also become parts of a
+template filename.
+
+### Channel Queue Example
+
+```elixir
+channels: [
+  # A campaign that must not starve the booking confirmations behind it
+  [transport: :email, audience: :subscribers, queue: :bulk_emails],
+
+  # Still the transport's queue, which is where it always went
+  [transport: :email, audience: :user]
+]
+```
+
+See the *Oban configuration* guide for the per-transport setting
+(`email_queue:` and friends) that this overrides.
 
 ---
 

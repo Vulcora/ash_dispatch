@@ -64,6 +64,144 @@ defmodule AshDispatch.ReceiptStatus do
   end
 
   @doc """
+  Reclaims a receipt this job's own earlier attempt left in `:sending`
+  (`:sending` → `:sending`, through the `:resume_sending` action).
+
+  Not a mutex: `claim/2` decides when resuming is right. Use that.
+
+  `{:error, :unsupported}` for a receipt resource built before 0.9.4, which
+  has no `:resume_sending` action.
+  """
+  @spec resume_sending(struct()) :: {:ok, struct()} | {:error, term()}
+  def resume_sending(receipt) do
+    if resume_supported?(receipt) do
+      receipt
+      |> changeset(:resume_sending)
+      |> Ash.update(authorize?: false)
+      |> remember(receipt)
+    else
+      {:error, :unsupported}
+    end
+  end
+
+  @doc """
+  Whether `receipt`'s resource has the `:resume_sending` action at all.
+
+  `false` for every receipt resource built before 0.9.4. Public so a host can
+  tell "this release cannot reclaim an interrupted send" from "it chose not
+  to".
+  """
+  @spec resume_supported?(struct()) :: boolean()
+  def resume_supported?(receipt) do
+    resource = receipt.__struct__
+
+    Ash.Resource.Info.resource?(resource) and
+      not is_nil(Ash.Resource.Info.action(resource, :resume_sending))
+  rescue
+    _ -> false
+  end
+
+  @doc """
+  Claims a receipt for THIS delivery attempt, which is what a send worker
+  wants rather than `mark_sending/1` on its own.
+
+  Three answers:
+
+    * `{:ok, receipt}` — the receipt is `:sending` and yours. Deliver.
+    * `:duplicate` — it is in a state `:mark_sending` cannot leave, which
+      means another job has it. Complete as a success; nothing was lost.
+    * `{:error, reason}` — the update failed for some other reason. Let Oban
+      retry.
+
+  ## Why a receipt already in `:sending` is not simply refused
+
+  `mark_sending`'s source list has never included `:sending`, and that IS the
+  mutex: of two jobs for one receipt the loser is told "no matching
+  transition". But the same refusal meets a job whose OWN earlier attempt
+  marked the receipt `:sending` and then stopped without a result — the node
+  went down, or Oban's lifeline put the job back. Reading that as "somebody
+  else has this" completes the job green on a letter nobody sent, and leaves
+  the receipt in `:sending`, where no sweep looked before 0.9.4.
+
+  So: a receipt in `:sending` is reclaimed (`resume_sending/1`) when this is
+  not the job's first attempt, and treated as another job's work when it is.
+  `:attempt` is `Oban.Job`'s own counter; without one, every attempt is a
+  first attempt, which is the conservative reading.
+
+  ## Options
+
+  - `:attempt` - this job's attempt number (`%Oban.Job{}.attempt`)
+  - `:resume` - `true` forces the reclaim, `false` forbids it, whatever the
+    attempt. For a caller that knows better than the attempt counter does
+  """
+  @spec claim(struct(), keyword()) :: {:ok, struct()} | :duplicate | {:error, term()}
+  def claim(receipt, opts \\ []) do
+    if Map.get(receipt, :status) == :sending and resume?(opts) do
+      case resume_sending(receipt) do
+        {:ok, updated} ->
+          {:ok, updated}
+
+        # TWO causes, and only these two, mean "deliver from the receipt as it
+        # stands": a receipt resource from before 0.9.4, which has no
+        # `:resume_sending` action at all, and a host that narrowed the
+        # transition so `:sending` is not a source for it. In both the receipt
+        # is already `:sending` and this attempt owns it, which is what 0.9.2
+        # did for email before the decision had a name.
+        #
+        # Anything else — a validation the host added, a database that would
+        # not take the write, a tenant that could not be resolved — is a
+        # FAILURE, and answering `{:ok, receipt}` to it would send the letter
+        # with the receipt left behind saying something else. It propagates,
+        # and Oban retries without sending.
+        {:error, :unsupported} ->
+          {:ok, receipt}
+
+        {:error, reason} = error ->
+          if no_transition?(reason) do
+            {:ok, receipt}
+          else
+            error
+          end
+      end
+    else
+      claim_fresh(receipt)
+    end
+  end
+
+  # `AshStateMachine` reports a refused transition as this error inside an
+  # `Ash.Error.Invalid`; a host that narrowed `:resume_sending` is the case it
+  # stands for here.
+  defp no_transition?(%Ash.Error.Invalid{errors: errors}) do
+    Enum.any?(errors, &match?(%AshStateMachine.Errors.NoMatchingTransition{}, &1))
+  end
+
+  defp no_transition?(_reason), do: false
+
+  defp claim_fresh(receipt) do
+    case mark_sending(receipt) do
+      {:ok, updated} ->
+        {:ok, updated}
+
+      {:error, %Ash.Error.Invalid{errors: errors}} = error ->
+        if Enum.any?(errors, &match?(%AshStateMachine.Errors.NoMatchingTransition{}, &1)) do
+          :duplicate
+        else
+          error
+        end
+
+      error ->
+        error
+    end
+  end
+
+  defp resume?(opts) do
+    case Keyword.fetch(opts, :resume) do
+      {:ok, resume} when is_boolean(resume) -> resume
+      _ -> is_integer(Keyword.get(opts, :attempt)) and Keyword.get(opts, :attempt) > 1
+    end
+  end
+
+  @doc """
   Marks a receipt as "sent" (delivery successful).
 
   Stores provider response metadata for tracking and debugging.
@@ -162,6 +300,38 @@ defmodule AshDispatch.ReceiptStatus do
   end
 
   @doc """
+  Records which Oban job belongs to this receipt, without a transition.
+
+  For a transport that has to mark the receipt `:scheduled` BEFORE inserting
+  the job — the webhook, Slack and Discord transports do, because an inline
+  job runs inside `Oban.insert/1` and would race the transition — so the job
+  id can only be written afterwards. It goes through the primary `:update`
+  action, which accepts `:oban_job_id` and moves no state, so a receipt the
+  job has already carried to `:sent` is not disturbed.
+
+  Without the id the stranded sweep has no job to look up for that receipt and
+  decides on age alone (`AshDispatch.Workers.Stranded`), which is the gap this
+  closes.
+
+  Never raises: a receipt that could not be given its job id is a receipt the
+  sweep is more careful about, not a failed delivery.
+  """
+  @spec put_oban_job_id(struct(), integer() | nil) :: struct()
+  def put_oban_job_id(receipt, nil), do: receipt
+
+  def put_oban_job_id(receipt, job_id) do
+    receipt
+    |> changeset(:update, %{oban_job_id: job_id})
+    |> Ash.update(authorize?: false)
+    |> case do
+      {:ok, updated} -> Tenancy.remember(updated, Tenancy.of(receipt))
+      {:error, _reason} -> receipt
+    end
+  rescue
+    _ -> receipt
+  end
+
+  @doc """
   Marks a receipt as "scheduled" (job enqueued for later delivery).
 
   Optionally stores the Oban job ID for tracking.
@@ -179,14 +349,70 @@ defmodule AshDispatch.ReceiptStatus do
   @spec mark_scheduled(struct(), keyword()) :: struct()
   def mark_scheduled(receipt, opts \\ []) do
     attrs =
+      opts
+      |> Keyword.take([:oban_job_id, :scheduled_for])
+      |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+      |> Map.new()
+
+    receipt
+    |> changeset(:schedule, attrs)
+    |> Ash.update!(authorize?: false)
+    |> remember(receipt)
+  end
+
+  @doc """
+  Stops a delivery that has not gone yet (`:cancel`): the receipt becomes
+  `:skipped` with `reason`, and its Oban job is cancelled. `{:ok, receipt}`, or
+  `{:error, reason}` when the receipt is already on its way or done.
+  """
+  @spec cancel(struct(), String.t()) :: {:ok, struct()} | {:error, term()}
+  def cancel(receipt, reason) when is_binary(reason) do
+    receipt
+    |> changeset(:cancel, %{error_message: reason})
+    |> Ash.update(authorize?: false)
+    |> remember(receipt)
+  end
+
+  @doc """
+  Holds an email receipt for a digest (`:pending` → `:batched`), storing what
+  the digest needs under `content["digest"]`. See `AshDispatch.Digest`.
+  """
+  @spec batch(struct(), map()) :: {:ok, struct()} | {:error, term()}
+  def batch(receipt, digest) when is_map(digest) do
+    receipt
+    |> changeset(:batch, %{digest: digest})
+    |> Ash.update(authorize?: false)
+    |> remember(receipt)
+  end
+
+  @doc """
+  Sends a batched receipt on its own after all (`:batched` → `:scheduled`):
+  it was the only email in its digest window.
+  """
+  @spec release(struct(), keyword()) :: {:ok, struct()} | {:error, term()}
+  def release(receipt, opts \\ []) do
+    attrs =
       case Keyword.get(opts, :oban_job_id) do
         nil -> %{}
         job_id -> %{oban_job_id: job_id}
       end
 
     receipt
-    |> changeset(:schedule, attrs)
-    |> Ash.update!(authorize?: false)
+    |> changeset(:release, attrs)
+    |> Ash.update(authorize?: false)
+    |> remember(receipt)
+  end
+
+  @doc """
+  Marks a batched receipt as delivered inside the digest `digest_receipt_id`
+  (`:batched` → `:digested`). Fails when the receipt is no longer batched,
+  which is what keeps one email out of two digests.
+  """
+  @spec mark_digested(struct(), term()) :: {:ok, struct()} | {:error, term()}
+  def mark_digested(receipt, digest_receipt_id) do
+    receipt
+    |> changeset(:mark_digested, %{digest_receipt_id: to_string(digest_receipt_id)})
+    |> Ash.update(authorize?: false)
     |> remember(receipt)
   end
 

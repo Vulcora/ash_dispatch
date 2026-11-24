@@ -1336,11 +1336,62 @@ defmodule AshDispatch.Dispatcher do
           end
       end
 
+    base_content =
+      put_transport_body(base_content, context, channel, event_config, module, recipient)
+
     # Add policy to content if present on channel
     if channel.policy do
       Map.put(base_content, :policy, to_string(channel.policy))
     else
       base_content
+    end
+  end
+
+  # The body from a transport's own template file (`sms.text.eex`,
+  # `slack.text.eex`, …), for a transport that is not email.
+  #
+  # ONE place, after the module and inline content have been merged, because
+  # the rule is about the merged answer: **a template fills a body the host
+  # never wrote, and never overrides one it did.** So an inline
+  # `content: [message: ...]`, a DSL `notification_message:`, or a module that
+  # overrides `notification_message/2` all win over a file — and the
+  # placeholder `use AshDispatch.Event` answers when nothing was declared
+  # ("You have a new notification") loses to one.
+  #
+  # The alternative, a file beating a callback, was what 0.9.4 first did. It
+  # meant a host that upgraded and changed nothing could get a different SMS,
+  # which is not a thing a patch may do.
+  defp put_transport_body(content, context, channel, event_config, module, recipient) do
+    # `:message` OR `:notification_message`: Slack and Discord carry the body
+    # under both (see their branches above), and either one being declared
+    # means the host said what the body is.
+    declared? =
+      EventResolver.declared?(module, :notification_message, Map.get(content, :message)) or
+        EventResolver.declared?(
+          module,
+          :notification_message,
+          Map.get(content, :notification_message)
+        )
+
+    if declared? do
+      content
+    else
+      case render_transport_body(context, channel, event_config, module, recipient) do
+        nil ->
+          content
+
+        body ->
+          # BOTH keys, for the same reason the branches above write both: the
+          # transports read `:notification_message` for the one required text
+          # field of their payload, and `AshDispatch.Preview` renders a
+          # non-email channel's body from `:message`. A template that landed
+          # under one of them only would have rendered in the preview and
+          # arrived empty, or the other way round — which is the bug this
+          # release already had to fix once for a declared body.
+          content
+          |> Map.put(:message, body)
+          |> Map.put(:notification_message, body)
+      end
     end
   end
 
@@ -1483,28 +1534,59 @@ defmodule AshDispatch.Dispatcher do
           # `maybe_put` rather than a literal key: `interpolate(nil, _)`
           # returns `nil`, and a `%{message: nil}` would overwrite the module
           # callback's text with nothing in hybrid mode. See `:webhook` below.
-          %{}
-          |> maybe_put(
-            :message,
+          #
+          # BOTH keys carry the body, and the reason is the transport:
+          # `AshDispatch.Transports.Discord` builds its `"content"` — the one
+          # required field of a Discord webhook payload — from
+          # `get_content(content, :notification_message)`, which is also the
+          # "Expected content structure" its moduledoc documents. A branch that
+          # wrote only `:message` therefore sent a payload whose text was
+          # `nil`: the declared body reached the receipt and never reached
+          # Discord. `:message` stays because the receipt is read by more than
+          # the transport — `AshDispatch.Preview` renders a non-email channel's
+          # body from it.
+          #
+          # `AshDispatch.Workers.ScrubSensitiveContent` subtracts both names,
+          # and has to: a `sensitive_content: true` event with a Slack or
+          # Discord channel would otherwise keep its text past the retention
+          # window under whichever key the scrub did not know.
+          text =
             interpolate(
               content_config[:message] || content_config[:notification_message],
               context
             )
-          )
+
+          %{}
+          |> maybe_put(:message, text)
+          |> maybe_put(:notification_message, text)
+          # The mention options too: an inline event's `content:` is where a
+          # host declares them, and copying only the body and the URL meant
+          # `discord_suppress_mentions` and `discord_allowed_mentions` were
+          # accepted in the DSL and silently dropped on the way to the
+          # payload. `maybe_put`, so a channel that declares neither carries
+          # neither — which is what rc.5 sent.
+          |> maybe_put(:discord_suppress_mentions, content_config[:discord_suppress_mentions])
+          |> maybe_put(:discord_allowed_mentions, content_config[:discord_allowed_mentions])
           |> Map.put(:webhook_url, channel.webhook_url)
 
         :slack ->
           # `maybe_put` rather than a literal key: `interpolate(nil, _)`
           # returns `nil`, and a `%{message: nil}` would overwrite the module
           # callback's text with nothing in hybrid mode. See `:webhook` below.
-          %{}
-          |> maybe_put(
-            :message,
+          #
+          # Both keys, for the reason spelled out under `:discord` above:
+          # `AshDispatch.Transports.Slack` reads
+          # `get_content(content, :notification_message)` for the payload's
+          # `"text"`, and `:message` alone left that `nil`.
+          text =
             interpolate(
               content_config[:message] || content_config[:notification_message],
               context
             )
-          )
+
+          %{}
+          |> maybe_put(:message, text)
+          |> maybe_put(:notification_message, text)
           |> Map.put(:webhook_url, channel.webhook_url)
 
         :sms ->
@@ -1601,6 +1683,127 @@ defmodule AshDispatch.Dispatcher do
     Map.merge(base_content, transport_content)
   end
 
+  # Transports with no body of their own: `:broadcast` reaches a PubSub topic
+  # and `:oban` a queue, neither of which renders anything for a person.
+  @bodyless_transports [:broadcast, :oban]
+
+  # The body for a transport that is not email, from a template file where the
+  # host wrote one (`sms.text.eex`, `slack.text.eex`, …).
+  #
+  # The resolver has always built its candidates as `#{transport}.#{extension}`
+  # and could therefore always have found these; the dispatcher only ever
+  # called it with `transport: :email`, so a host with an `sms.text.eex` had a
+  # file that rendered nothing and no way to tell. Several did.
+  #
+  # `nil` when no template exists, which is every installation that has not
+  # written one — and `nil` through `maybe_put/3` leaves whatever the content
+  # callbacks said, so nothing moves for them.
+  #
+  # TWO things keep that promise true, and both were wrong in 0.9.4's first
+  # attempt:
+  #
+  #   * `fallback?: false`. The candidate list normally ends with
+  #     `default.<ext>`, the documented "ultimate fallback" that until now only
+  #     EMAIL could reach. A host's `default.text.eex` is its generic LETTER:
+  #     read as an SMS it is several paid segments, and as an in-app
+  #     notification it is an email in a bell menu. Only a name that says the
+  #     transport — `sms.text.eex` — is a body somebody wrote for it.
+  #   * lazy assigns. `prepare_template_assigns/2` is host code, and it must
+  #     not run on every dispatch of every non-email channel just to discover
+  #     there is no template. The function below is called by the resolver only
+  #     after a template has been found.
+  defp render_transport_body(
+         _context,
+         %{transport: transport},
+         _event_config,
+         _module,
+         _recipient
+       )
+       when transport in [:email | @bodyless_transports] do
+    nil
+  end
+
+  defp render_transport_body(context, channel, event_config, module, recipient) do
+    locale = resolve_channel_locale(channel, context, recipient)
+    layout = resolve_channel_layout(channel, context)
+    variant = channel.variant || variant_for(module, context, channel)
+
+    assigns = fn ->
+      case module do
+        nil ->
+          Context.template_assigns(context)
+
+        module ->
+          module
+          |> safe_prepare_template_assigns(context, channel)
+          |> Map.merge(Context.template_assigns(context))
+      end
+    end
+
+    located =
+      case module do
+        nil ->
+          otp_app = get_otp_app(context)
+
+          [
+            template_path: event_config[:template_path],
+            event_id: context.event_id,
+            otp_app: otp_app,
+            domain: event_config[:domain],
+            resource_name: event_config[:resource_name]
+          ]
+
+        module ->
+          otp_app = derive_otp_app_from_event_id(context.event_id)
+
+          [
+            event_module: module,
+            event_dir: derive_event_dir_from_module(module, otp_app),
+            otp_app: otp_app
+          ]
+      end
+
+    case AshDispatch.TemplateResolver.render(
+           located ++
+             [
+               format: :text,
+               transport: channel.transport,
+               variant: variant,
+               locale: locale,
+               layout: layout,
+               fallback?: false,
+               assigns: assigns
+             ]
+         ) do
+      {:ok, rendered} ->
+        # The trailing newline every text file ends with. For an email body it
+        # is invisible and the receipt's `:string` casting trims it anyway; an
+        # SMS pays for characters, and a Slack or Discord message renders a
+        # blank line. Only the trailing whitespace: a template that formats
+        # with leading indentation meant it.
+        String.trim_trailing(rendered)
+
+      {:error, :template_not_found} ->
+        nil
+
+      # strict_templates: a refused template is not "no body".
+      {:error, %AshDispatch.TemplateError{} = error} ->
+        raise error
+
+      {:error, error} ->
+        Logger.warning(
+          "Failed to render #{channel.transport} template for #{context.event_id}: #{inspect(error)}"
+        )
+
+        nil
+    end
+  end
+
+  defp variant_for(nil, _context, _channel), do: nil
+
+  defp variant_for(module, context, channel),
+    do: EventResolver.template_variant(module, context, channel)
+
   # Render email templates for inline DSL events
   defp render_inline_email_templates(context, channel, event_config, recipient) do
     # Get template configuration
@@ -1615,6 +1818,9 @@ defmodule AshDispatch.Dispatcher do
     # Locale priority: channel.locale > channel.locale_from (dynamic) >
     # recipient.locale > context.locale
     locale = resolve_channel_locale(channel, context, recipient)
+    # Which layout wraps the body: channel.layout, or channel.layout_from read
+    # off the record. nil is the transport's default layout.
+    layout = resolve_channel_layout(channel, context)
 
     # Prepare template assigns
     assigns = Context.template_assigns(context)
@@ -1633,6 +1839,7 @@ defmodule AshDispatch.Dispatcher do
              transport: :email,
              variant: variant,
              locale: locale,
+             layout: layout,
              assigns: assigns
            ) do
         {:ok, rendered} ->
@@ -1663,6 +1870,7 @@ defmodule AshDispatch.Dispatcher do
              transport: :email,
              variant: variant,
              locale: locale,
+             layout: layout,
              assigns: assigns
            ) do
         {:ok, rendered} ->
@@ -1807,6 +2015,7 @@ defmodule AshDispatch.Dispatcher do
           # Locale priority: channel.locale > channel.locale_from (dynamic) >
           # recipient.locale > context.locale
           locale = resolve_channel_locale(channel, context, recipient)
+          layout = resolve_channel_layout(channel, context)
 
           # Prepare template assigns using EventResolver
           base_assigns = safe_prepare_template_assigns(module, context, channel)
@@ -1846,6 +2055,7 @@ defmodule AshDispatch.Dispatcher do
                        transport: :email,
                        variant: variant,
                        locale: locale,
+                       layout: layout,
                        assigns: assigns_with_subject
                      ) do
                   {:ok, rendered} -> rendered
@@ -1864,6 +2074,7 @@ defmodule AshDispatch.Dispatcher do
                        transport: :email,
                        variant: variant,
                        locale: locale,
+                       layout: layout,
                        assigns: assigns_with_subject
                      ) do
                   {:ok, rendered} -> rendered
@@ -1910,6 +2121,25 @@ defmodule AshDispatch.Dispatcher do
             notification_type: get_notification_type(module, context)
           }
 
+        transport when transport in [:slack, :discord] ->
+          # The other half of the same mismatch the inline branches carried.
+          # These two transports read the body from `:notification_message` —
+          # Slack's `"text"`, Discord's `"content"` — and both fell through to
+          # the catch-all below, which writes `:message` only. So a module-based
+          # Slack or Discord event posted a payload whose text was `nil`, and
+          # `notification_message/2` returning the right string changed nothing
+          # about what arrived.
+          #
+          # One branch for both: they differ in the name of the field, not in
+          # where it comes from.
+          #
+          # Both keys, as in the inline branches, so the two paths cannot
+          # disagree about which one holds the body when `Map.merge/2` puts
+          # them together in hybrid mode.
+          text = module.notification_message(context, channel)
+
+          %{message: text, notification_message: text}
+
         :webhook ->
           # The same keys as `:in_app`, and for the same reason: the receiver
           # renders a CARD. Until 0.8.0 a module-based webhook event could only
@@ -1927,7 +2157,7 @@ defmodule AshDispatch.Dispatcher do
           }
 
         _ ->
-          # For other transports, use basic message
+          # For other transports, use basic message.
           %{
             message: module.notification_message(context, channel)
           }
@@ -2128,11 +2358,42 @@ defmodule AshDispatch.Dispatcher do
 
   defp apply_channel_load(context, _channel), do: context
 
-  # Always resolve event module at runtime via EventResolver
-  # Compile-time resolution is unreliable due to module compilation order
-  # (event modules compile after resources, so Code.ensure_loaded? fails)
+  # The event's module: the one its config names, and otherwise the registry's
+  # for this event id.
+  #
+  # The registry lookup stays the general answer, because most configs name no
+  # module: the DSL transformer derives the module NAME at compile time, when
+  # the event modules have not been compiled yet and `Code.ensure_loaded?`
+  # says no, so it persists `module: nil` and the registry — which derives the
+  # same name at runtime, when it does load — is what finds it. Compile-time
+  # resolution is unreliable for exactly that reason.
   # Warning is only logged in dispatch_event.ex on first resolution failure
-  defp resolve_event_module(_event_config, context) do
+  #
+  # But a config that DOES name a module names the only module there is, and
+  # the registry has no say in it: a caller that builds its own context and
+  # event config — the documented `dispatch_channel/3` path — has no registry
+  # entry to be found, and until this read `:module`, its `recipients/2` was
+  # never called. The dispatch fell through to audience-based resolution and
+  # reached nobody, so an event had to be registered on a resource just to
+  # have its recipients resolved. The same config was already trusted for the
+  # event's `should_send?/2` guard (`channel_should_send?/3`).
+  #
+  # A name that does not load is no module at all — the derived name of an
+  # event module the host never wrote reaches the config the same way — so it
+  # falls back as before. Nothing else is asked of it: the registry's module is
+  # not validated either, and every callback on it goes through
+  # `EventResolver.call_if_exported/4`.
+  defp resolve_event_module(event_config, context) do
+    case event_config[:module] do
+      module when is_atom(module) and not is_nil(module) ->
+        if Code.ensure_loaded?(module), do: module, else: registry_event_module(context)
+
+      _other ->
+        registry_event_module(context)
+    end
+  end
+
+  defp registry_event_module(context) do
     case EventResolver.find_module(context.event_id) do
       {:ok, m} -> m
       {:error, :not_found} -> nil
@@ -2173,6 +2434,65 @@ defmodule AshDispatch.Dispatcher do
       true ->
         context.locale
     end
+  end
+
+  # Resolve the layout for a channel:
+  # 1. channel.layout — named on the channel
+  # 2. channel.layout_from — read off the event's record
+  # 3. nil — the transport's default layout, which is what every channel got
+  #    before 0.9.4
+  #
+  # The name becomes a path segment in
+  # `priv/ash_dispatch/layouts/<layout>/<transport>.<ext>`, and `layout_from`
+  # reads an arbitrary record field, so the value is CHECKED rather than
+  # trusted: a record whose column held "../../../../etc" would otherwise
+  # render a file outside the layouts directory.
+  @doc false
+  def resolve_channel_layout(channel, context) do
+    raw =
+      Map.get(channel, :layout) ||
+        case Map.get(channel, :layout_from) do
+          nil -> nil
+          field -> record_layout(context, field)
+        end
+
+    safe_layout(raw)
+  end
+
+  defp record_layout(context, field) do
+    case Map.get(context.data, context.resource_key) do
+      record when is_map(record) -> RecordReader.safe_get(record, field)
+      _ -> nil
+    end
+  end
+
+  @layout_name ~r/^[A-Za-z0-9_\-.]+$/
+
+  defp safe_layout(nil), do: nil
+
+  defp safe_layout(layout) when is_atom(layout), do: safe_layout(Atom.to_string(layout))
+
+  defp safe_layout(layout) when is_binary(layout) do
+    cond do
+      layout == "" ->
+        nil
+
+      Regex.match?(@layout_name, layout) and layout not in [".", ".."] ->
+        layout
+
+      true ->
+        Logger.warning(
+          "[AshDispatch] ignoring layout #{inspect(layout)}: a layout name is a directory " <>
+            "name, so only letters, digits, _, - and . are accepted"
+        )
+
+        nil
+    end
+  end
+
+  defp safe_layout(other) do
+    Logger.warning("[AshDispatch] ignoring layout #{inspect(other)}: not a name")
+    nil
   end
 
   # Extract `:locale` from a recipient struct/map. Returns nil if the

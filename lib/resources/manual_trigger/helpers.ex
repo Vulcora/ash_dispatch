@@ -356,6 +356,12 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
   resolves it, then rendered by `AshDispatch.Preview` — the send path's own
   renderer — and returned in the maps the `:preview` action has always
   returned.
+
+  ## Options
+
+  - `:tenant` - the tenant the event sees, and the schema a record is read from
+  - `:locale` - render in this locale (since 0.9.4)
+  - `:variant` - only render channels with this template variant (since 0.9.4)
   """
   def preview_trigger(event_id, context_data, channel_filter, recipient_email, actor, opts \\ []) do
     tenant = Keyword.get(opts, :tenant)
@@ -370,6 +376,7 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
                  event_id,
                  source,
                  preview_opts(channel_filter, recipient_email, actor) ++
+                   render_opts(opts) ++
                    if(tenant, do: [tenant: tenant], else: [])
                ) do
           {:ok, Enum.map(rendered, &to_preview_map/1)}
@@ -420,6 +427,21 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
     data_key && String.to_atom("#{data_key}_id")
   end
 
+  # `:locale` and `:variant`, when the caller named them. Left out entirely
+  # when it did not: `Preview.render/3` treats a `variant: nil` as "the channel
+  # has no variant" rather than "any variant", so passing it would quietly
+  # change which channels a preview without a variant returns.
+  defp render_opts(opts) do
+    [:locale, :variant]
+    |> Enum.flat_map(fn key ->
+      case Keyword.get(opts, key) do
+        value when is_binary(value) and value != "" -> [{key, value}]
+        value when is_atom(value) and not is_nil(value) -> [{key, value}]
+        _ -> []
+      end
+    end)
+  end
+
   defp preview_opts(channel_filter, recipient_email, actor) do
     (channel_filter || %{})
     |> Enum.to_list()
@@ -456,7 +478,13 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
       audience: rendered.audience,
       transport: rendered.transport,
       notification_title: if(email?, do: nil, else: rendered.title),
-      notification_message: if(email?, do: nil, else: rendered.message)
+      notification_message: if(email?, do: nil, else: rendered.message),
+      # Which locale and variant this row actually is, so a panel that offers
+      # the two arguments can show what came back rather than what it asked
+      # for — they differ whenever a channel or a recipient has a locale of
+      # its own.
+      locale: rendered.locale,
+      variant: rendered.variant && to_string(rendered.variant)
     }
     |> then(fn map -> if rendered.error, do: Map.put(map, :error, rendered.error), else: map end)
   end
@@ -906,6 +934,7 @@ defmodule AshDispatch.Resources.ManualTrigger.Helpers do
   defp format_time(nil), do: "immediate"
   defp format_time({:in, seconds}), do: "delayed (#{seconds}s)"
   defp format_time({:at, %DateTime{} = dt}), do: "scheduled (#{DateTime.to_iso8601(dt)})"
+  defp format_time({:digest, window}), do: "digest (#{inspect(window)})"
   defp format_time(_), do: "unknown"
 
   defp get_required_context(event_id) do

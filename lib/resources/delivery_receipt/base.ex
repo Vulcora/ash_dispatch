@@ -47,6 +47,13 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
   - `:tenant_column` - `true` adds a nullable `tenant` column (since 0.9.4),
     for a host that keeps receipts in the public schema and still wants to know
     which tenant a receipt was for.
+  - `:reason_codes` - `true` makes `:skip`, `:mark_failed` and
+    `:mark_failed_permanent` merge `content["reason_code"]` into the row, so
+    the reasons a letter was held back can be counted in SQL (since 0.9.4).
+    **Off by default**: it is a write on three actions that did not write
+    before, and `AshDispatch.Reason.of/1` gives you the counting without it by
+    classifying the sentence. With it off these three actions are exactly what
+    they were in 0.9.4-rc.5, atomic included.
   - `:primary_key` - `:uuid` (the default, unchanged) or `:uuid_v7`. The v7
     key's migration default is `uuid_generate_v7()`, which your database must
     have; `:uuid` uses `gen_random_uuid()`, which is built in. See
@@ -94,6 +101,47 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
     # action in this base, which the consumer cannot edit.
     extra_notifiers = Keyword.get(opts, :notifiers, [])
     table = Keyword.get(opts, :table, "delivery_receipts")
+
+    # `reason_codes: true` makes `:skip`, `:mark_failed` and
+    # `:mark_failed_permanent` merge `content["reason_code"]` into the row, so
+    # the reasons can be counted in SQL. OFF by default: it is a write on
+    # three actions that did not write before, and `AshDispatch.Reason.of/1`
+    # gives a host the counting without it by classifying the sentence. An
+    # option here rather than application config because an action is
+    # compiled.
+    reason_codes? = Keyword.get(opts, :reason_codes, false) == true
+
+    # Spliced AST, not a list walked by a comprehension: a Spark DSL entity is
+    # added at COMPILE time, so a `for` inside the block adds nothing.
+    # The change alone, for `:mark_failed`, which has declared
+    # `require_atomic? false` since before 0.9.
+    reason_code_change =
+      if reason_codes? do
+        quote do
+          change {AshDispatch.Changes.PutReasonCode, []}
+        end
+      else
+        quote do
+        end
+      end
+
+    # And with the flag, for the two that were atomic. Only with the option
+    # ON: the change registers an after_action hook (see
+    # `AshDispatch.Changes.PutReasonCode` for why the merge cannot ride inside
+    # the action's own statement). With the option off these two stay exactly
+    # as atomic as they were in 0.9.4-rc.5, which is what a host's
+    # `Ash.bulk_update(query, :skip, …)` depends on.
+    reason_code_change_non_atomic =
+      if reason_codes? do
+        quote do
+          require_atomic? false
+          change {AshDispatch.Changes.PutReasonCode, []}
+        end
+      else
+        quote do
+        end
+      end
+
     all_extensions = [AshStateMachine] ++ extra_extensions
 
     # 0.9.4. Absent — which is every host before it — the resource declares no
@@ -138,6 +186,13 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
         extensions: unquote(all_extensions),
         notifiers: unquote(extra_notifiers)
 
+      @doc false
+      # This base declares no counters, events or metas of its own — see
+      # `AshDispatch.Resources.Base`. Stated rather than left to
+      # `function_exported?/3`, so that a counter added here later cannot
+      # silently start deciding `sdk: :if_events` for every host.
+      def __ash_dispatch_base_content__, do: %{counters: []}
+
       unquote(multitenancy_block)
 
       postgres do
@@ -158,7 +213,17 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
         initial_states([:pending])
         default_initial_state(:pending)
         state_attribute(:status)
-        extra_states([:sending, :sent, :failed_permanent, :skipped, :scheduled, :failed])
+
+        extra_states([
+          :sending,
+          :sent,
+          :failed_permanent,
+          :skipped,
+          :scheduled,
+          :failed,
+          :batched,
+          :digested
+        ])
 
         transitions do
           transition(:schedule, from: :pending, to: :scheduled)
@@ -169,7 +234,31 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
           # makes Oban's own backoff retries effective (they arrive while the
           # receipt sits on `:failed`). See the ordering note in
           # `AshDispatch.Workers.RetryFailedDeliveries`.
-          transition(:mark_sending, from: [:scheduled, :pending, :failed], to: :sending)
+          #
+          # `:batched` too: "send now" on an email waiting for a digest sends it
+          # on its own. If the digest gets to it first, the worker finds it
+          # `:digested`, which it cannot leave, and completes as a duplicate.
+          transition(:mark_sending, from: [:scheduled, :pending, :failed, :batched], to: :sending)
+
+          # `:sending` is deliberately NOT a source for `:mark_sending`. Its
+          # source list IS the mutex: two jobs for one receipt race here, the
+          # loser is told "no matching transition", and the workers read that
+          # as "somebody else is sending this" and complete as a duplicate.
+          # `AshDispatch.ReceiptStatus`'s own moduledoc teaches that pattern,
+          # so a host's transport worker may be relying on it too.
+          #
+          # `:resume_sending` is the move out of `:sending` that was missing.
+          # It is the same state, re-entered on purpose: a worker that finds a
+          # receipt its OWN earlier attempt left in `:sending` (the node went
+          # down between this transition and the provider) claims it again
+          # rather than completing green on a letter nobody sent. Re-entering
+          # also refreshes `updated_at`, which is the age the stranded sweep
+          # reads — without it a resumed send looks equally stranded on the
+          # next pass.
+          #
+          # `AshDispatch.ReceiptStatus.claim/2` is the only caller, and it
+          # decides which of the two a given attempt gets.
+          transition(:resume_sending, from: :sending, to: :sending)
           transition(:mark_sent, from: [:sending, :scheduled, :pending, :failed], to: :sent)
           transition(:mark_failed, from: [:sending, :scheduled, :pending], to: :failed)
 
@@ -178,7 +267,8 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
             to: :failed_permanent
           )
 
-          transition(:skip, from: [:pending, :scheduled, :sending], to: :skipped)
+          transition(:skip, from: [:pending, :scheduled, :sending, :batched], to: :skipped)
+          transition(:cancel, from: [:pending, :scheduled, :batched], to: :skipped)
           transition(:retry, from: :failed, to: :scheduled)
 
           # `:failed_permanent` was a dead end. Nothing led out of it, and the
@@ -191,6 +281,16 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
           # starts ONLY from `:failed_permanent`, so a receipt that actually
           # reached its recipient can never be re-sent through it.
           transition(:reopen, from: :failed_permanent, to: :scheduled)
+
+          # Digests (`AshDispatch.Digest`). `:batched` waits for the
+          # recipient's window; `:release` sends a lone email as itself;
+          # `:digested` is terminal and means "delivered inside the digest
+          # whose receipt id is in `content["digest"]["receipt_id"]`" — the
+          # digest receipt carries the outcome, so counting `:sent` counts
+          # emails that reached an inbox, once each.
+          transition(:batch, from: :pending, to: :batched)
+          transition(:release, from: :batched, to: :scheduled)
+          transition(:mark_digested, from: :batched, to: :digested)
         end
       end
 
@@ -249,7 +349,17 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
           allow_nil?: false,
           public?: true,
           constraints: [
-            one_of: [:pending, :scheduled, :sending, :sent, :failed, :failed_permanent, :skipped]
+            one_of: [
+              :pending,
+              :scheduled,
+              :sending,
+              :sent,
+              :failed,
+              :failed_permanent,
+              :skipped,
+              :batched,
+              :digested
+            ]
           ]
 
         attribute :recipient, :string, allow_nil?: false, public?: true
@@ -270,6 +380,14 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
         attribute :body_html, :string, allow_nil?: true, public?: true
         attribute :content, :map, default: %{}, allow_nil?: false, public?: true
         attribute :oban_job_id, :integer, allow_nil?: true, public?: true
+
+        attribute :scheduled_for, :utc_datetime_usec,
+          allow_nil?: true,
+          public?: true,
+          description:
+            "When the receipt's job is due to send it: set when the receipt moves to " <>
+              ":scheduled, from the job's own scheduled_at. Nil when not known."
+
         attribute :error_message, :string, allow_nil?: true, public?: true
         attribute :retry_count, :integer, default: 0, allow_nil?: false, public?: true
 
@@ -335,6 +453,13 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
         # a host that does not ask for it needs no migration.
         unquote(tenant_attribute)
 
+        # NOT on `AshDispatch.Clock`, deliberately. Ash's `timestamps` macro
+        # defaults both to the capture `&DateTime.utc_now/0`, which is the
+        # exact value ash_postgres matches on to write
+        # `DEFAULT (now() AT TIME ZONE 'utc')` into the migration. Anything
+        # else there makes the next `mix ash.codegen` in every host emit an
+        # `ALTER COLUMN ... DROP DEFAULT`, and a patch may not require a
+        # migration. BACKLOG 13 keeps it for 0.10.0.
         timestamps(public?: true)
       end
 
@@ -474,12 +599,52 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
         end
 
         update :schedule do
-          accept [:oban_job_id, :notification_id]
+          accept [:oban_job_id, :notification_id, :scheduled_for]
           change transition_state(:scheduled)
+        end
+
+        update :cancel do
+          description """
+          Stop a delivery that has not gone yet: the receipt is :skipped with the
+          reason, and its Oban job is cancelled so it never runs. Only a receipt
+          that is :pending, :scheduled or :batched; one that is :sending is
+          already on its way and cannot be called back.
+          """
+
+          require_atomic? false
+          accept [:error_message]
+          validate attribute_in(:status, [:pending, :scheduled, :batched])
+          change transition_state(:skipped)
+          change {AshDispatch.Changes.CancelJob, []}
         end
 
         update :mark_sending do
           change transition_state(:sending)
+        end
+
+        update :resume_sending do
+          description "Reclaim a receipt an interrupted attempt of this job left in :sending"
+          # Not atomic, and the timestamp is FORCED, for one reason: Ash writes
+          # `updated_at` only when an attribute actually changes, and moving
+          # `:sending` to `:sending` changes nothing. Without this the age the
+          # stranded sweep reads never moves, so a receipt resumed every few
+          # minutes still looks hours stranded and gets rescued or closed
+          # underneath the attempt that is sending it.
+          #
+          # It IS a write where rc.5 made none, and an email job resumes by
+          # default, so this is a real change for a host whose notifier watches
+          # receipt updates: an interrupted email attempt now emits one update
+          # notification per resumption. The changelog says so.
+          require_atomic? false
+          change transition_state(:sending)
+
+          change fn changeset, _context ->
+            Ash.Changeset.force_change_attribute(
+              changeset,
+              :updated_at,
+              AshDispatch.Clock.utc_now()
+            )
+          end
         end
 
         update :mark_sent do
@@ -489,7 +654,7 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
 
           change fn changeset, _ ->
             changeset
-            |> Ash.Changeset.change_attribute(:sent_at, DateTime.utc_now())
+            |> Ash.Changeset.change_attribute(:sent_at, AshDispatch.Clock.utc_now())
             |> Ash.Changeset.change_attribute(:error_message, nil)
           end
         end
@@ -498,6 +663,12 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
           require_atomic? false
           accept [:error_message, :provider_response]
           change transition_state(:failed)
+
+          # `content["reason_code"]`, only with `reason_codes: true`. The
+          # change merges the one key server side rather than writing back a
+          # content map, so a scrub that lands in between is not undone. See
+          # `AshDispatch.Reason`.
+          unquote(reason_code_change)
 
           # Deliberately does NOT touch retry_count/last_retry_at: a failure
           # is not a retry. Only the :retry action increments the counter —
@@ -508,11 +679,35 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
         update :mark_failed_permanent do
           accept [:error_message, :provider_response]
           change transition_state(:failed_permanent)
+          unquote(reason_code_change_non_atomic)
         end
 
         update :skip do
           accept [:error_message]
           change transition_state(:skipped)
+          unquote(reason_code_change_non_atomic)
+        end
+
+        update :batch do
+          description "Hold an email for the recipient's digest instead of sending it now"
+          require_atomic? false
+          argument :digest, :map, allow_nil?: false
+          change transition_state(:batched)
+          change {AshDispatch.Changes.PutDigest, []}
+        end
+
+        update :release do
+          description "Send a batched email on its own: it was alone in its digest window"
+          accept [:oban_job_id, :scheduled_for]
+          change transition_state(:scheduled)
+        end
+
+        update :mark_digested do
+          description "A batched email went out inside a digest"
+          require_atomic? false
+          argument :digest_receipt_id, :string, allow_nil?: false
+          change transition_state(:digested)
+          change {AshDispatch.Changes.PutDigest, []}
         end
 
         update :retry do
@@ -527,7 +722,7 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
 
             changeset
             |> Ash.Changeset.change_attribute(:retry_count, retry_count + 1)
-            |> Ash.Changeset.change_attribute(:last_retry_at, DateTime.utc_now())
+            |> Ash.Changeset.change_attribute(:last_retry_at, AshDispatch.Clock.utc_now())
           end
 
           # Enqueue a new Oban job to process this retry
@@ -575,7 +770,7 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
           change fn changeset, _ ->
             changeset
             |> Ash.Changeset.change_attribute(:retry_count, 0)
-            |> Ash.Changeset.change_attribute(:last_retry_at, DateTime.utc_now())
+            |> Ash.Changeset.change_attribute(:last_retry_at, AshDispatch.Clock.utc_now())
           end
 
           change {AshDispatch.Changes.EnqueueRetryJob, []}
@@ -614,16 +809,18 @@ defmodule AshDispatch.Resources.DeliveryReceipt.Base do
             end
           end
 
-          # Only allow from scheduled state (or pending if stuck)
+          # Only allow from scheduled state (or pending if stuck), or for an
+          # email waiting for its digest, which is then sent on its own.
           validate fn changeset, _context ->
             status = Ash.Changeset.get_attribute(changeset, :status)
 
-            if status in [:scheduled, :pending] do
+            if status in [:scheduled, :pending, :batched] do
               :ok
             else
               {:error,
                field: :status,
-               message: "Can only send now from scheduled or pending state, current: #{status}"}
+               message:
+                 "Can only send now from scheduled, pending or batched state, current: #{status}"}
             end
           end
 

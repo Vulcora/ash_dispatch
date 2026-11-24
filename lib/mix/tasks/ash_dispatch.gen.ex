@@ -82,14 +82,27 @@ defmodule Mix.Tasks.AshDispatch.Gen do
   rather than as "unset" (0.9.4-rc.2; before that it fell through as falsy and
   the SDK was generated anyway).
 
-  The third value generates the SDK only when there is something to put in it:
+  The third value generates the SDK only when there is something of the
+  host's own to put in it:
 
       config :ash_dispatch, sdk: :if_events
 
-  "Something" is any event, counter, `resource_meta` or `entity_changes` block
-  in the host's resources. It is opt-in rather than the default because a host
-  that has none of those has been getting the client's static files since
-  0.8.0, and a patch release does not stop writing files a host already has.
+  "Something of the host's own" is any event, counter, `resource_meta` or
+  `entity_changes` block the host declared. What this library's own `Base`
+  macros declare does not count — `Notification.Base` brings an
+  `unread_notifications` counter, so counting that made `:if_events` mean
+  `:always` for every host with an in-app inbox (#50, fixed in 0.9.4-rc.4).
+
+  It is opt-in rather than the default because a host that has none of those
+  has been getting the client's static files since 0.8.0, and a patch release
+  does not stop writing files a host already has.
+
+  If you *want* the client because of the bell — `useCounter`,
+  `NotificationBell`, `useNotifications` all read the base's counter — then
+  `:if_events` is the wrong switch for you, because an inbox is not an event.
+  Say so directly instead:
+
+      config :ash_dispatch, sdk: true        # or leave it out; this is the default
 
   See the [Code Generation guide](lib/documentation/topics/code-generation.md) for details.
   """
@@ -133,20 +146,45 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     resource_metas = discover_resource_metas(otp_app)
     entity_change_resources = discover_entity_change_resources(otp_app)
 
+    # The counters the HOST declared, which is not all of them: every host
+    # using `Notification.Base` has the base's own `unread_notifications`,
+    # and in 0.9.4-rc.2 that counted — so `sdk: :if_events` was `:always` for
+    # anyone with an in-app inbox (#50). See `AshDispatch.Resources.Base`.
+    host_counters = Enum.reject(counters, & &1.from_base?)
+
     # Whether the SDK has anything of the host's to describe. Only consulted
-    # under `sdk: :if_events`; see `sdk_setting/1`.
+    # under `sdk: :if_events`; see `sdk_setting/1`. `resource_metas` and
+    # `entity_change_resources` need no filtering: no base declares either.
     sdk_content? =
-      events != [] or counters != [] or resource_metas != [] or entity_change_resources != []
+      events != [] or host_counters != [] or resource_metas != [] or
+        entity_change_resources != []
 
     sdk_enabled = typescript_sdk_enabled?(otp_app, sdk_content?)
 
-    # Warn if no events or counters found (common misconfiguration)
+    # Warn if no events or counters found (common misconfiguration). Asked of
+    # ALL the counters on purpose, the base's included: a host with an in-app
+    # inbox and no events is not misconfigured, and this warning has been
+    # quiet for it since 0.9.0. `:if_events` is the only decision that changed.
     warn_if_no_dispatch_resources(otp_app, events, counters)
 
     if opts[:verbose] do
       Mix.shell().info(
         "Found #{length(events)} events, #{length(counters)} counters, #{length(resource_metas)} resource metas, #{length(entity_change_resources)} entity change resources"
       )
+
+      # Said out loud, because "Found 0 events, 1 counters" on a host that
+      # declared none is what made rc.2's `:if_events` look like a bug in the
+      # config rather than in the question.
+      case length(counters) - length(host_counters) do
+        0 ->
+          :ok
+
+        from_base ->
+          Mix.shell().info(
+            "  #{from_base} of those counters come from AshDispatch's own bases, " <>
+              "not from this app; `sdk: :if_events` does not count them"
+          )
+      end
 
       if sdk_enabled do
         Mix.shell().info("TypeScript SDK output: #{sdk_base_path(otp_app)}")
@@ -356,6 +394,8 @@ defmodule Mix.Tasks.AshDispatch.Gen do
       |> List.last()
       |> Macro.underscore()
 
+    base_counters = AshDispatch.Resources.Base.counters(resource)
+
     case Spark.Dsl.Extension.get_entities(resource, [:counters]) do
       [] ->
         []
@@ -368,7 +408,11 @@ defmodule Mix.Tasks.AshDispatch.Gen do
             group: counter.group || :ungrouped,
             audience: counter.audience,
             global?: Map.get(counter, :global?, false),
-            invalidates: counter.invalidates || []
+            invalidates: counter.invalidates || [],
+            # Declared by one of this library's `Base` macros rather than by
+            # the host. Read only by `sdk: :if_events`; the counter is
+            # generated into the client either way.
+            from_base?: counter.name in base_counters
           }
         end)
     end
@@ -976,6 +1020,10 @@ defmodule Mix.Tasks.AshDispatch.Gen do
     1
   end
 
+  # The `Generated at:` banners below stay on `DateTime.utc_now/0` rather than
+  # `AshDispatch.Clock`: they are build-time text in a generated file, and
+  # nothing stores or compares them. A host's clock has no business deciding
+  # what a code generator writes into a comment.
   defp generate_events_typescript_content(events) do
     event_ids =
       events
@@ -1492,7 +1540,8 @@ defmodule Mix.Tasks.AshDispatch.Gen do
   #
   #   * `:off`       — `sdk: false`, or `sdk_output_path: false`
   #   * `:if_events` — `sdk: :if_events`, generate only when the host has
-  #                    events, counters, resource metas or entity changes
+  #                    declared events, counters, resource metas or entity
+  #                    changes OF ITS OWN (see `AshDispatch.Resources.Base`)
   #   * `:always`    — unset, or `sdk: true`. What every release before
   #                    0.9.4-rc.2 did, and still the default.
   #
@@ -1523,7 +1572,7 @@ defmodule Mix.Tasks.AshDispatch.Gen do
 
       sdk: true         # generate the TypeScript SDK (the default; leave it out)
       sdk: false        # generate nothing, and let `--check` pass with no files
-      sdk: :if_events   # generate only when this app has events or counters
+      sdk: :if_events   # only when this app declares events or counters of its own
 
     `sdk_output_path: false` is accepted as another spelling of `sdk: false`.
     """
@@ -1547,9 +1596,15 @@ defmodule Mix.Tasks.AshDispatch.Gen do
 
   defp sdk_disabled_reason(otp_app) do
     case sdk_setting(otp_app) do
-      :off -> "config :ash_dispatch, sdk: false"
-      :if_events -> "sdk: :if_events, and this app has no events or counters"
-      :always -> "ash_typescript not configured"
+      :off ->
+        "config :ash_dispatch, sdk: false"
+
+      :if_events ->
+        "sdk: :if_events, and this app declares no events, counters, resource " <>
+          "metas or entity changes of its own — AshDispatch's own bases do not count"
+
+      :always ->
+        "ash_typescript not configured"
     end
   end
 

@@ -87,9 +87,17 @@ defmodule AshDispatch.Transports.Email do
     # evaluates one verdict per person — reading `context.user` here applied
     # the event subject's verdict to all N.
     Preferences.with_consent(receipt, context, channel, event_config, fn ->
-      result = enqueue_email_job_for_receipt(receipt, context, channel)
+      # A channel with `time: {:digest, window}` holds the email for the
+      # recipient's digest instead of enqueuing it (`AshDispatch.Digest`). The
+      # consent above has already been given, exactly as for a send now.
+      case AshDispatch.Digest.window_for(receipt, context, channel, event_config) do
+        nil ->
+          result = enqueue_email_job_for_receipt(receipt, context, channel)
+          {:ok, update_receipt_with_job(receipt, result, channel)}
 
-      {:ok, update_receipt_with_job(receipt, result, channel)}
+        window ->
+          AshDispatch.Digest.batch(receipt, window, context, channel)
+      end
     end)
   rescue
     error ->
@@ -111,9 +119,14 @@ defmodule AshDispatch.Transports.Email do
     # Calculate schedule time
     schedule_in = schedule_seconds(channel)
 
-    # Enqueue Oban job
+    # Enqueue Oban job. The channel's own `queue:` wins over the transport's
+    # configured one (`AshDispatch.Transport.Queue`); without one the list is
+    # empty and the worker's `__opts__` decides, as it always has.
     job_changeset =
-      AshDispatch.Workers.SendEmail.new(args, schedule_in: schedule_in)
+      AshDispatch.Workers.SendEmail.new(
+        args,
+        [schedule_in: schedule_in] ++ AshDispatch.Transport.Queue.opts(channel)
+      )
 
     case Oban.insert(job_changeset) do
       {:ok, job} ->
@@ -236,13 +249,29 @@ defmodule AshDispatch.Transports.Email do
   # Public-but-undocumented so the encode → decode round-trip is testable
   # without an Oban instance.
   def resolve_attachments(context, channel) do
-    event_attachments =
-      case EventResolver.find_module(context.event_id) do
-        {:ok, module} -> EventResolver.attachments(module, context, channel)
-        _ -> []
-      end
+    Enum.map(default_attachments() ++ event_attachments(context, channel), &encode_attachment/1)
+  end
 
-    Enum.map(default_attachments() ++ event_attachments, &encode_attachment/1)
+  @doc false
+  # The event's own attachments (`attachments/2`), not encoded. An email that
+  # has any is never held for a digest: they exist only in the send job's
+  # args, and a batched email has no job until it is released.
+  def event_attachments(context, channel) do
+    case EventResolver.find_module(Map.get(context, :event_id)) do
+      {:ok, module} -> EventResolver.attachments(module, context, channel)
+      _ -> []
+    end
+  end
+
+  @doc false
+  # Job args carrying the app-wide `default_email_attachments` (an inline
+  # logo a shared layout references), for a send that has no original job to
+  # carry them from: a released or digest email. `%{}` when there are none.
+  def default_attachment_args do
+    case default_attachments() do
+      [] -> %{}
+      attachments -> %{"attachments" => Enum.map(attachments, &encode_attachment/1)}
+    end
   end
 
   # App-wide attachments included in EVERY outgoing email, configured as
@@ -304,7 +333,10 @@ defmodule AshDispatch.Transports.Email do
           {:ok, current_receipt} ->
             if current_receipt.status in [:pending] do
               # Only schedule if still pending
-              AshDispatch.ReceiptStatus.mark_scheduled(current_receipt, oban_job_id: job.id)
+              AshDispatch.ReceiptStatus.mark_scheduled(current_receipt,
+                oban_job_id: job.id,
+                scheduled_for: job.scheduled_at
+              )
             else
               # Already processed (inline mode) - just return current state
               Logger.debug(
@@ -337,19 +369,26 @@ defmodule AshDispatch.Transports.Email do
   end
 
   defp get_from_field(receipt) do
+    # Through `ContentMap`, like the reply address and the headers beside it:
+    # `content` is a JSONB column, so a receipt read back from the database has
+    # `"from"` and not `:from`. Read as `receipt.content[:from]` alone, the
+    # lookup missed on every reloaded receipt and the event's own sender was
+    # silently replaced by the configured default.
+    from = AshDispatch.ContentMap.get_content(receipt.content, :from)
+
     cond do
       # From field stored as map with name/email (from event module)
-      is_map(receipt.content[:from]) ->
-        receipt.content[:from]
+      is_map(from) ->
+        from
 
       # From field is a tuple {name, email} - convert to map for JSON serialization
-      is_tuple(receipt.content[:from]) ->
-        {name, email} = receipt.content[:from]
+      is_tuple(from) ->
+        {name, email} = from
         %{"name" => name, "email" => email}
 
       # From field is a string email address
-      is_binary(receipt.content[:from]) ->
-        receipt.content[:from]
+      is_binary(from) ->
+        from
 
       # Fallback to configured default
       true ->
@@ -374,6 +413,10 @@ defmodule AshDispatch.Transports.Email do
     |> Channel.calculate_delay()
     |> max(0)
   end
+
+  # A digest channel never reaches the scheduler: its emails are batched (or,
+  # when the digest does not apply, sent now).
+  def schedule_seconds(%Channel{time: {:digest, _window}}), do: 0
 
   def schedule_seconds(%Channel{time: {:window, _window}}) do
     Channel.warn_window_deprecated()

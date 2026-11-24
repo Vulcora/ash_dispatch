@@ -107,7 +107,7 @@ defmodule AshDispatch.Test.Schema do
     keys = Enum.map_join(identity.keys, ", ", &~s("#{&1}"))
 
     repo.query!(
-      "create unique index #{identity.name}_#{suffix(prefix)} " <>
+      "create unique index #{identity.name}_#{table(resource)}_#{suffix(prefix)} " <>
         "on #{qualified(resource, prefix)} (#{keys})" <>
         if(identity.nils_distinct? == false, do: " nulls not distinct", else: "") <>
         if(where, do: " where (#{where})", else: "")
@@ -123,6 +123,10 @@ defmodule AshDispatch.Test.Schema do
   defp suffix(nil), do: "public_idx"
   defp suffix(prefix), do: "#{prefix}_idx"
 
+  # The table is part of the index name because two resources in the SAME
+  # schema can declare an identity of the same name — `DeliveryReceipt.Base`'s
+  # `:oban_job`, on every receipt resource a fixture builds from it — and
+  # Postgres index names are per schema, not per table.
   defp table(resource), do: AshPostgres.DataLayer.Info.table(resource)
 
   defp qualified(resource, nil), do: ~s("#{table(resource)}")
@@ -145,4 +149,16 @@ defmodule AshDispatch.Test.Schema do
           "AshDispatch.Test.Schema does not know the Postgres type for #{inspect(other)}. " <>
             "Add it — guessing would make the fixture lie about the real table."
   end
+end
+
+defmodule AshDispatch.Test.ObanMigration do
+  @moduledoc """
+  Oban's own tables, for the one test that needs a real job id:
+  `Oban.Engines.Inline` never assigns one (`id: nil`), so a test about a
+  receipt recording WHICH job it has cannot use it.
+  """
+  use Ecto.Migration
+
+  def up, do: Oban.Migration.up()
+  def down, do: Oban.Migration.down(version: 1)
 end

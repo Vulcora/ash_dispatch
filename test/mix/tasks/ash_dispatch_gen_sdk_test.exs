@@ -39,6 +39,9 @@ defmodule Mix.Tasks.AshDispatch.GenSdkTest do
     keys = [:sdk, :sdk_output_path, :domains]
     previous = Map.new(keys, &{&1, Application.fetch_env(:ash_dispatch, &1)})
     previous_scoped = Application.fetch_env(@otp_app, :ash_dispatch)
+    # `AshDispatch.Introspection` reads the app's OWN `:ash_domains` and not
+    # `config :ash_dispatch, :domains`, so an events test has to set that one.
+    previous_domains = Application.fetch_env(@otp_app, :ash_domains)
 
     # `package.json` here makes this directory the "frontend root": it is what
     # `.prettierignore` is written beside, and without it that half of the
@@ -52,6 +55,7 @@ defmodule Mix.Tasks.AshDispatch.GenSdkTest do
     on_exit(fn ->
       Enum.each(previous, fn {key, value} -> restore(:ash_dispatch, key, value) end)
       restore(@otp_app, :ash_dispatch, previous_scoped)
+      restore(@otp_app, :ash_domains, previous_domains)
     end)
 
     %{sdk_dir: Path.join([tmp_dir, "src", "lib", "ash-dispatch"])}
@@ -196,6 +200,114 @@ defmodule Mix.Tasks.AshDispatch.GenSdkTest do
       end
 
       assert {:ok, []} = generate(check: true)
+    end
+
+    # The report from the host that took rc.2: `:if_events` was `:always` for
+    # them, because `Notification.Base` declares the `unread_notifications`
+    # counter and rc.2 counted every counter it found. "Something to generate
+    # for" means something the HOST declared (#50).
+    test "the three bases and nothing else: still nothing", %{sdk_dir: sdk_dir} do
+      Application.put_env(:ash_dispatch, :domains, [AshDispatch.Test.SdkBases.Domain])
+
+      assert {:ok, []} = generate()
+
+      assert written(sdk_dir) == []
+      assert {:ok, []} = generate(check: true)
+    end
+
+    test "the bases' counter is found — it just does not decide this" do
+      Application.put_env(:ash_dispatch, :domains, [AshDispatch.Test.SdkBases.Domain])
+
+      output = capture_io(fn -> Gen.generate(@otp_app, verbose: true) end)
+
+      # The number rc.2 printed, which is still true.
+      assert output =~ "Found 0 events, 1 counters"
+      # And the sentence that explains why it generated nothing anyway.
+      assert output =~ "come from AshDispatch's own bases"
+      assert output =~ "SDK generation disabled"
+    end
+
+    test "one counter of the host's own: the SDK", %{sdk_dir: sdk_dir} do
+      Application.put_env(:ash_dispatch, :domains, [AshDispatch.Test.SdkOwnCounter.Domain])
+
+      assert_raise Ash.Error.Framework.PendingCodegen, fn -> generate(check: true) end
+
+      assert {:ok, []} = generate()
+
+      for file <- @static_sdk ++ ["types.ts"] do
+        assert File.exists?(Path.join(sdk_dir, file)), "#{file} was not generated"
+      end
+
+      # And the base's counter is still described in it: what counts as a
+      # reason to generate changed, not what is generated.
+      types = File.read!(Path.join(sdk_dir, "types.ts"))
+      assert types =~ "open_tickets"
+      assert types =~ "unread_notifications"
+    end
+
+    test "one event of the host's own: the SDK", %{sdk_dir: sdk_dir} do
+      Application.put_env(@otp_app, :ash_domains, [AshDispatch.Test.SdkOneEvent.Domain])
+
+      assert_raise Ash.Error.Framework.PendingCodegen, fn -> generate(check: true) end
+
+      assert {:ok, []} = generate()
+
+      for file <- @static_sdk ++ ["events.ts"] do
+        assert File.exists?(Path.join(sdk_dir, file)), "#{file} was not generated"
+      end
+
+      # The id the generator derives from the resource and the event name.
+      assert File.read!(Path.join(sdk_dir, "events.ts")) =~ "ticket.opened"
+    end
+  end
+
+  # `true` and `false` must be exactly what they were. A host that uses the
+  # in-app bell needs the client FOR the base's counter — `NotificationBell`
+  # and `useNotifications` read it — so `sdk: true` is how that host says so,
+  # and `:if_events` is the wrong switch for it.
+  describe "true and false are unchanged" do
+    test "sdk: true generates for a host with only the bases", %{sdk_dir: sdk_dir} do
+      Application.put_env(:ash_dispatch, :sdk_output_path, sdk_dir)
+      Application.put_env(:ash_dispatch, :sdk, true)
+      Application.put_env(:ash_dispatch, :domains, [AshDispatch.Test.SdkBases.Domain])
+
+      assert {:ok, []} = generate()
+
+      for file <- @static_sdk do
+        assert File.exists?(Path.join(sdk_dir, file)), "#{file} was not generated"
+      end
+    end
+
+    test "sdk: false generates nothing for a host with its own counter", %{sdk_dir: sdk_dir} do
+      Application.put_env(:ash_dispatch, :sdk_output_path, sdk_dir)
+      Application.put_env(:ash_dispatch, :sdk, false)
+      Application.put_env(:ash_dispatch, :domains, [AshDispatch.Test.SdkOwnCounter.Domain])
+
+      assert {:ok, []} = generate()
+      assert written(sdk_dir) == []
+    end
+  end
+
+  describe "AshDispatch.Resources.Base" do
+    alias AshDispatch.Resources.Base
+
+    test "names what each base declared, so the host's own can be told apart" do
+      assert Base.counters(AshDispatch.Test.SdkBases.Notification) == [:unread_notifications]
+      assert Base.counters(AshDispatch.Test.SdkBases.Preference) == []
+      assert Base.counters(AshDispatch.Test.SdkBases.Receipt) == []
+
+      assert Base.counter?(AshDispatch.Test.SdkBases.Notification, :unread_notifications)
+      refute Base.counter?(AshDispatch.Test.SdkBases.Notification, :open_tickets)
+    end
+
+    test "a resource the host wrote itself declares nothing of ours" do
+      assert Base.counters(AshDispatch.Test.SdkOwnCounter.Ticket) == []
+      refute Base.counter?(AshDispatch.Test.SdkOwnCounter.Ticket, :open_tickets)
+    end
+
+    test "a module that is not a resource at all is not an error" do
+      assert Base.counters(Enum) == []
+      assert Base.counters(AshDispatch.Test.NoSuchModule) == []
     end
   end
 

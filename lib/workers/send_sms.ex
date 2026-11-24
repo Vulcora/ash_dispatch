@@ -41,6 +41,15 @@ defmodule AshDispatch.Workers.SendSMS do
       states: [:available, :scheduled, :executing, :retryable]
     ]
 
+  # The queue is read at runtime rather than baked in by `use Oban.Worker`, so
+  # a host can put this transport's sends on a queue of its own without a fork
+  # — and so a campaign's channel can name a third queue through `queue:` on
+  # the channel, which `new/2` merges over this.
+  @impl Oban.Worker
+  def __opts__ do
+    Keyword.put(super(), :queue, AshDispatch.Transport.Queue.for_transport(:sms))
+  end
+
   alias AshDispatch.Config
   alias AshDispatch.ContentMap
   alias AshDispatch.Delivery
@@ -51,10 +60,10 @@ defmodule AshDispatch.Workers.SendSMS do
   require Logger
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: args}) do
+  def perform(%Oban.Job{args: args} = job) do
     case AshDispatch.Tenancy.Job.receipt(args) do
       {:ok, receipt} ->
-        process_sms(receipt)
+        process_sms(receipt, job.attempt)
 
       {:cancel, reason} ->
         {:cancel, reason}
@@ -72,7 +81,7 @@ defmodule AshDispatch.Workers.SendSMS do
     %{"receipt_id" => receipt.id} |> AshDispatch.Tenancy.Job.put_tenant(receipt) |> new()
   end
 
-  defp process_sms(receipt) do
+  defp process_sms(receipt, attempt) do
     # Terminal state: a duplicate job should finish as success, not as a second
     # message. Same early exit as SendEmail.
     if receipt.status in [:sent, :skipped, :failed_permanent] do
@@ -88,12 +97,12 @@ defmodule AshDispatch.Workers.SendSMS do
           :ok
 
         :send ->
-          send_or_refuse(receipt)
+          send_or_refuse(receipt, attempt)
       end
     end
   end
 
-  defp send_or_refuse(receipt) do
+  defp send_or_refuse(receipt, attempt) do
     case {backend(), refusal(receipt)} do
       {nil, _refusal} ->
         ReceiptStatus.mark_skipped(receipt, "transport_not_implemented")
@@ -105,7 +114,7 @@ defmodule AshDispatch.Workers.SendSMS do
         {:cancel, reason}
 
       {backend, nil} ->
-        send_with(backend, receipt)
+        send_with(backend, receipt, attempt)
     end
   end
 
@@ -131,30 +140,47 @@ defmodule AshDispatch.Workers.SendSMS do
     end
   end
 
-  defp send_with(backend, receipt) do
-    case ReceiptStatus.mark_sending(receipt) do
-      {:ok, receipt} ->
-        deliver(backend, receipt)
+  defp send_with(backend, receipt, attempt) do
+    # `resume:` explicitly, and FALSE by default for SMS: before 0.9.4 this
+    # worker logged "likely duplicate job" and answered `:ok` without sending,
+    # so resuming by default would mean a host that upgrades and changes
+    # nothing can get a second text message. `config :ash_dispatch,
+    # sms_resume_interrupted: true` asks for it.
+    resume? = Config.resume_interrupted?(:sms)
+
+    case ReceiptStatus.claim(receipt,
+           attempt: attempt,
+           resume: resume? and attempt_after?(attempt)
+         ) do
+      {:ok, claimed} ->
+        if receipt.status == :sending do
+          Logger.warning(
+            "Receipt #{receipt.id} was left in :sending by an earlier attempt of this job, sending now"
+          )
+        end
+
+        deliver(backend, claimed)
+
+      # Another job got there first. Same reasoning as SendEmail: a race over
+      # one receipt is not an error, it is a duplicate.
+      :duplicate ->
+        Logger.info(
+          "Receipt #{receipt.id} state transition conflict (likely duplicate job), completing as success"
+        )
+
+        :ok
 
       {:error, %Ash.Error.Invalid{errors: errors}} ->
-        # Another job got there first. Same reasoning as SendEmail: a race over
-        # one receipt is not an error, it is a duplicate.
-        if Enum.any?(errors, &match?(%AshStateMachine.Errors.NoMatchingTransition{}, &1)) do
-          Logger.info(
-            "Receipt #{receipt.id} state transition conflict (likely duplicate job), completing as success"
-          )
-
-          :ok
-        else
-          Logger.error("Receipt #{receipt.id} update failed: #{inspect(errors)}")
-          {:error, errors}
-        end
+        Logger.error("Receipt #{receipt.id} update failed: #{inspect(errors)}")
+        {:error, errors}
 
       {:error, reason} ->
         Logger.error("Receipt #{receipt.id} mark_sending failed: #{inspect(reason)}")
         {:error, reason}
     end
   end
+
+  defp attempt_after?(attempt), do: is_integer(attempt) and attempt > 1
 
   # The backend owns its own receipt: it knows which failures are permanent
   # (malformed number, bad credentials) and which are worth retrying, so it

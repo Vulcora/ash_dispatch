@@ -132,6 +132,12 @@ defmodule AshDispatch.ChannelResolver do
   - `%AshDispatch.Dsl.Channel{}` - converted to runtime Channel
   - Maps with channel fields
   - Keyword lists with channel fields
+
+  Every field the runtime `AshDispatch.Channel` has is carried, `locale`,
+  `locale_from` and `locales` included. Until 0.9.4 those three were dropped
+  here by all three clauses, while `Dispatcher.resolve_channel_locale/3` read
+  them and three guides taught declaring them — so a channel-level locale was
+  silently the event's.
   """
   @spec to_channel_struct(term()) :: Channel.t()
   def to_channel_struct(%Channel{} = channel), do: channel
@@ -143,6 +149,12 @@ defmodule AshDispatch.ChannelResolver do
       time: dsl_channel.time || {:in, 0},
       policy: dsl_channel.policy || :always,
       variant: dsl_channel.variant,
+      locale: dsl_channel.locale,
+      locale_from: dsl_channel.locale_from,
+      locales: dsl_channel.locales || [],
+      layout: dsl_channel.layout,
+      layout_from: dsl_channel.layout_from,
+      queue: dsl_channel.queue,
       webhook_url: dsl_channel.webhook_url,
       deduplicate_group: dsl_channel.deduplicate_group,
       idempotency_source: dsl_channel.idempotency_source,
@@ -162,6 +174,12 @@ defmodule AshDispatch.ChannelResolver do
       time: extract_time(channel),
       policy: Map.get(channel, :policy, :always),
       variant: Map.get(channel, :variant),
+      locale: Map.get(channel, :locale),
+      locale_from: Map.get(channel, :locale_from),
+      locales: Map.get(channel, :locales) || [],
+      layout: Map.get(channel, :layout),
+      layout_from: Map.get(channel, :layout_from),
+      queue: Map.get(channel, :queue),
       webhook_url: Map.get(channel, :webhook_url),
       deduplicate_group: Map.get(channel, :deduplicate_group),
       idempotency_source: Map.get(channel, :idempotency_source),
@@ -181,6 +199,12 @@ defmodule AshDispatch.ChannelResolver do
       time: extract_time(channel),
       policy: Keyword.get(channel, :policy, :always),
       variant: Keyword.get(channel, :variant),
+      locale: Keyword.get(channel, :locale),
+      locale_from: Keyword.get(channel, :locale_from),
+      locales: Keyword.get(channel, :locales) || [],
+      layout: Keyword.get(channel, :layout),
+      layout_from: Keyword.get(channel, :layout_from),
+      queue: Keyword.get(channel, :queue),
       webhook_url: Keyword.get(channel, :webhook_url),
       deduplicate_group: Keyword.get(channel, :deduplicate_group),
       idempotency_source: Keyword.get(channel, :idempotency_source),
@@ -235,6 +259,7 @@ defmodule AshDispatch.ChannelResolver do
       nil -> {:in, 0}
       {:in, _} = time -> time
       {:at, _} = time -> time
+      {:digest, _} = time -> time
       seconds when is_integer(seconds) -> {:in, seconds}
       _ -> {:in, 0}
     end
@@ -245,6 +270,7 @@ defmodule AshDispatch.ChannelResolver do
       nil -> {:in, 0}
       {:in, _} = time -> time
       {:at, _} = time -> time
+      {:digest, _} = time -> time
       seconds when is_integer(seconds) -> {:in, seconds}
       _ -> {:in, 0}
     end

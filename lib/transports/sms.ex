@@ -97,7 +97,10 @@ defmodule AshDispatch.Transports.SMS do
     changeset =
       %{"receipt_id" => receipt.id}
       |> put_tenant(Tenancy.of(receipt))
-      |> AshDispatch.Workers.SendSMS.new(schedule_in: Email.schedule_seconds(channel))
+      |> AshDispatch.Workers.SendSMS.new(
+        [schedule_in: Email.schedule_seconds(channel)] ++
+          AshDispatch.Transport.Queue.opts(channel)
+      )
 
     case Oban.insert(changeset) do
       {:ok, job} ->
@@ -125,7 +128,7 @@ defmodule AshDispatch.Transports.SMS do
       {:ok, %{status: :pending} = current} ->
         current
         |> Tenancy.remember(tenant)
-        |> ReceiptStatus.mark_scheduled(oban_job_id: job.id)
+        |> ReceiptStatus.mark_scheduled(oban_job_id: job.id, scheduled_for: job.scheduled_at)
 
       {:ok, current} ->
         Logger.debug(

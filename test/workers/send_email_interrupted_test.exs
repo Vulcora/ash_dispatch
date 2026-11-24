@@ -75,7 +75,7 @@ defmodule AshDispatch.Workers.SendEmailInterruptedTest do
       |> Enum.sort()
     end
 
-    for action <- [:mark_sending, :mark_sent, :mark_failed] do
+    for action <- [:mark_sending, :resume_sending, :mark_sent, :mark_failed] do
       assert sources.(StrictReceipt, action) == sources.(RealReceipt, action),
              "#{action} differs between the stand-in and DeliveryReceipt.Base"
     end

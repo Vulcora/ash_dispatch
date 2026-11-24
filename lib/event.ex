@@ -388,8 +388,57 @@ defmodule AshDispatch.Event do
 
         %{customer: %{name: Enum.at(names, rem(seed, length(names)))}}
       end
+
+  ## Sample variables (since 0.9.4)
+
+  A preview never runs `generate_send_variables/2` — that is where events mint
+  reset tokens and invitation links, and a preview must create none — so a
+  letter whose template prints such a variable had nowhere to get a plausible
+  one. The only way round it was to smuggle the variables into the data under
+  a key and unpack them again on the rendering side.
+
+  Answer both instead:
+
+      def sample_data(seed: _seed) do
+        %{
+          data: %{user: %{email: "alva@example.com"}},
+          variables: %{reset_url: "https://example.test/reset/sample-token"}
+        }
+      end
+
+  A caller's own `variables:` still wins over these. The form is recognised by
+  its keys being **exactly** `:data` and `:variables` — both of them, so write
+  `variables: %{}` when there are none. An event whose own data key happens to
+  be `:data` is then still the old form, and its record is not mistaken for a
+  wrapper.
   """
   @callback sample_data(keyword()) :: map()
+
+  @doc """
+  What this event is, in words, for the page where somebody picks a letter to
+  send.
+
+  Optional, and deliberately NOT defaulted by `use AshDispatch.Event`: an
+  event that does not write one is listed exactly as it was before 0.9.4,
+  with `nil` where this would be. Surfaced by `AshDispatch.Preview.events/0`
+  and by `AshDispatch.Resources.EventCatalogue`.
+
+  Every field is optional prose. See `AshDispatch.Event.Catalogue`.
+
+  ## Example
+      @impl true
+      def catalogue do
+        %{
+          name: "Booking reminder",
+          description: "Sent the day before a booking, to the guest.",
+          trigger: "Automatically, 24 hours before the start time.",
+          audience: "The guest who made the booking.",
+          group: "Bookings",
+          instruction: "Send by hand only if the guest says they never got it."
+        }
+      end
+  """
+  @callback catalogue() :: map() | keyword()
 
   @doc """
   Counters to broadcast when this event creates notifications.
@@ -654,6 +703,29 @@ defmodule AshDispatch.Event do
   @callback gate(info :: AshDispatch.Gate.Info.t()) ::
               true | false | nil | :ok | {:ok, boolean()} | {false, String.t()} | {:error, term()}
 
+  @doc """
+  What this email contributes to a digest (`time: {:digest, window}` on the
+  channel, see `AshDispatch.Digest`). Optional.
+
+  Return a map; string or atom keys. The default renderer reads `title`,
+  `summary`, `url` and `label` (the link's text); a host renderer may read
+  anything else it puts here. Missing keys fall back to the email's subject
+  (`title`) and the first paragraph of its text body (`summary`).
+
+  Called once, when the email is batched — the item is stored on the receipt
+  like the rest of the letter, so the digest says what the event said then.
+
+      def digest_item(context, _channel) do
+        %{
+          title: "Order \#{context.data.order.number} shipped",
+          summary: "Tracking: \#{context.data.order.tracking_number}",
+          url: order_url(context.data.order),
+          label: "Track the parcel"
+        }
+      end
+  """
+  @callback digest_item(context(), channel()) :: map()
+
   # Optional advanced callbacks
   @callback template_variant(context(), channel()) :: atom() | nil
   @callback should_send?(context(), channel()) :: boolean()
@@ -677,9 +749,14 @@ defmodule AshDispatch.Event do
     action_url: 2,
     extra_content: 2,
     attachments: 2,
+    digest_item: 2,
     prepare_template_assigns: 2,
     sample_data: 0,
     sample_data: 1,
+    # Not defaulted by the `use` macro on purpose: `function_exported?` has to
+    # tell "this event describes itself" from "this event does not", and a
+    # default would make every event answer an empty description.
+    catalogue: 0,
     headers: 2,
     generate_send_variables: 2,
     source_url: 2,
@@ -1012,6 +1089,18 @@ defmodule AshDispatch.Event do
 
       defp __static_notification_title, do: "Notification"
       defp __static_notification_message, do: "You have a new notification"
+
+      @doc false
+      # The placeholder this macro answers when NOTHING was declared — no DSL
+      # `notification_message`, no override. `AshDispatch.EventResolver` asks
+      # so that a transport template can fill a body the host never wrote,
+      # and never one it did. Stated rather than compared against a literal
+      # string somewhere else in the library.
+      def __ash_dispatch_placeholder__(:notification_message),
+        do: __static_notification_message()
+
+      def __ash_dispatch_placeholder__(:notification_title), do: __static_notification_title()
+      def __ash_dispatch_placeholder__(_other), do: nil
 
       # Make everything overridable
       defoverridable id: 0,

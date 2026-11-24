@@ -6,6 +6,25 @@ defmodule AshDispatch.Transports.Discord do
 
   Sends messages to Discord channels via webhooks (async via Oban).
 
+  ## The body is sent as written
+
+  A Discord message body is **not escaped** by this library, and neither is a
+  Slack one. That is deliberate: both are markdown-ish formats where escaping
+  would turn a deliberate `*bold*` into literal asterisks, and the body is
+  normally an event's own sentence. It does mean the body is whatever went
+  into it — a record's field, a customer's own name — so an event rendering
+  untrusted text into a Discord or Slack body should expect that text to be
+  read as formatting.
+
+  Mentions are the one case where that is not merely cosmetic, so they are
+  **off by default**: every payload carries
+  `allowed_mentions: %{"parse" => []}` unless the event sets
+  `discord_allowed_mentions` itself. Discord's own default is to parse every
+  mention in the text, which means an `@everyone` in a company name pings a
+  whole server. An event that genuinely wants to ping says so:
+
+      content: [discord_allowed_mentions: %{"parse" => ["users"]}]
+
   ## Configuration
 
   Requires `webhook_url` in channel metadata or via callback:
@@ -116,10 +135,17 @@ defmodule AshDispatch.Transports.Discord do
   defp do_deliver(receipt, context, channel) do
     case job_args(receipt, context, channel) do
       {:ok, job_args} ->
-        case SendWebhook.new(job_args) |> Oban.insert() do
-          {:ok, _job} ->
-            # Mark receipt as scheduled, in its own tenant
-            updated_receipt = AshDispatch.ReceiptStatus.mark_scheduled(receipt)
+        case job_args
+             |> SendWebhook.new(AshDispatch.Transport.Queue.opts(channel))
+             |> Oban.insert() do
+          {:ok, job} ->
+            # Mark receipt as scheduled, in its own tenant, and record which
+            # job it is: without the id the stranded sweep has no job to look
+            # up and decides on age alone.
+            updated_receipt =
+              receipt
+              |> AshDispatch.ReceiptStatus.mark_scheduled()
+              |> AshDispatch.ReceiptStatus.put_oban_job_id(job.id)
 
             Logger.info("Discord webhook job enqueued for receipt #{receipt.id}")
             {:ok, updated_receipt}
@@ -178,11 +204,44 @@ defmodule AshDispatch.Transports.Discord do
   defp put_tenant(args, tenant),
     do: Map.put(args, "tenant", AshDispatch.Tenancy.receipt_prefix(tenant))
 
+  @doc false
+  # Public-but-undocumented so the mention decision can be tested directly:
+  # it is the one thing in this payload that is a safety decision rather than
+  # a shape.
+  def build_payload(content, context), do: build_discord_payload(content, context)
+
+  # Explicit first, then suppression — per channel, then application-wide.
+  # Nothing at all when nobody asked, which is what rc.5 sent.
+  defp put_allowed_mentions(payload, content) do
+    cond do
+      mentions = get_content(content, :discord_allowed_mentions) ->
+        Map.put(payload, "allowed_mentions", mentions)
+
+      get_content(content, :discord_suppress_mentions) == true ->
+        Map.put(payload, "allowed_mentions", %{"parse" => []})
+
+      Application.get_env(:ash_dispatch, :discord_suppress_mentions, false) == true ->
+        Map.put(payload, "allowed_mentions", %{"parse" => []})
+
+      true ->
+        payload
+    end
+  end
+
   defp build_discord_payload(content, _context) when is_map(content) do
-    # Base payload with content
-    payload = %{
-      "content" => get_content(content, :notification_message)
-    }
+    # Base payload with content.
+    #
+    # `allowed_mentions` is sent only when somebody asked for it: an explicit
+    # `discord_allowed_mentions`, or the suppression that
+    # `config :ash_dispatch, discord_suppress_mentions: true` (or the same key
+    # on the channel's content) turns on. rc.5 sent no `allowed_mentions` at
+    # all, and a patch may not change what a host's channel does — a default
+    # that suppressed mentions would silence a host that deliberately pings
+    # from an event body, with no way for it to know why. The moduledoc says
+    # to switch it on; 0.10.0 is where the default moves.
+    payload =
+      %{"content" => get_content(content, :notification_message)}
+      |> put_allowed_mentions(content)
 
     # Add embed if provided
     payload =

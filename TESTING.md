@@ -7,7 +7,25 @@ mix deps.get
 mix test
 ```
 
-The suite is self-contained: it needs no database and no consuming app.
+Most of the suite is self-contained: it needs no database and no consuming
+app.
+
+> #### Set the database URL, or you are not running the whole suite {: .warning}
+>
+> `mix test` without `ASH_DISPATCH_TEST_DATABASE_URL` **excludes 159 tests**
+> and still prints "0 failures". Everything per-tenant, the pruner's and the
+> scrub's JSONB, the reason code's merge and the one test about a real Oban
+> job id are in that set — they are the ones that can only be answered by a
+> real Postgres.
+>
+> ```bash
+> createdb ash_dispatch_test
+> ASH_DISPATCH_TEST_DATABASE_URL=postgres://localhost/ash_dispatch_test \
+>   mix test --include postgres
+> ```
+>
+> CI sets it and `test_helper.exs` raises without it there, so a merge cannot
+> skip them. Anyone validating a change locally has to set it too.
 
 - Resources under test use `Ash.DataLayer.Ets` (`test/support/`), including
   `AshDispatch.Test.TransportReceipt`, an ETS stand-in for the
@@ -31,7 +49,9 @@ The suite is self-contained: it needs no database and no consuming app.
 
 `.github/workflows/ci.yml`:
 
-- **test** — `mix format --check-formatted` and `mix test`.
+- **test** — `mix format --check-formatted` and `mix test`, with
+  `ASH_DISPATCH_TEST_DATABASE_URL` pointing at a service container, so the
+  `:postgres` tests run.
 - **compile-without-optional-deps** — builds ash_dispatch as the only
   dependency of a bare app, on the oldest supported Elixir, and fails on any
   warning: library code must not start requiring an optional dependency
@@ -46,6 +66,19 @@ That belongs in the consuming app, against its own database and Oban. The
 library ships helpers for it — see the *Previews and testing* guide
 (`AshDispatch.Test.assert_all_render/1`, `AshDispatch.Preview`) once you are
 on 0.8.6.
+
+One test worth having in your app is the one the library cannot run for you:
+
+```elixir
+test "the database has what ash_dispatch's tables need" do
+  assert :ok = AshDispatch.Doctor.check()
+end
+```
+
+`AshDispatch.Doctor` asks the database whether `uuid_generate_v7()` resolves,
+which no check of your source can settle — a repo can list the
+`"ash-functions"` extension and not have the function. `mix ash_dispatch.doctor`
+is the same check from a shell, for a deploy script.
 
 ## The tenancy suite
 

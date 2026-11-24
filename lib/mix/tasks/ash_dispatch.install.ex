@@ -129,15 +129,41 @@ if Code.ensure_loaded?(Igniter) do
     # `CREATE TABLE` fails — and for a host that creates a tenant's tables when
     # the tenant is created, no tenant can be created at all (#50).
     #
-    # The check is the repo's own source: no database connection, nothing of
-    # the host's compiled, and it answers the only question that decides it.
+    # rc.2 asked one question — does the repo's source contain
+    # `"ash-functions"` — and the first host it was written for answered yes
+    # while the function was absent. ash_postgres emits the function only when
+    # the builtin is NOT used, and it derives that from `min_pg_version/0`
+    # (`major >= 18`). The host's `ash-functions` migration had been generated
+    # while that answered 18, so it created nothing; lowering the answer to 17
+    # afterwards does not rewrite a migration already on disk.
+    #
+    # So three things are read instead of one, all from the project's own
+    # files, still without a database connection:
+    #
+    #   * does `installed_extensions/0` list `"ash-functions"`
+    #   * what does `min_pg_version/0` answer
+    #   * does a migration that installs Ash's functions already exist, and
+    #     does it define `uuid_generate_v7()`
+    #
+    # None of that is conclusive — only the database can be — so every notice
+    # now says so and gives the SQL check as the authoritative one.
+    @migration_glob "priv/**/migrations/*.exs"
+
     defp maybe_warn_missing_ash_functions(igniter, otp_app, repo, app_module) do
       case Igniter.Project.Module.find_module(igniter, repo) do
         {:ok, {igniter, source, _zipper}} ->
-          if source |> Rewrite.Source.get(:content) |> String.contains?(~s("ash-functions")) do
-            igniter
-          else
-            Igniter.add_notice(igniter, ash_functions_notice(otp_app, repo, app_module))
+          repo_source = Rewrite.Source.get(source, :content)
+          {igniter, migrations} = ash_functions_migrations(igniter)
+
+          case diagnose_uuid_generate_v7(repo_source, migrations) do
+            :ok ->
+              igniter
+
+            {:warn, reason} ->
+              Igniter.add_notice(
+                igniter,
+                ash_functions_notice(reason, otp_app, repo, app_module)
+              )
           end
 
         # No repo of that name to read. The closing notice already says so;
@@ -147,25 +173,115 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    defp ash_functions_notice(otp_app, repo, app_module) do
+    @doc false
+    # What the project's files say about `uuid_generate_v7()`. Public only so
+    # the suite can put the three inputs in directly; not API.
+    #
+    # `:ok` means "nothing here looks wrong", NOT "the function is there" —
+    # the installer cannot know that. Each `{:warn, reason}` names a case in
+    # which it is positively likely to be missing.
+    def diagnose_uuid_generate_v7(repo_source, migrations) do
+      cond do
+        not String.contains?(repo_source, ~s("ash-functions")) ->
+          {:warn, :no_extension}
+
+        # Checked before the migration, because this answer decides the next
+        # `mix ash.codegen` too: at 18 ash_postgres writes `uuidv7()` as the
+        # column default of every new table, which an older server does not
+        # have either. Worth saying whatever the migrations currently contain.
+        min_pg_major(repo_source) >= 18 ->
+          {:warn, :builtin_assumed}
+
+        # The migration is already written and does not create the function.
+        # The strongest signal there is, and the host's own case: the answer
+        # was lowered to 17 after the file had been generated.
+        migrations == :installed_without_function ->
+          {:warn, :migration_without_function}
+
+        true ->
+          :ok
+      end
+    end
+
+    # The major version `min_pg_version/0` answers, or 0 when the repo does not
+    # define one (ash_postgres then assumes 13 and warns about it itself).
+    # Both spellings ash_postgres and its installer write are read:
+    # `%Version{major: 18, …}` and `Version.parse!("18.0.0")`.
+    defp min_pg_major(repo_source) do
+      case Regex.run(~r/min_pg_version.*?(?:major:\s*|parse!\(")(\d+)/s, repo_source) do
+        [_, major] -> String.to_integer(major)
+        _ -> 0
+      end
+    end
+
+    # Whether a migration that installs Ash's functions exists, and whether it
+    # defines `uuid_generate_v7()`. `FUNCTION uuid_generate_v7` is the
+    # DEFINITION; a bare `uuid_generate_v7()` also appears in every table
+    # migration as a column default, which is the use and proves nothing.
+    defp ash_functions_migrations(igniter) do
+      igniter = Igniter.include_glob(igniter, @migration_glob)
+
+      contents =
+        igniter.rewrite
+        |> Rewrite.sources()
+        |> Enum.filter(&migration_path?(Rewrite.Source.get(&1, :path)))
+        |> Enum.map(&Rewrite.Source.get(&1, :content))
+
+      cond do
+        Enum.any?(contents, &String.contains?(&1, "FUNCTION uuid_generate_v7")) ->
+          {igniter, :installed_with_function}
+
+        Enum.any?(contents, &installs_ash_functions?/1) ->
+          {igniter, :installed_without_function}
+
+        true ->
+          {igniter, :none}
+      end
+    end
+
+    defp migration_path?(path) when is_binary(path) do
+      String.contains?(path, "migrations/") and String.ends_with?(path, ".exs")
+    end
+
+    defp migration_path?(_path), do: false
+
+    # ash_postgres's `ash-functions` migration always creates these, whatever
+    # version of it generated the file and whichever Postgres it assumed.
+    defp installs_ash_functions?(content) do
+      Enum.any?(
+        ["FUNCTION ash_raise_error", "FUNCTION ash_elixir_or", "FUNCTION ash_required"],
+        &String.contains?(content, &1)
+      )
+    end
+
+    # The authoritative check, in every notice: the database, not the source.
+    defp ash_functions_sql_check do
       """
-      ⚠️  #{inspect(repo)} does not list the "ash-functions" extension, and the
-      notification and preference resources have a UUID v7 primary key.
-
-      `mix ash.codegen` writes `default: fragment("uuid_generate_v7()")` for
-      their tables. Postgres has no such function before 18 — ash_postgres
-      creates it, and only for a repo that asks. Without it CREATE TABLE fails.
-
-      Check your database:
+      Listing the extension is NOT enough to know the function is there. Ask
+      the database — this is the only answer that counts:
 
           SELECT to_regprocedure('public.uuid_generate_v7()');
 
-      A NULL answer means it is not there. To add it:
+      NULL means it is not there. From inside the application, at boot or in a
+      test:
+
+          AshDispatch.Doctor.check!()        # raises with the migration to add
+          mix ash_dispatch.doctor            # the same check from the shell
+      """
+    end
+
+    defp ash_functions_fix(otp_app, repo, app_module) do
+      """
+      To add it:
 
           defmodule #{inspect(repo)} do
             use AshPostgres.Repo, otp_app: :#{otp_app}
 
             def installed_extensions, do: ["ash-functions"]
+
+            # The OLDEST Postgres you run. At 18 or more ash_postgres uses the
+            # server's own uuidv7() and creates nothing.
+            def min_pg_version, do: %Version{major: 17, minor: 0, patch: 0}
           end
 
           mix ash.codegen install_ash_functions
@@ -182,6 +298,69 @@ if Code.ensure_loaded?(Igniter) do
       "uuid_generate_v7()" section of the Tenancy guide before your first one:
       the function lives in one schema and is resolved against the search_path
       of whoever runs the CREATE TABLE.
+      """
+    end
+
+    defp ash_functions_notice(:no_extension, otp_app, repo, app_module) do
+      """
+      ⚠️  #{inspect(repo)} does not list the "ash-functions" extension, and the
+      notification and preference resources have a UUID v7 primary key.
+
+      `mix ash.codegen` writes `default: fragment("uuid_generate_v7()")` for
+      their tables. Postgres has no such function before 18 — ash_postgres
+      creates it, and only for a repo that asks. Without it CREATE TABLE fails.
+
+      #{ash_functions_sql_check()}
+      #{ash_functions_fix(otp_app, repo, app_module)}
+      """
+    end
+
+    defp ash_functions_notice(:migration_without_function, otp_app, repo, app_module) do
+      """
+      ⚠️  #{inspect(repo)} lists "ash-functions", but the migration that
+      installs them does not create uuid_generate_v7() — and the notification
+      and preference resources have a UUID v7 primary key.
+
+      ash_postgres creates that function only when the server's own is not
+      used, which it decides from `min_pg_version/0`: at major 18 or more it
+      leaves it out and relies on the builtin uuidv7(). A migration generated
+      while that answered 18 therefore creates nothing, and lowering the answer
+      afterwards does not rewrite a file already on disk.
+
+      This is exactly the case that reached the first per-tenant host (#50):
+      the extension was listed, and the function was missing.
+
+      #{ash_functions_sql_check()}
+      If it is missing, set `min_pg_version/0` to the oldest server you
+      actually run and generate the migration again:
+
+          mix ash.codegen install_ash_functions
+          mix ash.migrate
+
+      `AshDispatch.Doctor` prints the statement to run by hand when
+      `ash.codegen` is not available to you.
+      #{ash_functions_fix(otp_app, repo, app_module)}
+      """
+    end
+
+    defp ash_functions_notice(:builtin_assumed, otp_app, repo, app_module) do
+      """
+      ⚠️  #{inspect(repo)} lists "ash-functions", but `min_pg_version/0`
+      answers 18 or more — so ash_postgres will NOT create
+      uuid_generate_v7(). It will rely on the server's own uuidv7() instead,
+      which exists only on PostgreSQL 18 and later.
+
+      The notification and preference resources have a UUID v7 primary key. If
+      any server you run is older than 18, CREATE TABLE fails there.
+
+      `min_pg_version/0` should be the OLDEST Postgres the application runs
+      against, not the newest or the one on your laptop —
+      `mix igniter.install ash_postgres` fills it in from the local
+      `postgres -V`, which is how 18 gets written into a project that deploys
+      against 17.
+
+      #{ash_functions_sql_check()}
+      #{ash_functions_fix(otp_app, repo, app_module)}
       """
     end
 
