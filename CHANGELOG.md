@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.4-rc.8] - 2026-11-24
+
+### Content read back from the database
+
+A receipt's `content` is a JSONB column, so a receipt read back from the
+database has string keys. Two transports still read some of it by atom key
+only, and lost what the event had set: the email's own sender and the in-app
+notification's metadata (and, on a retry, its `invalidates`). Both now read
+through `ContentMap.get_content/2`, like the fields beside them. No migration,
+and nothing changes for a receipt whose content still has atom keys. From #65
+and #66; closes #64.
+
 ### Fixed
 
 - **An event's own sender was lost whenever the receipt had been read back
