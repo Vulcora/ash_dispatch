@@ -20,6 +20,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sender is read through `ContentMap.get_content/2` now, as the reply address
   and the headers beside it always were, so both spellings answer. Nothing
   changes for a receipt whose content still has atom keys.
+- **An in-app notification dropped the event's own metadata whenever the
+  receipt had been read back from the database.** `content` is a JSONB
+  column, so a reloaded receipt has `"metadata"` and not `:metadata`, and
+  `Transports.InApp` read only the atom key: whatever an event module adds
+  through `extra_content/2` was lost on the way to the notification, leaving
+  the idempotency key as the only way from a notification back to what it is
+  about. The metadata is read through `ContentMap.get_content/2` now, as the
+  title, message and the fields beside it always were, so both spellings
+  answer; the delivery priority is still added beside it rather than instead
+  of it. A retry reads its `invalidates` the same way, for the same reason —
+  a retry always works from a stored receipt. Nothing changes for a receipt
+  whose content still has atom keys.
+
+### A note on 0.9.4-rc.7
+
+rc.7 added a column to the receipt, `scheduled_for`, and in doing so broke
+this project's own rule that a patch release must not require a migration.
+The column is kept rather than withdrawn: hosts have already run the
+migration and read the field, and taking it away would cost them a second
+migration to arrive where they already are. The rule stands for the releases
+after it.
 
 ## [0.9.4-rc.7] - 2026-11-23
 

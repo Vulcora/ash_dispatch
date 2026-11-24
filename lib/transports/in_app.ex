@@ -168,7 +168,10 @@ defmodule AshDispatch.Transports.InApp do
            |> Ash.create(authorize?: false) do
         {:ok, notification} ->
           # Broadcast and mark receipt as sent
-          invalidates = Map.get(content, :invalidates, [])
+          # Also through `ContentMap`, and here it can never be anything else:
+          # a retry runs from a STORED receipt, so its content has string keys
+          # by definition.
+          invalidates = get_content(content, :invalidates, [])
           broadcast_notification(notification, invalidates)
 
           receipt
@@ -226,9 +229,16 @@ defmodule AshDispatch.Transports.InApp do
         # Format: "event_id:resource_id:audience:user_id" or "event_id:audience:user_id" if no resource_id
         idempotency_key = idempotency_key(channel, context, user_id)
 
-        # Build metadata from event config + context priority
+        # Build metadata from event config + context priority.
+        #
+        # Through `ContentMap`, like the title and the message beside it:
+        # `content` is a JSONB column, so a receipt read back from the database
+        # has `"metadata"` and not `:metadata`. Read as
+        # `receipt.content[:metadata]` alone, the lookup missed on every
+        # reloaded receipt, and everything an event module adds through
+        # `extra_content/2` was dropped on the way to the notification.
         metadata =
-          (receipt.content[:metadata] || %{})
+          (get_content(receipt.content, :metadata) || %{})
           |> Map.put(:priority, context.priority || :standard)
 
         notification_attrs = %{
