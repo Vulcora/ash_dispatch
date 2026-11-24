@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **An event's own sender was lost whenever the receipt had been read back
+  from the database.** `content` is a JSONB column, so a reloaded receipt has
+  `"from"` and not `:from`, and `Transports.Email.get_from_field/1` read only
+  the atom key: the lookup missed and the configured default sender was used
+  instead. A host that sends from more than one address therefore had mail go
+  out from the wrong one for every event that is not `sensitive_content` —
+  those were unaffected, because a sensitive event's job carries no content
+  args and the worker reads the sender through `ContentMap` already. The
+  sender is read through `ContentMap.get_content/2` now, as the reply address
+  and the headers beside it always were, so both spellings answer. Nothing
+  changes for a receipt whose content still has atom keys.
+
 ## [0.9.4-rc.7] - 2026-11-23
 
 ### What is about to go, and stopping it
