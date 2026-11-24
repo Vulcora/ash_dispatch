@@ -369,19 +369,26 @@ defmodule AshDispatch.Transports.Email do
   end
 
   defp get_from_field(receipt) do
+    # Through `ContentMap`, like the reply address and the headers beside it:
+    # `content` is a JSONB column, so a receipt read back from the database has
+    # `"from"` and not `:from`. Read as `receipt.content[:from]` alone, the
+    # lookup missed on every reloaded receipt and the event's own sender was
+    # silently replaced by the configured default.
+    from = AshDispatch.ContentMap.get_content(receipt.content, :from)
+
     cond do
       # From field stored as map with name/email (from event module)
-      is_map(receipt.content[:from]) ->
-        receipt.content[:from]
+      is_map(from) ->
+        from
 
       # From field is a tuple {name, email} - convert to map for JSON serialization
-      is_tuple(receipt.content[:from]) ->
-        {name, email} = receipt.content[:from]
+      is_tuple(from) ->
+        {name, email} = from
         %{"name" => name, "email" => email}
 
       # From field is a string email address
-      is_binary(receipt.content[:from]) ->
-        receipt.content[:from]
+      is_binary(from) ->
+        from
 
       # Fallback to configured default
       true ->
